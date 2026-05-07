@@ -1,0 +1,22 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ./cmd/server"
+  bin = "./tmp/server"
+  include_ext = ["go"]
+  exclude_dir = ["frontend", "tmp", "vendor", "docs", "maps", "ia"]
+  exclude_regex = [".*_test.go"]
+  exclude_unchanged = true
+  log = "build-errors.log"
+  stop_on_error = true
+  send_interrupt = true
+  kill_delay = "5s"
+
+[log]
+  time = true
+
+[color]
+  app = "yellow"
+  build = "green"
+  runner = "cyan"

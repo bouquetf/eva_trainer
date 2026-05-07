@@ -1,0 +1,21 @@
+DROP INDEX IF EXISTS idx_template_zones_template;
+DROP INDEX IF EXISTS idx_edit_history_zone;
+DROP INDEX IF EXISTS idx_edit_locks_team_map;
+DROP INDEX IF EXISTS idx_zone_names_zone;
+DROP INDEX IF EXISTS idx_zone_polygons_zone;
+DROP INDEX IF EXISTS idx_zones_team_map;
+
+DROP TABLE IF EXISTS role_permissions;
+DROP TABLE IF EXISTS permissions;
+DROP TABLE IF EXISTS edit_history;
+DROP TABLE IF EXISTS edit_locks;
+DROP TABLE IF EXISTS template_zones;
+DROP TABLE IF EXISTS templates;
+DROP TABLE IF EXISTS zone_names;
+DROP TABLE IF EXISTS zone_polygons;
+DROP TABLE IF EXISTS zones;
+DROP TABLE IF EXISTS splits;
+DROP TABLE IF EXISTS maps;
+DROP TABLE IF EXISTS team_members;
+DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS users;
