@@ -14,6 +14,7 @@ function Home() {
         <div className="auth-user-info">
           <span className="auth-user-id">{user?.discord_id ?? 'Connecté'}</span>
           <Link to="/editor">Éditeur de zones</Link>
+          <Link to="/teams">Équipes</Link>
           <button className="btn-logout" onClick={logout}>Déconnexion</button>
         </div>
       ) : (

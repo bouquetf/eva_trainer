@@ -39,6 +39,14 @@ func (m *mockUserRepo) IsFirstUser() (bool, error) {
 	return false, nil
 }
 
+func (m *mockUserRepo) UpdateDisplayName(userID int, displayName string) error {
+	return nil
+}
+
+func (m *mockUserRepo) SetDiscordUsername(userID int, discordUsername string) error {
+	return nil
+}
+
 func setupTest(t *testing.T) (*services.JWTService, *mockUserRepo, *gin.Engine) {
 	t.Helper()
 

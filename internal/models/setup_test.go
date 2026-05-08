@@ -19,6 +19,8 @@ const migrationsDir = "../../db/migrations"
 var migrationFiles = []string{
 	"000001_initial_schema.up.sql",
 	"000002_add_refresh_tokens.up.sql",
+	"000003_add_display_name.up.sql",
+	"000004_add_discord_username.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

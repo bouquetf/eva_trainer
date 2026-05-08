@@ -26,6 +26,22 @@ class ApiClient {
     })
   }
 
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, {
+      method: 'PUT',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  }
+
+  async del<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, {
+      method: 'DELETE',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  }
+
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = this.config.getAccessToken()
     const headers: Record<string, string> = {

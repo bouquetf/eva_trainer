@@ -26,7 +26,9 @@ type StateClaims struct {
 }
 
 type DiscordUser struct {
-	ID string `json:"id"`
+	ID         string `json:"id"`
+	Username   string `json:"username"`
+	GlobalName string `json:"global_name"`
 }
 
 func DiscordOAuthConfig(clientID, clientSecret, redirectURL string) *oauth2.Config {
@@ -85,37 +87,37 @@ func ValidateOAuthState(jwtSecret []byte, state string) (string, error) {
 	return claims.Redirect, nil
 }
 
-func GetDiscordUserID(ctx context.Context, cfg *oauth2.Config, code string) (string, error) {
+func GetDiscordUser(ctx context.Context, cfg *oauth2.Config, code string) (*DiscordUser, error) {
 	token, err := cfg.Exchange(ctx, code)
 	if err != nil {
-		return "", fmt.Errorf("failed to exchange code: %w", err)
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discordUserURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create user request: %w", err)
+		return nil, fmt.Errorf("failed to create user request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch discord user: %w", err)
+		return nil, fmt.Errorf("failed to fetch discord user: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("discord API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("discord API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var user DiscordUser
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		return "", fmt.Errorf("failed to decode discord user: %w", err)
+		return nil, fmt.Errorf("failed to decode discord user: %w", err)
 	}
 
 	if user.ID == "" {
-		return "", fmt.Errorf("discord returned empty user ID")
+		return nil, fmt.Errorf("discord returned empty user ID")
 	}
 
-	return user.ID, nil
+	return &user, nil
 }

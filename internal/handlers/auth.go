@@ -84,7 +84,7 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	discordID, err := services.GetDiscordUserID(c.Request.Context(), h.oauthCfg, code)
+	discordUser, err := services.GetDiscordUser(c.Request.Context(), h.oauthCfg, code)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error":   "discord_api_error",
@@ -93,7 +93,7 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	user, isNew, err := h.userRepo.FindOrCreateByDiscordID(discordID)
+	user, isNew, err := h.userRepo.FindOrCreateByDiscordID(discordUser.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
@@ -107,6 +107,18 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		if err == nil && first {
 			h.userRepo.SetAdmin(user.ID)
 		}
+
+		displayName := discordUser.GlobalName
+		if displayName == "" {
+			displayName = discordUser.Username
+		}
+		if displayName != "" {
+			h.userRepo.UpdateDisplayName(user.ID, displayName)
+		}
+	}
+
+	if discordUser.Username != "" {
+		h.userRepo.SetDiscordUsername(user.ID, discordUser.Username)
 	}
 
 	accessToken, expiresAt, err := h.jwtService.GenerateAccessToken(user.ID)
@@ -215,10 +227,47 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":         user.ID,
-		"discord_id": user.DiscordID,
-		"is_admin":   user.IsAdmin,
-		"created_at": user.CreatedAt,
+		"id":               user.ID,
+		"discord_id":       user.DiscordID,
+		"discord_username": user.DiscordUsername,
+		"display_name":     user.DisplayName,
+		"is_admin":         user.IsAdmin,
+		"created_at":       user.CreatedAt,
+	})
+}
+
+func (h *AuthHandler) UpdateDisplayName(c *gin.Context) {
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "unauthorized",
+			"message": "unauthorized",
+		})
+		return
+	}
+
+	var req struct {
+		DisplayName string `json:"display_name"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil || req.DisplayName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid_display_name",
+			"message": "display name is required",
+		})
+		return
+	}
+
+	if err := h.userRepo.UpdateDisplayName(user.ID, req.DisplayName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "internal_error",
+			"message": "internal server error",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"display_name": req.DisplayName,
 	})
 }
 

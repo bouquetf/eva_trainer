@@ -44,6 +44,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 	apiV1 := r.Group("/api/v1")
 
 	setupAuthRoutes(apiV1, cfg)
+	setupTeamRoutes(apiV1, cfg)
 
 	if gin.Mode() == gin.ReleaseMode {
 		r.StaticFS("/assets", assetsFS)
@@ -53,6 +54,27 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 		r.NoRoute(func(c *gin.Context) {
 			serveFrontendFile(c, "index.html", frontendFS)
 		})
+	}
+}
+
+func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
+	db := database.DB()
+	teamRepo := models.NewTeamRepository(db)
+	teamMemberRepo := models.NewTeamMemberRepository(db)
+	teamHandler := handlers.NewTeamHandler(teamRepo, teamMemberRepo)
+
+	teams := rg.Group("/teams")
+	teams.Use(middleware.RequireAuth(
+		models.NewUserRepository(db),
+		services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry),
+	))
+	{
+		teams.POST("", teamHandler.Create)
+		teams.GET("", teamHandler.ListMyTeams)
+		teams.GET("/:id", teamHandler.GetTeam)
+		teams.PUT("/:id", teamHandler.UpdateTeam)
+		teams.DELETE("/:id", teamHandler.DeleteTeam)
+		teams.POST("/:id/leave", teamHandler.LeaveTeam)
 	}
 }
 
@@ -72,5 +94,6 @@ func setupAuthRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	protected.Use(middleware.RequireAuth(userRepo, jwtService))
 	{
 		protected.GET("/auth/me", authHandler.Me)
+		protected.PUT("/auth/display-name", authHandler.UpdateDisplayName)
 	}
 }

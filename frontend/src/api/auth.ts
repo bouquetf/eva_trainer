@@ -3,6 +3,8 @@ import { getApiClient } from './client'
 export interface User {
   id: number
   discord_id: string
+  discord_username: string
+  display_name: string
   is_admin: boolean
   created_at: string
 }
@@ -34,4 +36,9 @@ export async function fetchMe(): Promise<User> {
 export async function refreshToken(token: string): Promise<RefreshResponse> {
   const api = getApiClient()
   return api.post<RefreshResponse>('/api/v1/auth/refresh', { refresh_token: token })
+}
+
+export async function updateDisplayName(displayName: string): Promise<{ display_name: string }> {
+  const api = getApiClient()
+  return api.put<{ display_name: string }>('/api/v1/auth/display-name', { display_name: displayName })
 }

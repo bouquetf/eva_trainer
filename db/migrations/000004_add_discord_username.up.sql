@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN discord_username VARCHAR(255) NOT NULL DEFAULT '';

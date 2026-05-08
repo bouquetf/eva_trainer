@@ -4,13 +4,24 @@ import Login from '../pages/Login'
 import Callback from '../pages/Callback'
 import Editor from '../pages/Editor'
 import NotFound from '../pages/NotFound'
+import AppLayout from '../components/AppLayout'
+import TeamsList from '../pages/TeamsList'
+import CreateTeam from '../pages/CreateTeam'
+import TeamSettings from '../pages/TeamSettings'
+import ProfileSettings from '../pages/ProfileSettings'
 
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/callback" element={<Callback />} />
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<Home />} />
+        <Route path="/settings" element={<ProfileSettings />} />
+        <Route path="/teams" element={<TeamsList />} />
+        <Route path="/teams/create" element={<CreateTeam />} />
+        <Route path="/teams/:id" element={<TeamSettings />} />
+      </Route>
       <Route path="/editor" element={<Editor />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

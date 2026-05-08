@@ -70,7 +70,7 @@ describe('useAuthStore', () => {
       sessionStorage.setItem('eva_access_token', 'acc')
       sessionStorage.setItem('eva_refresh_token', 'ref')
       useAuthStore.setState({
-        user: { id: 1, discord_id: 'test', is_admin: false, created_at: '2024-01-01' },
+        user: { id: 1, discord_id: 'test', discord_username: '', display_name: '', is_admin: false, created_at: '2024-01-01' },
         accessToken: 'acc',
         refreshToken: 'ref',
         isAuthenticated: true,
