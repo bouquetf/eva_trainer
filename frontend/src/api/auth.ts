@@ -1,0 +1,37 @@
+import { getApiClient } from './client'
+
+export interface User {
+  id: number
+  discord_id: string
+  is_admin: boolean
+  created_at: string
+}
+
+export interface AuthResponse {
+  access_token: string
+  refresh_token: string
+  expires_in: number
+  user: User
+}
+
+export interface RefreshResponse {
+  access_token: string
+  refresh_token: string
+  expires_in: number
+}
+
+export function getLoginUrl(): string {
+  const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+  const redirect = window.location.pathname !== '/login' ? window.location.pathname : '/'
+  return `${baseURL}/api/v1/auth/discord/login?redirect=${encodeURIComponent(redirect)}`
+}
+
+export async function fetchMe(): Promise<User> {
+  const api = getApiClient()
+  return api.get<User>('/api/v1/auth/me')
+}
+
+export async function refreshToken(token: string): Promise<RefreshResponse> {
+  const api = getApiClient()
+  return api.post<RefreshResponse>('/api/v1/auth/refresh', { refresh_token: token })
+}

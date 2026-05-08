@@ -7,11 +7,40 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"eva_trainer/pkg/config"
+	"eva_trainer/pkg/database"
 
 	"github.com/gin-gonic/gin"
 )
+
+func setupTestConfig() *config.AppConfig {
+	return &config.AppConfig{
+		Server: config.ServerConfig{
+			Port:        "8080",
+			GinMode:     "debug",
+			FrontendURL: "http://localhost:5173",
+		},
+		Discord: config.DiscordConfig{
+			ClientID:     "test-client-id",
+			ClientSecret: "test-client-secret",
+			RedirectURL:  "http://localhost:8080/api/v1/auth/discord/callback",
+		},
+		JWT: config.JWTConfig{
+			Secret:             "test-secret-that-is-at-least-32-chars-long-for-testing",
+			Expiry:             24 * time.Hour,
+			RefreshTokenExpiry: 7 * 24 * time.Hour,
+		},
+		CORS: config.CORSConfig{
+			Origins: []string{"*"},
+		},
+		Database: database.Config{
+			DatabaseURL: "postgres://localhost:5432/test?sslmode=disable",
+			Timeout:     5 * time.Second,
+		},
+	}
+}
 
 func setupTestFS(t *testing.T) (http.FileSystem, http.FileSystem) {
 	t.Helper()
@@ -33,9 +62,10 @@ func TestCORS_DevMode_AllowsAllOrigins(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	defer gin.SetMode(gin.DebugMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"*"}}
+	cfg := setupTestConfig()
+	cfg.CORS.Origins = []string{"*"}
 	r := gin.New()
-	SetupRoutes(r, corsCfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -51,9 +81,10 @@ func TestCORS_ProdMode_Restricted(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	defer gin.SetMode(gin.TestMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"http://localhost:8080"}}
+	cfg := setupTestConfig()
+	cfg.CORS.Origins = []string{"http://localhost:8080"}
 	r := gin.New()
-	SetupRoutes(r, corsCfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -69,9 +100,10 @@ func TestCORS_Preflight(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	defer gin.SetMode(gin.DebugMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"*"}}
+	cfg := setupTestConfig()
+	cfg.CORS.Origins = []string{"*"}
 	r := gin.New()
-	SetupRoutes(r, corsCfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("OPTIONS", "/health", nil)
@@ -94,9 +126,9 @@ func TestCORS_RouteAPIIntact(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	defer gin.SetMode(gin.DebugMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"*"}}
+	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, corsCfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -118,10 +150,10 @@ func TestProd_ServesIndexHTML(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	defer gin.SetMode(gin.TestMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"*"}}
+	cfg := setupTestConfig()
 	frontendFS, assetsFS := setupTestFS(t)
 	r := gin.New()
-	SetupRoutes(r, corsCfg, frontendFS, assetsFS)
+	SetupRoutes(r, cfg, frontendFS, assetsFS)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/", nil)
@@ -139,10 +171,10 @@ func TestProd_ServesStaticAsset(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	defer gin.SetMode(gin.TestMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"*"}}
+	cfg := setupTestConfig()
 	frontendFS, assetsFS := setupTestFS(t)
 	r := gin.New()
-	SetupRoutes(r, corsCfg, frontendFS, assetsFS)
+	SetupRoutes(r, cfg, frontendFS, assetsFS)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/assets/test.js", nil)
@@ -160,10 +192,10 @@ func TestProd_ServesSPAFallback(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	defer gin.SetMode(gin.TestMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"*"}}
+	cfg := setupTestConfig()
 	frontendFS, assetsFS := setupTestFS(t)
 	r := gin.New()
-	SetupRoutes(r, corsCfg, frontendFS, assetsFS)
+	SetupRoutes(r, cfg, frontendFS, assetsFS)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/unknown-route", nil)
@@ -181,9 +213,9 @@ func TestDev_Returns404ForRoot(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	defer gin.SetMode(gin.DebugMode)
 
-	corsCfg := &config.CORSConfig{Origins: []string{"*"}}
+	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, corsCfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/", nil)

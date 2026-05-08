@@ -4,10 +4,28 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+var (
+	globalDB   *sql.DB
+	globalDBMu sync.RWMutex
+)
+
+func SetDB(db *sql.DB) {
+	globalDBMu.Lock()
+	defer globalDBMu.Unlock()
+	globalDB = db
+}
+
+func DB() *sql.DB {
+	globalDBMu.RLock()
+	defer globalDBMu.RUnlock()
+	return globalDB
+}
 
 func Connect(cfg Config) (*sql.DB, error) {
 	var dsn string

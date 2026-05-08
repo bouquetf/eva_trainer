@@ -8,6 +8,7 @@ import (
 
 	"eva_trainer/api"
 	"eva_trainer/pkg/config"
+	"eva_trainer/pkg/database"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,8 +35,16 @@ func main() {
 		assetsSubFS = subFS
 	}
 
+	dbCfg := config.NewDatabaseConfigFromApp(cfg)
+	db, err := database.Connect(dbCfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+	database.SetDB(db)
+
 	r := gin.Default()
-	api.SetupRoutes(r, &cfg.CORS, http.FS(subFS), http.FS(assetsSubFS))
+	api.SetupRoutes(r, cfg, http.FS(subFS), http.FS(assetsSubFS))
 
 	log.Printf("Server starting on port %s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {

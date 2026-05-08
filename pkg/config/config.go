@@ -12,13 +12,15 @@ import (
 )
 
 type ServerConfig struct {
-	Port    string
-	GinMode string
+	Port        string
+	GinMode     string
+	FrontendURL string
 }
 
 type DiscordConfig struct {
 	ClientID     string
 	ClientSecret string
+	RedirectURL  string
 }
 
 type JWTConfig struct {
@@ -46,12 +48,14 @@ func Load() (*AppConfig, error) {
 
 	cfg := &AppConfig{
 		Server: ServerConfig{
-			Port:    getEnv("PORT", "8080"),
-			GinMode: getEnv("GIN_MODE", "debug"),
+			Port:        getEnv("PORT", "8080"),
+			GinMode:     getEnv("GIN_MODE", "debug"),
+			FrontendURL: getEnv("SERVER_FRONTEND_URL", "http://localhost:5173"),
 		},
 		Discord: DiscordConfig{
 			ClientID:     os.Getenv("DISCORD_CLIENT_ID"),
 			ClientSecret: os.Getenv("DISCORD_CLIENT_SECRET"),
+			RedirectURL:  os.Getenv("DISCORD_REDIRECT_URL"),
 		},
 		JWT: JWTConfig{
 			Secret:             os.Getenv("JWT_SECRET"),
@@ -82,6 +86,9 @@ func (c *AppConfig) Validate() error {
 	}
 	if c.Discord.ClientSecret == "" {
 		missing = append(missing, "DISCORD_CLIENT_SECRET")
+	}
+	if c.Discord.RedirectURL == "" {
+		missing = append(missing, "DISCORD_REDIRECT_URL")
 	}
 
 	if len(missing) > 0 {
