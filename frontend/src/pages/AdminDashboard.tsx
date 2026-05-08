@@ -13,10 +13,11 @@ import {
   removeUserFromTeam,
 } from '../api/admin'
 import type { Team } from '../api/admin'
+import { uploadMap, listAdminMaps, purgeObsoleteMaps, getMapImageUrl } from '../api/maps'
 import { useAuthStore } from '../store/auth'
 import '../styles/admin.css'
 
-type Tab = 'users' | 'permissions'
+type Tab = 'users' | 'permissions' | 'maps'
 
 const VALID_ROLES = ['member', 'editor', 'cocaptain', 'captain']
 
@@ -33,6 +34,10 @@ function AdminDashboard() {
   const [addTeamId, setAddTeamId] = useState<number>(0)
   const [addRole, setAddRole] = useState('member')
   const [showAddForm, setShowAddForm] = useState(false)
+
+  const [mapName, setMapName] = useState('')
+  const [mapFile, setMapFile] = useState<File | null>(null)
+  const [showPurgeModal, setShowPurgeModal] = useState(false)
 
   const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -116,6 +121,49 @@ function AdminDashboard() {
     },
   })
 
+  const { data: mapsData, isLoading: mapsLoading } = useQuery({
+    queryKey: ['admin-maps'],
+    queryFn: listAdminMaps,
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: ({ name, file }: { name: string; file: File }) => uploadMap(name, file),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-maps'] })
+      setMapName('')
+      setMapFile(null)
+      const msg = `Carte ${data.map.name} uploadée avec succès`
+      const extra = data.previous_version_obsoleted
+        ? ` L'ancienne version de ${data.previous_version_obsoleted.name} a été marquée obsolète`
+        : ''
+      setSuccess(msg + extra)
+      setError(null)
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Erreur lors de l'upload")
+    },
+  })
+
+  const purgeMutation = useMutation({
+    mutationFn: purgeObsoleteMaps,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-maps'] })
+      setShowPurgeModal(false)
+      const count = data.purged_ids.length
+      setSuccess(count > 0 ? `${count} carte(s) purgée(s) avec succès` : 'Aucune carte obsolète à purger')
+      setError(null)
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? 'Erreur lors de la purge')
+      setShowPurgeModal(false)
+    },
+  })
+
+  const maps = mapsData?.maps ?? []
+  const obsoleteMapsWithoutZones = maps.filter((m) => m.is_obsolete)
+
   const users = usersData?.users ?? []
   const permissions = permsData?.permissions ?? []
   const roles = permsData?.roles ?? []
@@ -148,6 +196,9 @@ function AdminDashboard() {
         </button>
         <button className={tab === 'permissions' ? 'active' : ''} onClick={() => { setTab('permissions'); setExpandedUserId(null) }}>
           Permissions
+        </button>
+        <button className={tab === 'maps' ? 'active' : ''} onClick={() => { setTab('maps'); setError(null); setSuccess(null) }}>
+          Cartes ({maps.length})
         </button>
       </div>
 
@@ -420,8 +471,142 @@ function AdminDashboard() {
           )}
         </div>
       )}
+
+      {tab === 'maps' && (
+        <div className="section">
+          <h2 className="section-title">Uploader une carte</h2>
+          <div className="map-upload-form">
+            <div className="map-form-row">
+              <div className="map-form-group">
+                <label htmlFor="map-name">Nom de la carte</label>
+                <input
+                  id="map-name"
+                  type="text"
+                  placeholder="Ex: Atlantis"
+                  value={mapName}
+                  onChange={(e) => setMapName(e.target.value)}
+                />
+              </div>
+              <div className="map-form-group">
+                <label htmlFor="map-file">Fichier WebP</label>
+                <input
+                  id="map-file"
+                  type="file"
+                  accept=".webp,image/webp"
+                  onChange={(e) => setMapFile(e.target.files?.[0] ?? null)}
+                />
+                <span className="map-form-hint">Format accepté : WebP. Taille max : 50 MB</span>
+              </div>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setError(null)
+                  setSuccess(null)
+                  if (!mapName.trim()) { setError('Le nom de la carte est requis'); return }
+                  if (!mapFile) { setError('Veuillez sélectionner un fichier'); return }
+                  if (!mapFile.name.toLowerCase().endsWith('.webp') && mapFile.type !== 'image/webp') {
+                    setError('Seul le format WebP est accepté')
+                    return
+                  }
+                  uploadMutation.mutate({ name: mapName.trim(), file: mapFile })
+                }}
+                disabled={uploadMutation.isPending}
+              >
+                {uploadMutation.isPending ? 'Upload en cours...' : 'Uploader la carte'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'maps' && (
+        <div className="section">
+          <h2 className="section-title">Toutes les cartes</h2>
+          {mapsLoading ? (
+            <div className="empty-state"><p>Chargement...</p></div>
+          ) : maps.length === 0 ? (
+            <div className="empty-state"><p>Aucune carte pour le moment</p></div>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nom</th>
+                  <th>Date d'ajout</th>
+                  <th>Statut</th>
+                  <th>Remplacée par</th>
+                  <th>Image</th>
+                </tr>
+              </thead>
+              <tbody>
+                {maps.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.id}</td>
+                    <td>{m.name}</td>
+                    <td>{formatDate(m.added_at)}</td>
+                    <td>
+                      {m.is_obsolete ? (
+                        <span className="map-badge-obsolete" title="Cette carte a été remplacée par une version plus récente">Obsolète</span>
+                      ) : (
+                        <span className="map-badge-active" title="Carte active utilisée par les zones">Active</span>
+                      )}
+                    </td>
+                    <td>
+                      {m.obsolete_of ? (
+                        <span>→ ID {m.obsolete_of} ({maps.find(o => o.id === m.obsolete_of)?.name ?? '?'})</span>
+                      ) : '-'}
+                    </td>
+                    <td>
+                      <img
+                        className="map-thumbnail"
+                        src={getMapImageUrl(m.id)}
+                        alt={m.name}
+                        loading="lazy"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === 'maps' && obsoleteMapsWithoutZones.length > 0 && (
+        <div className="purge-section">
+          <p>{obsoleteMapsWithoutZones.length} carte(s) obsolète(s) sans zone associée peuvent être purgées</p>
+          <button
+            className="btn-danger"
+            onClick={() => setShowPurgeModal(true)}
+            disabled={purgeMutation.isPending}
+          >
+            {purgeMutation.isPending ? 'Purge en cours...' : 'Purger les cartes obsolètes'}
+          </button>
+        </div>
+      )}
+
+      {showPurgeModal && (
+        <div className="modal-overlay" onClick={() => setShowPurgeModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Confirmer la purge</h3>
+            <p>Êtes-vous sûr de vouloir purger {obsoleteMapsWithoutZones.length} carte(s) obsolète(s) sans zone ? Cette action est irréversible.</p>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowPurgeModal(false)}>Annuler</button>
+              <button className="btn-danger" onClick={() => purgeMutation.mutate()} disabled={purgeMutation.isPending}>
+                {purgeMutation.isPending ? 'Purge en cours...' : 'Purger'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default AdminDashboard

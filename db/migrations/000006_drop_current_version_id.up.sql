@@ -1,0 +1,1 @@
+ALTER TABLE maps DROP COLUMN IF EXISTS current_version_id;

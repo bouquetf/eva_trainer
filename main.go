@@ -52,6 +52,10 @@ func main() {
 		log.Fatalf("Failed to seed role permissions: %v", err)
 	}
 
+	if err := seed.SeedMaps(db, "maps"); err != nil {
+		log.Printf("Warning: failed to seed maps: %v", err)
+	}
+
 	r := gin.Default()
 	api.SetupRoutes(r, cfg, http.FS(subFS), http.FS(assetsSubFS))
 

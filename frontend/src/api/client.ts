@@ -42,6 +42,46 @@ class ApiClient {
     })
   }
 
+  async upload<T>(path: string, formData: FormData): Promise<T> {
+    const token = this.config.getAccessToken()
+    const headers: Record<string, string> = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const res = await fetch(`${this.config.baseURL}${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+
+    if (res.status === 401) {
+      const refreshed = await this.tryRefresh()
+      if (refreshed) {
+        const newToken = this.config.getAccessToken()
+        headers['Authorization'] = `Bearer ${newToken}`
+        const retryRes = await fetch(`${this.config.baseURL}${path}`, {
+          method: 'POST',
+          headers,
+          body: formData,
+        })
+        if (!retryRes.ok) {
+          throw new ApiError(retryRes.status, await retryRes.json().catch(() => ({})))
+        }
+        return retryRes.json()
+      }
+
+      this.config.onAuthError()
+      throw new ApiError(401, { error: 'unauthorized', message: 'Session expirée' })
+    }
+
+    if (!res.ok) {
+      throw new ApiError(res.status, await res.json().catch(() => ({})))
+    }
+
+    return res.json()
+  }
+
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = this.config.getAccessToken()
     const headers: Record<string, string> = {

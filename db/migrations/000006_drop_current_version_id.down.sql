@@ -1,0 +1,1 @@
+ALTER TABLE maps ADD COLUMN current_version_id INTEGER REFERENCES maps(id) ON DELETE SET NULL;

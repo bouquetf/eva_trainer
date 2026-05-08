@@ -92,6 +92,7 @@ docker compose logs -f                  # Logs Docker
 
 - [Configuration](docs/configuration.md) — toutes les variables d'environnement
 - [Déploiement](docs/deployment.md) — guide de déploiement local et production
+- [Gestion des cartes](docs/map-management.md) — upload, cycle de vie, purge, API image
 - [Spécification fonctionnelle](docs/specification/specification.md)
 - [Schéma de base de données](docs/specification/database_schema.md)
 - [Architecture technique](docs/architecture.md)

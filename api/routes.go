@@ -47,6 +47,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 	setupTeamRoutes(apiV1, cfg)
 	setupAdminRoutes(apiV1, cfg)
 
+	apiV1.GET("/maps/:id/image", handlers.NewMapHandler(models.NewMapRepository(database.DB())).ServeImage)
+
 	if gin.Mode() == gin.ReleaseMode {
 		r.StaticFS("/assets", assetsFS)
 		r.GET("/", func(c *gin.Context) {
@@ -95,6 +97,8 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
 	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
+	mapRepo := models.NewMapRepository(db)
+	mapHandler := handlers.NewMapHandler(mapRepo)
 	adminHandler := handlers.NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo)
 
 	admin := rg.Group("/admin")
@@ -110,6 +114,11 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		admin.PUT("/users/:id/teams/:teamId/role", adminHandler.UpdateUserRole)
 		admin.POST("/users/:id/teams", adminHandler.AddUserToTeam)
 		admin.DELETE("/users/:id/teams/:teamId", adminHandler.RemoveUserFromTeam)
+
+		admin.POST("/maps", mapHandler.UploadMap)
+		admin.GET("/maps", mapHandler.ListMaps)
+		admin.GET("/maps/:id", mapHandler.GetMapDetail)
+		admin.POST("/maps/purge", mapHandler.PurgeObsoleteMaps)
 	}
 }
 

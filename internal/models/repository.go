@@ -52,6 +52,19 @@ type PermissionRepository interface {
 	Create(feature, description string) (*Permission, error)
 }
 
+type MapRepository interface {
+	Create(name string, blobData []byte) (*Map, error)
+	FindByID(id int) (*Map, error)
+	FindAll() ([]*Map, error)
+	FindByName(name string) ([]*Map, error)
+	FindByNameLatest(name string) (*Map, error)
+	MarkObsolete(mapID int, replacedByMapID int) error
+	IsMapObsolete(mapID int) (bool, error)
+	FindObsoleteWithoutZones() ([]*Map, error)
+	Delete(mapID int) error
+	GetBlob(mapID int) ([]byte, error)
+}
+
 type RolePermissionRepository interface {
 	FindByRole(role string) ([]*Permission, error)
 	FindByPermissionID(permissionID int) ([]*RolePermission, error)

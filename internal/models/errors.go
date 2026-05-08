@@ -23,3 +23,8 @@ var (
 	ErrDuplicateTeamMember     = errors.New("user is already a member of this team")
 	ErrPermissionNotFound      = errors.New("permission not found")
 )
+
+var (
+	ErrMapNameRequired = errors.New("map name is required")
+	ErrMapNotFound     = errors.New("map not found")
+)
