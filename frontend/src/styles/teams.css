@@ -322,3 +322,115 @@
   color: #ff453a;
   margin: 8px 0;
 }
+
+.role-badge-captain {
+  background: #fff8e1;
+  color: #f57f17;
+  border: 1px solid #ffe082;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.role-badge-cocaptain {
+  background: #f5f5f5;
+  color: #616161;
+  border: 1px solid #bdbdbd;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.role-badge-editor {
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #90caf9;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.role-badge-member {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.role-badge-admin {
+  background: #fce4ec;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.member-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.member-action-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background: white;
+  color: #333;
+}
+
+.member-action-btn:hover {
+  background: #f0f0f0;
+}
+
+.member-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.transfer-select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+  margin: 12px 0;
+  color: #333;
+  background: white;
+}
+
+.transfer-warning {
+  background: #fff3e0;
+  border-left: 4px solid #ff9800;
+  padding: 12px;
+  margin: 12px 0;
+  border-radius: 4px;
+  color: #333;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.member-joined {
+  color: #666;
+  font-size: 12px;
+  white-space: nowrap;
+}

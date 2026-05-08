@@ -92,6 +92,39 @@ func (r *userRepo) SetAdmin(userID int) error {
 	return nil
 }
 
+func (r *userRepo) FindAll() ([]*User, error) {
+	rows, err := r.db.Query(`SELECT id, discord_id, discord_username, display_name, is_admin, created_at, updated_at FROM users ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.DiscordID, &u.DiscordUsername, &u.DisplayName, &u.IsAdmin, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, &u)
+	}
+	return users, rows.Err()
+}
+
+func (r *userRepo) RemoveAdmin(userID int) error {
+	result, err := r.db.Exec(`UPDATE users SET is_admin = FALSE, updated_at = NOW() WHERE id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 func (r *userRepo) UpdateDisplayName(userID int, displayName string) error {
 	if displayName == "" {
 		return fmt.Errorf("display name cannot be empty")
@@ -141,6 +174,15 @@ func (r *userRepo) SetDiscordUsername(userID int, discordUsername string) error 
 	}
 
 	return nil
+}
+
+func (r *userRepo) AdminCount() (int, error) {
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM users WHERE is_admin = TRUE`).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *userRepo) IsFirstUser() (bool, error) {

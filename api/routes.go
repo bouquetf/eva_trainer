@@ -45,6 +45,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 
 	setupAuthRoutes(apiV1, cfg)
 	setupTeamRoutes(apiV1, cfg)
+	setupAdminRoutes(apiV1, cfg)
 
 	if gin.Mode() == gin.ReleaseMode {
 		r.StaticFS("/assets", assetsFS)
@@ -59,9 +60,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 
 func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	db := database.DB()
+	userRepo := models.NewUserRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
+	rolePermRepo := models.NewRolePermissionRepository(db)
+	permRepo := models.NewPermissionRepository(db)
 	teamHandler := handlers.NewTeamHandler(teamRepo, teamMemberRepo)
+	teamRolesHandler := handlers.NewTeamRolesHandler(teamRepo, teamMemberRepo, userRepo, rolePermRepo, permRepo)
 
 	teams := rg.Group("/teams")
 	teams.Use(middleware.RequireAuth(
@@ -71,10 +76,40 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	{
 		teams.POST("", teamHandler.Create)
 		teams.GET("", teamHandler.ListMyTeams)
-		teams.GET("/:id", teamHandler.GetTeam)
-		teams.PUT("/:id", teamHandler.UpdateTeam)
-		teams.DELETE("/:id", teamHandler.DeleteTeam)
-		teams.POST("/:id/leave", teamHandler.LeaveTeam)
+		teams.GET("/:id", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamHandler.GetTeam)
+		teams.PUT("/:id", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:edit"), teamHandler.UpdateTeam)
+		teams.DELETE("/:id", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:delete"), teamHandler.DeleteTeam)
+		teams.POST("/:id/leave", middleware.RequireTeamRole(teamMemberRepo, "member"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:leave"), teamHandler.LeaveTeam)
+
+		teams.GET("/:id/members", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamRolesHandler.ListMembers)
+		teams.PUT("/:id/members/:userId/role", middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:assign"), teamRolesHandler.UpdateRole)
+		teams.POST("/:id/transfer-captaincy", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:transfer-captain"), teamRolesHandler.TransferCaptaincy)
+	}
+}
+
+func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
+	db := database.DB()
+	userRepo := models.NewUserRepository(db)
+	permRepo := models.NewPermissionRepository(db)
+	rolePermRepo := models.NewRolePermissionRepository(db)
+	teamRepo := models.NewTeamRepository(db)
+	teamMemberRepo := models.NewTeamMemberRepository(db)
+	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
+	adminHandler := handlers.NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo)
+
+	admin := rg.Group("/admin")
+	admin.Use(middleware.RequireAuth(userRepo, jwtService))
+	admin.Use(middleware.RequireAdmin())
+	{
+		admin.GET("/users", adminHandler.ListUsers)
+		admin.GET("/users/:id", adminHandler.GetUserDetail)
+		admin.GET("/permissions", adminHandler.ListPermissions)
+		admin.GET("/permissions/:role", adminHandler.GetRolePermissions)
+		admin.GET("/teams", adminHandler.ListAllTeams)
+		admin.PUT("/users/:id/admin", adminHandler.ToggleAdmin)
+		admin.PUT("/users/:id/teams/:teamId/role", adminHandler.UpdateUserRole)
+		admin.POST("/users/:id/teams", adminHandler.AddUserToTeam)
+		admin.DELETE("/users/:id/teams/:teamId", adminHandler.RemoveUserFromTeam)
 	}
 }
 

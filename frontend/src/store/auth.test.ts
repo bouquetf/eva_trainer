@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { useAuthStore } from './auth'
 
+const mockFetchMe = vi.hoisted(() => vi.fn())
+
+vi.mock('../api/auth', () => ({
+  fetchMe: mockFetchMe,
+  getLoginUrl: vi.fn(),
+}))
+
 beforeEach(() => {
   sessionStorage.clear()
   useAuthStore.setState({
@@ -19,17 +26,25 @@ afterEach(() => {
 
 describe('useAuthStore', () => {
   describe('init', () => {
-    it('restores tokens from sessionStorage', () => {
+    it('restores tokens from sessionStorage', async () => {
       sessionStorage.setItem('eva_access_token', 'acc-123')
       sessionStorage.setItem('eva_refresh_token', 'ref-456')
 
+      mockFetchMe.mockResolvedValue({ id: 1, discord_id: 'test', discord_username: 'tester', display_name: 'Tester', is_admin: false, created_at: '2024-01-01' })
+
       useAuthStore.getState().init()
 
-      const state = useAuthStore.getState()
+      let state = useAuthStore.getState()
       expect(state.accessToken).toBe('acc-123')
       expect(state.refreshToken).toBe('ref-456')
       expect(state.isAuthenticated).toBe(true)
+      expect(state.isLoading).toBe(true)
+
+      await vi.waitFor(() => expect(useAuthStore.getState().isLoading).toBe(false))
+
+      state = useAuthStore.getState()
       expect(state.isLoading).toBe(false)
+      expect(state.user).toEqual({ id: 1, discord_id: 'test', discord_username: 'tester', display_name: 'Tester', is_admin: false, created_at: '2024-01-01' })
     })
 
     it('sets isLoading false when no tokens', () => {

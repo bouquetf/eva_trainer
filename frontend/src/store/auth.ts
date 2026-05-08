@@ -62,7 +62,20 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       const refreshToken = sessionStorage.getItem(STORAGE_KEY_REFRESH)
 
       if (accessToken && refreshToken) {
-        set({ accessToken, refreshToken, isAuthenticated: true, isLoading: false })
+        set({ accessToken, refreshToken, isAuthenticated: true, isLoading: true })
+        fetchMe()
+          .then((user) => set({ user, isLoading: false }))
+          .catch(() => {
+            sessionStorage.removeItem(STORAGE_KEY_ACCESS)
+            sessionStorage.removeItem(STORAGE_KEY_REFRESH)
+            set({
+              user: null,
+              accessToken: null,
+              refreshToken: null,
+              isAuthenticated: false,
+              isLoading: false,
+            })
+          })
       } else {
         set({ isLoading: false })
       }

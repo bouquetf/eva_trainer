@@ -2,8 +2,11 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getTeam, updateTeam, deleteTeam, leaveTeam } from '../api/teams'
+import { listMembers } from '../api/roles'
 import { useAuthStore } from '../store/auth'
 import ConfirmDialog from '../components/ConfirmDialog'
+import MemberList from '../components/MemberList'
+import TransferCaptaincyDialog from '../components/TransferCaptaincyDialog'
 
 function TeamSettings() {
   const { id } = useParams<{ id: string }>()
@@ -18,12 +21,41 @@ function TeamSettings() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [deleteName, setDeleteName] = useState('')
+  const [showTransfer, setShowTransfer] = useState(false)
 
-  const { data, isLoading, error: fetchError } = useQuery({
+  const { data: teamData, isLoading: teamLoading, error: teamError } = useQuery({
     queryKey: ['team', teamId],
     queryFn: () => getTeam(teamId),
     enabled: !isNaN(teamId),
   })
+
+  const { data: membersData, isLoading: membersLoading } = useQuery({
+    queryKey: ['team-members', teamId],
+    queryFn: () => listMembers(teamId),
+    enabled: !isNaN(teamId),
+  })
+
+  const members = membersData?.members ?? teamData?.members ?? []
+  const team = teamData?.team
+
+  const currentUser = useAuthStore.getState().user
+
+  let currentUserRole: string = 'member'
+  if (currentUser && team && team.captain_id === currentUser.id) {
+    currentUserRole = 'captain'
+  } else if (currentUser) {
+    const member = members.find(m => m.user_id === currentUser.id)
+    if (member) {
+      currentUserRole = member.role
+    }
+  }
+
+  const isCaptain = currentUserRole === 'captain'
+  const isCocaptain = currentUserRole === 'cocaptain'
+  const canEditTeam = isCaptain || isCocaptain
+  const canDeleteTeam = isCaptain
+  const canManageRoles = isCaptain || isCocaptain
+  const canTransferCaptaincy = isCaptain
 
   const updateMutation = useMutation({
     mutationFn: () => updateTeam(teamId, { name: editName.trim() }),
@@ -66,17 +98,13 @@ function TeamSettings() {
     },
   })
 
-  if (isLoading) {
+  if (teamLoading) {
     return <div className="spinner" />
   }
 
-  if (fetchError || !data) {
+  if (teamError || !team) {
     return <div className="error-message">Équipe introuvable.</div>
   }
-
-  const { team, members } = data
-  const currentUser = useAuthStore.getState().user
-  const isCaptain = currentUser !== null && team.captain_id === currentUser.id
 
   const handleStartEdit = () => {
     setEditName(team.name)
@@ -89,8 +117,12 @@ function TeamSettings() {
   }
 
   const handleDeleteClick = () => {
-    setDeleteName('')
     setConfirmDelete(true)
+  }
+
+  const handleTransferred = () => {
+    setShowTransfer(false)
+    navigate('/teams')
   }
 
   return (
@@ -124,21 +156,44 @@ function TeamSettings() {
         ) : (
           <div>
             <p style={{ margin: '0 0 12px', color: '#aaa' }}>{team.name}</p>
-            {isCaptain && (
+            {canEditTeam && (
               <button className="btn-secondary" onClick={handleStartEdit}>Modifier</button>
             )}
           </div>
         )}
       </div>
 
+      {canManageRoles && (
+        <div className="section">
+          <h2 className="section-title">Gestion des rôles</h2>
+          {isCaptain && (
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>
+              En tant que Capitaine, vous pouvez : assigner tous les rôles, promouvoir un cocapitaine, transférer la capitainerie.
+            </p>
+          )}
+          {isCocaptain && (
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>
+              En tant que Co-capitaine, vous pouvez : assigner les rôles Éditeur et Membre.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="section">
         <h2 className="section-title">Membres ({members.length})</h2>
-        {members.map(m => (
-          <div key={m.user_id} className="member-item">
-            <span className="member-user-id">{m.display_name || `#${m.user_id}`}</span>
-            <span className={`role-badge ${m.role}`}>{m.role}</span>
-          </div>
-        ))}
+        {membersLoading ? (
+          <div className="spinner" />
+        ) : (
+          <MemberList
+            teamId={teamId}
+            members={members}
+            currentUserId={currentUser?.id ?? 0}
+            currentUserRole={currentUserRole}
+            onRoleChanged={() => {
+              queryClient.invalidateQueries({ queryKey: ['team-members', teamId] })
+            }}
+          />
+        )}
       </div>
 
       {!isCaptain && (
@@ -153,7 +208,7 @@ function TeamSettings() {
         </div>
       )}
 
-      {isCaptain && (
+      {canDeleteTeam && (
         <div className="section danger">
           <h2 className="section-title">Zone de danger</h2>
           <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>
@@ -176,6 +231,17 @@ function TeamSettings() {
           >
             {deleteMutation.isPending ? 'Suppression...' : 'Supprimer l\'équipe'}
           </button>
+
+          {canTransferCaptaincy && (
+            <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
+              <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>
+                Transférer votre rôle de capitaine à un autre membre. Vous deviendrez cocapitaine.
+              </p>
+              <button className="btn-danger" onClick={() => setShowTransfer(true)}>
+                Transférer la capitainerie
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -197,6 +263,14 @@ function TeamSettings() {
         danger
         onConfirm={() => leaveMutation.mutate()}
         onCancel={() => setConfirmLeave(false)}
+      />
+
+      <TransferCaptaincyDialog
+        isOpen={showTransfer}
+        teamId={teamId}
+        members={members}
+        onClose={() => setShowTransfer(false)}
+        onTransferred={handleTransferred}
       />
     </div>
   )

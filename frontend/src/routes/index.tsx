@@ -5,10 +5,12 @@ import Callback from '../pages/Callback'
 import Editor from '../pages/Editor'
 import NotFound from '../pages/NotFound'
 import AppLayout from '../components/AppLayout'
+import AdminGuard from '../components/AdminGuard'
 import TeamsList from '../pages/TeamsList'
 import CreateTeam from '../pages/CreateTeam'
 import TeamSettings from '../pages/TeamSettings'
 import ProfileSettings from '../pages/ProfileSettings'
+import AdminDashboard from '../pages/AdminDashboard'
 
 export function AppRoutes() {
   return (
@@ -21,6 +23,7 @@ export function AppRoutes() {
         <Route path="/teams" element={<TeamsList />} />
         <Route path="/teams/create" element={<CreateTeam />} />
         <Route path="/teams/:id" element={<TeamSettings />} />
+        <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
       </Route>
       <Route path="/editor" element={<Editor />} />
       <Route path="*" element={<NotFound />} />

@@ -129,6 +129,30 @@ func (r *teamRepo) FindByUserID(userID int) ([]*Team, error) {
 	return teams, nil
 }
 
+func (r *teamRepo) FindAll() ([]*Team, error) {
+	rows, err := r.db.Query(`SELECT id, name, captain_id, created_at, updated_at FROM teams ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var teams []*Team
+	for rows.Next() {
+		t := &Team{}
+		if err := rows.Scan(&t.ID, &t.Name, &t.CaptainID, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		teams = append(teams, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if teams == nil {
+		return []*Team{}, nil
+	}
+	return teams, nil
+}
+
 func (r *teamRepo) UpdateName(id int, name string) error {
 	if err := ValidateTeamName(name); err != nil {
 		return err
@@ -143,6 +167,71 @@ func (r *teamRepo) UpdateName(id int, name string) error {
 			return fmt.Errorf("team name already exists: %w", err)
 		}
 		return fmt.Errorf("failed to update team name: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrTeamNotFound
+	}
+
+	return nil
+}
+
+func (r *teamRepo) TransferCaptaincy(teamID, oldCaptainID, newCaptainID int) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
+		`UPDATE team_members SET role = 'cocaptain' WHERE team_id = $1 AND user_id = $2`,
+		teamID, oldCaptainID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to demote old captain: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrMemberNotFound
+	}
+
+	_, err = tx.Exec(
+		`UPDATE team_members SET role = 'captain' WHERE team_id = $1 AND user_id = $2`,
+		teamID, newCaptainID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to promote new captain: %w", err)
+	}
+
+	_, err = tx.Exec(
+		`UPDATE teams SET captain_id = $1, updated_at = NOW() WHERE id = $2`,
+		newCaptainID, teamID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update team captain_id: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (r *teamRepo) UpdateCaptain(teamID, newCaptainID int) error {
+	result, err := r.db.Exec(
+		`UPDATE teams SET captain_id = $1, updated_at = NOW() WHERE id = $2`,
+		newCaptainID, teamID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update captain: %w", err)
 	}
 
 	rows, err := result.RowsAffected()

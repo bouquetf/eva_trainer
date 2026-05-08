@@ -173,6 +173,57 @@ func TestTeamRoute_GetByID_WithoutAuth_Returns401(t *testing.T) {
 	}
 }
 
+func TestTeamRoute_Members_WithoutAuth_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	defer gin.SetMode(gin.DebugMode)
+
+	cfg := setupTestConfig()
+	r := gin.New()
+	SetupRoutes(r, cfg, nil, nil)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/teams/1/members", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestTeamRoute_UpdateMemberRole_WithoutAuth_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	defer gin.SetMode(gin.DebugMode)
+
+	cfg := setupTestConfig()
+	r := gin.New()
+	SetupRoutes(r, cfg, nil, nil)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/api/v1/teams/1/members/2/role", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestTeamRoute_TransferCaptaincy_WithoutAuth_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	defer gin.SetMode(gin.DebugMode)
+
+	cfg := setupTestConfig()
+	r := gin.New()
+	SetupRoutes(r, cfg, nil, nil)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/teams/1/transfer-captaincy", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
 func TestCORS_RouteAPIIntact(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	defer gin.SetMode(gin.DebugMode)

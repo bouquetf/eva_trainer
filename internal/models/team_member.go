@@ -180,6 +180,33 @@ func (r *teamMemberRepo) FindByTeamID(teamID int) ([]*TeamMember, error) {
 	return members, nil
 }
 
+func (r *teamMemberRepo) FindByUserID(userID int) ([]*TeamMember, error) {
+	rows, err := r.db.Query(
+		`SELECT team_id, user_id, role, joined_at FROM team_members WHERE user_id = $1 ORDER BY joined_at`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var members []*TeamMember
+	for rows.Next() {
+		m := &TeamMember{}
+		if err := rows.Scan(&m.TeamID, &m.UserID, &m.Role, &m.JoinedAt); err != nil {
+			return nil, err
+		}
+		members = append(members, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if members == nil {
+		return []*TeamMember{}, nil
+	}
+	return members, nil
+}
+
 func (r *teamMemberRepo) FindByUserAndTeam(userID, teamID int) (*TeamMember, error) {
 	m := &TeamMember{}
 	err := r.db.QueryRow(

@@ -86,8 +86,8 @@ function mockTeamDetail(isCaptain: boolean) {
   return {
     team: { id: 1, name: 'Test Team', captain_id: captainId, created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z' },
     members: [
-      { user_id: 1, role: 'captain', display_name: null, joined_at: '2024-01-01T00:00:00Z' },
-      { user_id: 2, role: 'editor', display_name: null, joined_at: '2024-01-01T00:00:00Z' },
+      { user_id: 1, role: isCaptain ? 'captain' : 'editor', display_name: null, joined_at: '2024-01-01T00:00:00Z' },
+      { user_id: 2, role: isCaptain ? 'editor' : 'captain', display_name: null, joined_at: '2024-01-01T00:00:00Z' },
     ],
   }
 }

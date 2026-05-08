@@ -35,8 +35,20 @@ func (m *mockUserRepo) SetAdmin(userID int) error {
 	return nil
 }
 
+func (m *mockUserRepo) RemoveAdmin(userID int) error {
+	return nil
+}
+
+func (m *mockUserRepo) FindAll() ([]*models.User, error) {
+	return nil, nil
+}
+
 func (m *mockUserRepo) IsFirstUser() (bool, error) {
 	return false, nil
+}
+
+func (m *mockUserRepo) AdminCount() (int, error) {
+	return 1, nil
 }
 
 func (m *mockUserRepo) UpdateDisplayName(userID int, displayName string) error {

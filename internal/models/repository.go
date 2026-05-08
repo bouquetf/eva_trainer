@@ -8,7 +8,10 @@ type UserRepository interface {
 	SetAdmin(userID int) error
 	UpdateDisplayName(userID int, displayName string) error
 	SetDiscordUsername(userID int, discordUsername string) error
+	FindAll() ([]*User, error)
+	RemoveAdmin(userID int) error
 	IsFirstUser() (bool, error)
+	AdminCount() (int, error)
 }
 
 type RefreshTokenRepository interface {
@@ -22,8 +25,11 @@ type RefreshTokenRepository interface {
 type TeamRepository interface {
 	Create(name string, captainID int) (*Team, error)
 	FindByID(id int) (*Team, error)
+	FindAll() ([]*Team, error)
 	FindByUserID(userID int) ([]*Team, error)
 	UpdateName(id int, name string) error
+	UpdateCaptain(teamID, newCaptainID int) error
+	TransferCaptaincy(teamID, oldCaptainID, newCaptainID int) error
 	Delete(id int) error
 }
 
@@ -33,7 +39,24 @@ type TeamMemberRepository interface {
 	UpdateRole(teamID, userID int, role string) error
 	FindByTeamID(teamID int) ([]*TeamMember, error)
 	FindByTeamIDWithDisplayNames(teamID int) ([]*TeamMemberWithDisplayName, error)
+	FindByUserID(userID int) ([]*TeamMember, error)
 	FindByUserAndTeam(userID, teamID int) (*TeamMember, error)
 	GetCaptainID(teamID int) (int, error)
 	CountByRole(teamID int, role string) (int, error)
+}
+
+type PermissionRepository interface {
+	FindAll() ([]*Permission, error)
+	FindByID(id int) (*Permission, error)
+	FindByFeature(feature string) (*Permission, error)
+	Create(feature, description string) (*Permission, error)
+}
+
+type RolePermissionRepository interface {
+	FindByRole(role string) ([]*Permission, error)
+	FindByPermissionID(permissionID int) ([]*RolePermission, error)
+	AssignPermissionToRole(role string, permissionID int) error
+	RemovePermissionFromRole(role string, permissionID int) error
+	FindAllRoles() ([]string, error)
+	RoleHasPermission(role string, permissionID int) (bool, error)
 }

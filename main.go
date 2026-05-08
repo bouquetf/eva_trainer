@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"eva_trainer/api"
+	"eva_trainer/db/seed"
 	"eva_trainer/pkg/config"
 	"eva_trainer/pkg/database"
 
@@ -42,6 +43,14 @@ func main() {
 	}
 	defer db.Close()
 	database.SetDB(db)
+
+	if err := database.RunMigrations(db); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+
+	if err := seed.SeedRolePermissions(db); err != nil {
+		log.Fatalf("Failed to seed role permissions: %v", err)
+	}
 
 	r := gin.Default()
 	api.SetupRoutes(r, cfg, http.FS(subFS), http.FS(assetsSubFS))

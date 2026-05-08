@@ -21,4 +21,5 @@ var (
 	ErrNotCaptain              = errors.New("user is not the team captain")
 	ErrNotMember               = errors.New("user is not a team member")
 	ErrDuplicateTeamMember     = errors.New("user is already a member of this team")
+	ErrPermissionNotFound      = errors.New("permission not found")
 )

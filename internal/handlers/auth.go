@@ -102,12 +102,12 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	if isNew {
-		first, err := h.userRepo.IsFirstUser()
-		if err == nil && first {
-			h.userRepo.SetAdmin(user.ID)
-		}
+	adminCount, _ := h.userRepo.AdminCount()
+	if adminCount == 0 {
+		h.userRepo.SetAdmin(user.ID)
+	}
 
+	if isNew {
 		displayName := discordUser.GlobalName
 		if displayName == "" {
 			displayName = discordUser.Username
