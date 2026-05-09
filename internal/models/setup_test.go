@@ -21,6 +21,7 @@ var migrationFiles = []string{
 	"000002_add_refresh_tokens.up.sql",
 	"000003_add_display_name.up.sql",
 	"000004_add_discord_username.up.sql",
+	"000007_add_team_invitations_and_join_requests.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {
@@ -36,7 +37,10 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 			"POSTGRES_DB":       "testdb",
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForLog("database system is ready to accept connections"),
+		WaitingFor: wait.ForAll(
+			wait.ForLog("database system is ready to accept connections"),
+			wait.ForListeningPort("5432/tcp"),
+		),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

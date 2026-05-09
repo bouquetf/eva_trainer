@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -52,7 +53,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			"POSTGRES_DB":       "testdb",
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForLog("database system is ready to accept connections"),
+		WaitingFor:   wait.ForAll(wait.ForLog("database system is ready to accept connections"), wait.ForListeningPort("5432/tcp")),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -314,7 +315,7 @@ func TestRefresh_WithExpiredToken_Returns401(t *testing.T) {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
-	refreshPlain, err := refreshRepo.CreateRefreshToken(user.ID, time.Now().Add(-1*time.Hour))
+	refreshPlain, err := refreshRepo.CreateRefreshToken(user.ID, time.Now().Add(-24*time.Hour))
 	if err != nil {
 		t.Fatalf("CreateRefreshToken failed: %v", err)
 	}

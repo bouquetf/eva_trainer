@@ -45,7 +45,28 @@ export async function createTeam(data: CreateTeamPayload): Promise<Team> {
 
 export async function listMyTeams(): Promise<TeamListItem[]> {
   const api = getApiClient()
-  return api.get<TeamListItem[]>('/api/v1/teams')
+  return api.get<TeamListItem[]>('/api/v1/myteams')
+}
+
+export interface TeamListQuery {
+  page?: number
+  per_page?: number
+  q?: string
+}
+
+export interface TeamListResponse {
+  teams: TeamListItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
+export async function listAllTeams(params?: TeamListQuery): Promise<TeamListResponse> {
+  const api = getApiClient()
+  const query = params ? '?' + new URLSearchParams(
+    Object.entries(params).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString() : ''
+  return api.get<TeamListResponse>(`/api/v1/teams${query}`)
 }
 
 export async function getTeam(id: number): Promise<TeamDetail> {

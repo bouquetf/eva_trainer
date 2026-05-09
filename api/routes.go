@@ -67,17 +67,23 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	teamMemberRepo := models.NewTeamMemberRepository(db)
 	rolePermRepo := models.NewRolePermissionRepository(db)
 	permRepo := models.NewPermissionRepository(db)
+	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
+
 	teamHandler := handlers.NewTeamHandler(teamRepo, teamMemberRepo)
 	teamRolesHandler := handlers.NewTeamRolesHandler(teamRepo, teamMemberRepo, userRepo, rolePermRepo, permRepo)
 
+	invitationRepo := models.NewTeamInvitationRepository(db, teamMemberRepo)
+	joinRequestRepo := models.NewTeamJoinRequestRepository(db, teamMemberRepo)
+	teamInvitationHandler := handlers.NewTeamInvitationHandler(invitationRepo, teamMemberRepo, userRepo, teamRepo, cfg.Server.FrontendURL)
+	joinRequestHandler := handlers.NewTeamJoinRequestHandler(joinRequestRepo, teamMemberRepo, teamRepo, userRepo)
+
+	rg.GET("/myteams", middleware.RequireAuth(userRepo, jwtService), teamHandler.ListMyTeams)
+
 	teams := rg.Group("/teams")
-	teams.Use(middleware.RequireAuth(
-		models.NewUserRepository(db),
-		services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry),
-	))
+	teams.Use(middleware.RequireAuth(userRepo, jwtService))
 	{
 		teams.POST("", teamHandler.Create)
-		teams.GET("", teamHandler.ListMyTeams)
+		teams.GET("", teamHandler.ListAllTeams)
 		teams.GET("/:id", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamHandler.GetTeam)
 		teams.PUT("/:id", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:edit"), teamHandler.UpdateTeam)
 		teams.DELETE("/:id", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:delete"), teamHandler.DeleteTeam)
@@ -86,6 +92,73 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		teams.GET("/:id/members", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamRolesHandler.ListMembers)
 		teams.PUT("/:id/members/:userId/role", middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:assign"), teamRolesHandler.UpdateRole)
 		teams.POST("/:id/transfer-captaincy", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:transfer-captain"), teamRolesHandler.TransferCaptaincy)
+
+		teams.POST("/:id/invitations",
+			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
+			teamInvitationHandler.InviteByDisplayName,
+		)
+		teams.POST("/:id/invitations/link",
+			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
+			teamInvitationHandler.GenerateInviteLink,
+		)
+		teams.GET("/:id/invitations/pending",
+			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:view"),
+			teamInvitationHandler.ListPendingByTeam,
+		)
+
+		teams.GET("/:id/join-requests/mine",
+			middleware.RequireAuthOrMember(teamMemberRepo, userRepo, jwtService),
+			joinRequestHandler.GetMyRequest,
+		)
+		teams.DELETE("/:id/join-requests/mine",
+			middleware.RequireAuthOrMember(teamMemberRepo, userRepo, jwtService),
+			joinRequestHandler.CancelMyRequest,
+		)
+		teams.POST("/:id/join-requests",
+			middleware.RequireAuthOrMember(teamMemberRepo, userRepo, jwtService),
+			joinRequestHandler.RequestJoin,
+		)
+		teams.GET("/:id/join-requests",
+			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:view"),
+			joinRequestHandler.ListPendingRequests,
+		)
+		teams.PUT("/:id/join-requests/:requestId/accept",
+			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:manage"),
+			joinRequestHandler.AcceptRequest,
+		)
+		teams.PUT("/:id/join-requests/:requestId/decline",
+			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:manage"),
+			joinRequestHandler.DeclineRequest,
+		)
+	}
+
+	invitations := rg.Group("/invitations")
+	invitations.Use(middleware.RequireAuth(userRepo, jwtService))
+	{
+		invitations.GET("", teamInvitationHandler.ListMyInvitations)
+		invitations.POST("/:invitationId/accept", teamInvitationHandler.AcceptInvitation)
+		invitations.POST("/:invitationId/decline", teamInvitationHandler.DeclineInvitation)
+	}
+
+	inviteLinks := rg.Group("/invite-links")
+	{
+		inviteLinks.GET("/:token", teamInvitationHandler.GetInviteLinkInfo)
+		inviteLinks.POST("/:token/accept",
+			middleware.RequireAuth(userRepo, jwtService),
+			teamInvitationHandler.AcceptInviteLink,
+		)
+	}
+
+	users := rg.Group("/users")
+	users.Use(middleware.RequireAuth(userRepo, jwtService))
+	{
+		users.GET("/search", teamInvitationHandler.SearchUsers)
 	}
 }
 

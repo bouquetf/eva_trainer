@@ -17,6 +17,75 @@ type TeamHandler struct {
 	teamMemberRepo models.TeamMemberRepository
 }
 
+func (h *TeamHandler) ListAllTeams(c *gin.Context) {
+	q := c.Query("q")
+	pageStr := c.DefaultQuery("page", "1")
+	perPageStr := c.DefaultQuery("per_page", "20")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	perPage, err := strconv.Atoi(perPageStr)
+	if err != nil || perPage < 1 {
+		perPage = 20
+	}
+
+	teams, total, err := h.teamRepo.FindAllPaginated(q, page, perPage)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "internal_error",
+			"message": "internal server error",
+		})
+		return
+	}
+
+	type teamItem struct {
+		Team        *models.Team `json:"team"`
+		MemberCount int          `json:"member_count"`
+	}
+
+	items := make([]teamItem, 0, len(teams))
+	for _, t := range teams {
+		members, err := h.teamMemberRepo.FindByTeamID(t.ID)
+		memberCount := 0
+		if err == nil {
+			memberCount = len(members)
+		}
+		items = append(items, teamItem{
+			Team:        t,
+			MemberCount: memberCount,
+		})
+	}
+
+	user, _ := middleware.MustGetUser(c)
+
+	type myTeamStatus struct {
+		TeamID int    `json:"team_id"`
+		Role   string `json:"role"`
+	}
+	var myTeams []myTeamStatus
+	if user != nil {
+		memberList, err := h.teamMemberRepo.FindByUserID(user.ID)
+		if err == nil {
+			for _, m := range memberList {
+				myTeams = append(myTeams, myTeamStatus{TeamID: m.TeamID, Role: m.Role})
+			}
+		}
+	}
+	if myTeams == nil {
+		myTeams = []myTeamStatus{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"teams":    items,
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+		"my_teams": myTeams,
+	})
+}
+
 func NewTeamHandler(teamRepo models.TeamRepository, teamMemberRepo models.TeamMemberRepository) *TeamHandler {
 	return &TeamHandler{
 		teamRepo:       teamRepo,

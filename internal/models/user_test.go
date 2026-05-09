@@ -170,3 +170,165 @@ func TestUserRepository_SetAdmin_UserNotFound(t *testing.T) {
 		t.Errorf("expected ErrUserNotFound, got %v", err)
 	}
 }
+
+func TestUserRepository_FindByDisplayNameOrDiscordUsername_ByDisplayName(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	_, _, err := repo.FindOrCreateByDiscordID("100")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	// Mettre à jour display_name après création
+	if err := repo.UpdateDisplayName(1, "TestUser"); err != nil {
+		t.Fatalf("failed to update display_name: %v", err)
+	}
+
+	user, err := repo.FindByDisplayNameOrDiscordUsername("TestUser")
+	if err != nil {
+		t.Fatalf("FindByDisplayNameOrDiscordUsername returned error: %v", err)
+	}
+	if user.DisplayName != "TestUser" {
+		t.Errorf("expected display_name 'TestUser', got '%s'", user.DisplayName)
+	}
+}
+
+func TestUserRepository_FindByDisplayNameOrDiscordUsername_ByDiscordUsername(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	_, _, err := repo.FindOrCreateByDiscordID("200")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	if err := repo.SetDiscordUsername(1, "MonDiscord#1234"); err != nil {
+		t.Fatalf("failed to set discord_username: %v", err)
+	}
+
+	user, err := repo.FindByDisplayNameOrDiscordUsername("MonDiscord#1234")
+	if err != nil {
+		t.Fatalf("FindByDisplayNameOrDiscordUsername returned error: %v", err)
+	}
+	if user.DiscordUsername != "MonDiscord#1234" {
+		t.Errorf("expected discord_username 'MonDiscord#1234', got '%s'", user.DiscordUsername)
+	}
+}
+
+func TestUserRepository_FindByDisplayNameOrDiscordUsername_NotFound(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	_, err := repo.FindByDisplayNameOrDiscordUsername("inexistant")
+	if err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestUserRepository_FindByDisplayNameOrDiscordUsername_EmptyQuery(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	_, err := repo.FindByDisplayNameOrDiscordUsername("")
+	if err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestUserRepository_SearchUsers_Success(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	// Créer plusieurs utilisateurs
+	for i, discordID := range []string{"101", "102", "103"} {
+		_, _, err := repo.FindOrCreateByDiscordID(discordID)
+		if err != nil {
+			t.Fatalf("failed to create user %d: %v", i, err)
+		}
+	}
+
+	if err := repo.UpdateDisplayName(1, "AlphaTest"); err != nil {
+		t.Fatalf("failed to update display_name: %v", err)
+	}
+	if err := repo.UpdateDisplayName(2, "BetaUser"); err != nil {
+		t.Fatalf("failed to update display_name: %v", err)
+	}
+	if err := repo.UpdateDisplayName(3, "GammaTest"); err != nil {
+		t.Fatalf("failed to update display_name: %v", err)
+	}
+
+	users, err := repo.SearchUsers("Test", 5)
+	if err != nil {
+		t.Fatalf("SearchUsers returned error: %v", err)
+	}
+	if len(users) != 2 {
+		t.Errorf("expected 2 users, got %d", len(users))
+	}
+}
+
+func TestUserRepository_SearchUsers_EmptyQuery(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	users, err := repo.SearchUsers("", 5)
+	if err != nil {
+		t.Fatalf("SearchUsers returned error: %v", err)
+	}
+	if len(users) != 0 {
+		t.Errorf("expected empty list, got %d users", len(users))
+	}
+}
+
+func TestUserRepository_SearchUsers_NoResults(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	users, err := repo.SearchUsers("nonexistent", 5)
+	if err != nil {
+		t.Fatalf("SearchUsers returned error: %v", err)
+	}
+	if len(users) != 0 {
+		t.Errorf("expected empty list, got %d users", len(users))
+	}
+}
+
+func TestUserRepository_SearchUsers_RespectsLimit(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	for i, discordID := range []string{"201", "202", "203", "204", "205"} {
+		_, _, err := repo.FindOrCreateByDiscordID(discordID)
+		if err != nil {
+			t.Fatalf("failed to create user %d: %v", i, err)
+		}
+		userID := i + 1
+		if err := repo.UpdateDisplayName(userID, "User"+discordID); err != nil {
+			t.Fatalf("failed to update display_name: %v", err)
+		}
+	}
+
+	users, err := repo.SearchUsers("User", 3)
+	if err != nil {
+		t.Fatalf("SearchUsers returned error: %v", err)
+	}
+	if len(users) != 3 {
+		t.Errorf("expected 3 users (limited), got %d", len(users))
+	}
+}

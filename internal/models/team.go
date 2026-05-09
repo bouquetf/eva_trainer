@@ -153,6 +153,57 @@ func (r *teamRepo) FindAll() ([]*Team, error) {
 	return teams, nil
 }
 
+func (r *teamRepo) FindAllPaginated(q string, page, perPage int) ([]*Team, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 20
+	}
+
+	baseQuery := `FROM teams`
+	var args []interface{}
+	argIdx := 1
+
+	if q != "" {
+		baseQuery += fmt.Sprintf(` WHERE LOWER(name) LIKE LOWER($%d)`, argIdx)
+		args = append(args, "%"+q+"%")
+		argIdx++
+	}
+
+	var total int
+	countQuery := `SELECT COUNT(*) ` + baseQuery
+	if err := r.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataQuery := `SELECT id, name, captain_id, created_at, updated_at ` + baseQuery + ` ORDER BY name`
+	dataQuery += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
+	args = append(args, perPage, (page-1)*perPage)
+
+	rows, err := r.db.Query(dataQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var teams []*Team
+	for rows.Next() {
+		t := &Team{}
+		if err := rows.Scan(&t.ID, &t.Name, &t.CaptainID, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		teams = append(teams, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if teams == nil {
+		return []*Team{}, total, nil
+	}
+	return teams, total, nil
+}
+
 func (r *teamRepo) UpdateName(id int, name string) error {
 	if err := ValidateTeamName(name); err != nil {
 		return err

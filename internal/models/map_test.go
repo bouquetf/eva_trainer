@@ -173,7 +173,12 @@ func TestMapRepository_MarkObsolete(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	if err := repo.MarkObsolete(m.ID, 999); err != nil {
+	replacement, err := repo.Create("Replacement", []byte("data"))
+	if err != nil {
+		t.Fatalf("Create replacement failed: %v", err)
+	}
+
+	if err := repo.MarkObsolete(m.ID, replacement.ID); err != nil {
 		t.Fatalf("MarkObsolete returned error: %v", err)
 	}
 
@@ -184,8 +189,8 @@ func TestMapRepository_MarkObsolete(t *testing.T) {
 	if !reloaded.IsObsolete {
 		t.Error("expected is_obsolete true")
 	}
-	if reloaded.ObsoleteOf == nil || *reloaded.ObsoleteOf != 999 {
-		t.Errorf("expected obsolete_of 999, got %v", reloaded.ObsoleteOf)
+	if reloaded.ObsoleteOf == nil || *reloaded.ObsoleteOf != replacement.ID {
+		t.Errorf("expected obsolete_of %d, got %v", replacement.ID, reloaded.ObsoleteOf)
 	}
 }
 
@@ -197,7 +202,8 @@ func TestMapRepository_IsMapObsolete(t *testing.T) {
 
 	active, _ := repo.Create("Active", []byte("data"))
 	obsolete, _ := repo.Create("ObsoleteMap", []byte("data"))
-	repo.MarkObsolete(obsolete.ID, 999)
+	replacement, _ := repo.Create("Replacement", []byte("data"))
+	repo.MarkObsolete(obsolete.ID, replacement.ID)
 
 	ob, err := repo.IsMapObsolete(active.ID)
 	if err != nil {

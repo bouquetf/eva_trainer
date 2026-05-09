@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createTeam, listMyTeams, getTeam, updateTeam, deleteTeam, leaveTeam } from './teams'
+import { createTeam, listMyTeams, listAllTeams, getTeam, updateTeam, deleteTeam, leaveTeam } from './teams'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -85,18 +85,45 @@ describe('teams API', () => {
     expect(result.name).toBe('New Team')
   })
 
-  it('listMyTeams calls GET /api/v1/teams and returns list', async () => {
+  it('listMyTeams calls GET /api/v1/myteams and returns list', async () => {
     const teams = [{ team: { id: 1, name: 'Team A', captain_id: 1 }, member_count: 2, my_role: 'captain' }]
     mockFetch.mockResolvedValue(okResponse(teams))
 
     const result = await listMyTeams()
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:8080/api/v1/teams',
+      'http://localhost:8080/api/v1/myteams',
       expect.objectContaining({ method: 'GET' }),
     )
     expect(result).toHaveLength(1)
     expect(result[0].team.name).toBe('Team A')
+  })
+
+  it('listAllTeams calls GET /api/v1/teams with query params', async () => {
+    const data = { teams: [{ team: { id: 1, name: 'Team A', captain_id: 1 }, member_count: 2, my_role: '' }], total: 1, page: 1, per_page: 20 }
+    mockFetch.mockResolvedValue(okResponse(data))
+
+    const result = await listAllTeams({ page: 1, per_page: 20, q: 'Team' })
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:8080/api/v1/teams?page=1&per_page=20&q=Team',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(result.teams).toHaveLength(1)
+    expect(result.total).toBe(1)
+  })
+
+  it('listAllTeams calls GET /api/v1/teams without params', async () => {
+    const data = { teams: [], total: 0, page: 1, per_page: 20 }
+    mockFetch.mockResolvedValue(okResponse(data))
+
+    const result = await listAllTeams()
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:8080/api/v1/teams',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(result.teams).toHaveLength(0)
   })
 
   it('getTeam calls GET /api/v1/teams/:id', async () => {

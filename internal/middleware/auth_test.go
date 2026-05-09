@@ -59,6 +59,14 @@ func (m *mockUserRepo) SetDiscordUsername(userID int, discordUsername string) er
 	return nil
 }
 
+func (m *mockUserRepo) FindByDisplayNameOrDiscordUsername(query string) (*models.User, error) {
+	return nil, nil
+}
+
+func (m *mockUserRepo) SearchUsers(query string, limit int) ([]*models.User, error) {
+	return nil, nil
+}
+
 func setupTest(t *testing.T) (*services.JWTService, *mockUserRepo, *gin.Engine) {
 	t.Helper()
 

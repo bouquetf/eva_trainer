@@ -243,7 +243,7 @@ func TestRefreshTokenRepository_ExpiredToken_CanBeFound(t *testing.T) {
 
 	user := createTestUser(t, userRepo)
 
-	expiredAt := time.Now().Add(-1 * time.Hour)
+	expiredAt := time.Now().Add(-24 * time.Hour)
 	plain, err := rtRepo.CreateRefreshToken(user.ID, expiredAt)
 	if err != nil {
 		t.Fatalf("CreateRefreshToken failed: %v", err)
@@ -256,6 +256,6 @@ func TestRefreshTokenRepository_ExpiredToken_CanBeFound(t *testing.T) {
 	}
 
 	if !token.ExpiresAt.Before(time.Now()) {
-		t.Errorf("expected token to be expired")
+		t.Errorf("expected token to be expired (expiresAt=%v, now=%v)", token.ExpiresAt, time.Now())
 	}
 }

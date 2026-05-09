@@ -39,7 +39,7 @@ func (r *userRepo) FindOrCreateByDiscordID(discordID string) (*User, bool, error
 	if err == nil {
 		return &user, false, nil
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, false, err
 	}
 
@@ -192,4 +192,57 @@ func (r *userRepo) IsFirstUser() (bool, error) {
 		return false, err
 	}
 	return count == 0, nil
+}
+
+func (r *userRepo) FindByDisplayNameOrDiscordUsername(query string) (*User, error) {
+	if query == "" {
+		return nil, ErrUserNotFound
+	}
+
+	var user User
+	err := r.db.QueryRow(
+		`SELECT id, discord_id, discord_username, display_name, is_admin, created_at, updated_at
+		 FROM users
+		 WHERE display_name ILIKE $1 OR discord_username ILIKE $1
+		 LIMIT 1`,
+		query,
+	).Scan(&user.ID, &user.DiscordID, &user.DiscordUsername, &user.DisplayName, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (r *userRepo) SearchUsers(query string, limit int) ([]*User, error) {
+	if query == "" {
+		return []*User{}, nil
+	}
+
+	rows, err := r.db.Query(
+		`SELECT id, discord_id, discord_username, display_name, is_admin, created_at, updated_at
+		 FROM users
+		 WHERE display_name ILIKE $1 OR discord_username ILIKE $1
+		 ORDER BY display_name
+		 LIMIT $2`,
+		"%"+query+"%", limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.DiscordID, &u.DiscordUsername, &u.DisplayName, &u.IsAdmin, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, &u)
+	}
+	return users, rows.Err()
 }

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func setupTeamRolesHandler(t *testing.T) (*TeamRolesHandler, models.UserReposito
 			"POSTGRES_DB":       "testdb",
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForLog("database system is ready to accept connections"),
+		WaitingFor:   wait.ForAll(wait.ForLog("database system is ready to accept connections"), wait.ForListeningPort("5432/tcp")),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -134,7 +135,7 @@ func createRoleAuthUser(t *testing.T, userRepo models.UserRepository, discordID 
 	return user, token
 }
 
-func executeRoleRequest(t *testing.T, handler gin.HandlerFunc, method, path string, body string, userID int, token string) *httptest.ResponseRecorder {
+func executeRoleRequest(t *testing.T, handler gin.HandlerFunc, method, path string, body string, user *models.User, token string, memberRepo models.TeamMemberRepository) *httptest.ResponseRecorder {
 	t.Helper()
 
 	w := httptest.NewRecorder()
@@ -148,17 +149,25 @@ func executeRoleRequest(t *testing.T, handler gin.HandlerFunc, method, path stri
 	req.Header.Set("Authorization", "Bearer "+token)
 	c.Request = req
 
-	c.Set("user_id", userID)
+	c.Set("user", user)
 
 	// Support both /:id/members and /:id/members/:userId/role and /:id/transfer-captaincy
 	pathStr := strings.TrimPrefix(path, "/api/v1/teams/")
 	parts := strings.SplitN(pathStr, "/", 2)
 	teamIDStr := parts[0]
+	teamID, _ := strconv.Atoi(teamIDStr)
 	c.Params = gin.Params{{Key: "id", Value: teamIDStr}}
 	if len(parts) > 1 {
 		subParts := strings.Split(parts[1], "/")
-		if len(subParts) >= 3 && subParts[1] == "members" {
-			c.Params = append(c.Params, gin.Param{Key: "userId", Value: subParts[2]})
+		if len(subParts) >= 3 && subParts[0] == "members" {
+			c.Params = append(c.Params, gin.Param{Key: "userId", Value: subParts[1]})
+		}
+	}
+
+	if memberRepo != nil && teamID > 0 {
+		member, err := memberRepo.FindByUserAndTeam(user.ID, teamID)
+		if err == nil {
+			c.Set("team_member", member)
 		}
 	}
 
@@ -189,7 +198,7 @@ func TestTeamRolesHandler_ListMembers_Success(t *testing.T) {
 	}
 
 	w := executeRoleRequest(t, handler.ListMembers, http.MethodGet,
-		fmt.Sprintf("/api/v1/teams/%d/members", team.ID), "", captain.ID, token)
+		fmt.Sprintf("/api/v1/teams/%d/members", team.ID), "", captain, token, memberRepo)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -217,18 +226,39 @@ func TestTeamRolesHandler_ListMembers_Success(t *testing.T) {
 func TestTeamRolesHandler_ListMembers_NonMember(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, teamRepo, _, _, _, _ := setupTeamRolesHandler(t)
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
 
 	captain, _ := createRoleAuthUser(t, userRepo, "list-nm-cap-"+t.Name())
-	outsider, token := createRoleAuthUser(t, userRepo, "list-nm-out-"+t.Name())
+	_, token := createRoleAuthUser(t, userRepo, "list-nm-out-"+t.Name())
 
 	team, err := teamRepo.Create("Private", captain.ID)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	w := executeRoleRequest(t, handler.ListMembers, http.MethodGet,
-		fmt.Sprintf("/api/v1/teams/%d/members", team.ID), "", outsider.ID, token)
+	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
+	authMw := middleware.RequireAuth(userRepo, jwtService)
+	memberMw := middleware.RequireTeamRole(memberRepo)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req, _ := http.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/v1/teams/%d/members", team.ID), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	c.Request = req
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", team.ID)},
+	}
+
+	authMw(c)
+	if !c.IsAborted() {
+		c.Next()
+		memberMw(c)
+	}
+	if !c.IsAborted() {
+		c.Next()
+		handler.ListMembers(c)
+	}
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", w.Code)
@@ -254,7 +284,7 @@ func TestTeamRolesHandler_UpdateRole_CaptainToEditor(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.UpdateRole, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d/members/%d/role", team.ID, target.ID),
-		`{"role": "editor"}`, captain.ID, token)
+		`{"role": "editor"}`, captain, token, memberRepo)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -291,10 +321,10 @@ func TestTeamRolesHandler_UpdateRole_PromoteCocaptain(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.UpdateRole, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d/members/%d/role", team.ID, target.ID),
-		`{"role": "cocaptain"}`, captain.ID, token)
+		`{"role": "cocaptain"}`, captain, token, memberRepo)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+		t.Errorf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
 	member, _ := memberRepo.FindByUserAndTeam(target.ID, team.ID)
@@ -326,7 +356,7 @@ func TestTeamRolesHandler_UpdateRole_AlreadyHasCocaptain(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.UpdateRole, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d/members/%d/role", team.ID, target.ID),
-		`{"role": "cocaptain"}`, captain.ID, token)
+		`{"role": "cocaptain"}`, captain, token, memberRepo)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
@@ -377,14 +407,20 @@ func TestTeamRolesHandler_UpdateRole_NonCaptain(t *testing.T) {
 		{Key: "userId", Value: fmt.Sprintf("%d", target.ID)},
 	}
 
+	roleMw := middleware.RequireTeamRole(memberRepo, "captain")
+
 	authMw(c)
+	if !c.IsAborted() {
+		c.Next()
+		roleMw(c)
+	}
 	if !c.IsAborted() {
 		c.Next()
 		handler.UpdateRole(c)
 	}
 
 	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", w.Code)
+		t.Errorf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -412,7 +448,7 @@ func TestTeamRolesHandler_UpdateRole_DowngradeAdmin(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.UpdateRole, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d/members/%d/role", team.ID, adminUser.ID),
-		`{"role": "editor"}`, captain.ID, token)
+		`{"role": "editor"}`, captain, token, memberRepo)
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
@@ -444,7 +480,7 @@ func TestTeamRolesHandler_UpdateRole_InvalidRole(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.UpdateRole, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d/members/%d/role", team.ID, target.ID),
-		`{"role": "superadmin"}`, captain.ID, token)
+		`{"role": "superadmin"}`, captain, token, memberRepo)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
@@ -460,7 +496,7 @@ func TestTeamRolesHandler_UpdateRole_InvalidRole(t *testing.T) {
 func TestTeamRolesHandler_UpdateRole_TargetNotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, teamRepo, _, _, _, _ := setupTeamRolesHandler(t)
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
 
 	captain, token := createRoleAuthUser(t, userRepo, "tnf-cap-"+t.Name())
 
@@ -471,7 +507,7 @@ func TestTeamRolesHandler_UpdateRole_TargetNotFound(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.UpdateRole, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d/members/99999/role", team.ID),
-		`{"role": "member"}`, captain.ID, token)
+		`{"role": "member"}`, captain, token, memberRepo)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
@@ -503,7 +539,7 @@ func TestTeamRolesHandler_TransferCaptaincy_Success(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.TransferCaptaincy, http.MethodPost,
 		fmt.Sprintf("/api/v1/teams/%d/transfer-captaincy", team.ID),
-		fmt.Sprintf(`{"user_id": %d}`, target.ID), captain.ID, token)
+		fmt.Sprintf(`{"user_id": %d}`, target.ID), captain, token, memberRepo)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -546,7 +582,7 @@ func TestTeamRolesHandler_TransferCaptaincy_Success(t *testing.T) {
 func TestTeamRolesHandler_TransferCaptaincy_SameUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, teamRepo, _, _, _, _ := setupTeamRolesHandler(t)
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
 
 	captain, token := createRoleAuthUser(t, userRepo, "tsu-cap-"+t.Name())
 
@@ -557,7 +593,7 @@ func TestTeamRolesHandler_TransferCaptaincy_SameUser(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.TransferCaptaincy, http.MethodPost,
 		fmt.Sprintf("/api/v1/teams/%d/transfer-captaincy", team.ID),
-		fmt.Sprintf(`{"user_id": %d}`, captain.ID), captain.ID, token)
+		fmt.Sprintf(`{"user_id": %d}`, captain.ID), captain, token, memberRepo)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
@@ -593,7 +629,7 @@ func TestTeamRolesHandler_TransferCaptaincy_AdminTarget(t *testing.T) {
 
 	w := executeRoleRequest(t, handler.TransferCaptaincy, http.MethodPost,
 		fmt.Sprintf("/api/v1/teams/%d/transfer-captaincy", team.ID),
-		fmt.Sprintf(`{"user_id": %d}`, adminUser.ID), captain.ID, token)
+		fmt.Sprintf(`{"user_id": %d}`, adminUser.ID), captain, token, memberRepo)
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
@@ -635,6 +671,13 @@ func TestTeamRolesHandler_TransferCaptaincy_NonCaptain(t *testing.T) {
 	c.Params = gin.Params{
 		{Key: "id", Value: fmt.Sprintf("%d", team.ID)},
 	}
+
+	coMember, err := memberRepo.FindByUserAndTeam(cocaptain.ID, team.ID)
+	if err != nil {
+		t.Fatalf("FindByUserAndTeam failed: %v", err)
+	}
+	c.Set("team_member", coMember)
+	c.Set("team_id", team.ID)
 
 	authMw(c)
 	if !c.IsAborted() {

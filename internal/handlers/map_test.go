@@ -8,10 +8,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +40,7 @@ func setupMapHandlerTest(t *testing.T) (*MapHandler, models.UserRepository, *ser
 			"POSTGRES_DB":       "testdb",
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForLog("database system is ready to accept connections"),
+		WaitingFor:   wait.ForAll(wait.ForLog("database system is ready to accept connections"), wait.ForListeningPort("5432/tcp")),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -160,7 +160,10 @@ func buildUploadRequest(t *testing.T, name string, filename string, content []by
 	}
 
 	if filename != "" && content != nil {
-		part, err := w.CreateFormFile("file", filename)
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+		h.Set("Content-Type", "image/webp")
+		part, err := w.CreatePart(h)
 		if err != nil {
 			t.Fatalf("failed to create form file: %v", err)
 		}

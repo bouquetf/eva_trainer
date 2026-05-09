@@ -434,3 +434,164 @@
   font-size: 12px;
   white-space: nowrap;
 }
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.autocomplete-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.autocomplete-item:hover {
+  background: var(--bg-hover, #2a2a3e);
+}
+
+.autocomplete-name {
+  font-weight: 500;
+}
+
+.autocomplete-discord {
+  color: #888;
+  font-size: 12px;
+}
+
+.invitations-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.invitations-table th,
+.invitations-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.invitations-table th {
+  color: #888;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.status-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.status-badge.pending {
+  background: #2d4a2d;
+  color: #4caf50;
+}
+
+.status-badge.expired {
+  background: #4a2d2d;
+  color: #f44336;
+}
+
+.join-request-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.join-request-item:last-child {
+  border-bottom: none;
+}
+
+.join-request-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.join-request-user {
+  font-weight: 500;
+}
+
+.join-request-date {
+  color: #888;
+  font-size: 12px;
+}
+
+.join-request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-small {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.discover-team-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.discover-team-card:last-child {
+  border-bottom: none;
+}
+
+.discover-team-info h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.discover-team-info span {
+  color: #888;
+  font-size: 13px;
+}
+
+.invitation-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.invitation-card:last-child {
+  border-bottom: none;
+}
+
+.invitation-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.invitation-team-name {
+  font-weight: 500;
+  font-size: 15px;
+}
+
+.invitation-date {
+  color: #888;
+  font-size: 12px;
+}
+
+.invitation-actions {
+  display: flex;
+  gap: 8px;
+}

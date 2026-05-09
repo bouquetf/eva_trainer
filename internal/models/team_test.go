@@ -3,6 +3,7 @@
 package models
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -338,7 +339,7 @@ func TestTeamMemberRepository_AddMember_Duplicate(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate member, got nil")
 	}
-	if err != ErrDuplicateTeamMember {
+	if !errors.Is(err, ErrDuplicateTeamMember) {
 		t.Errorf("expected ErrDuplicateTeamMember, got %v", err)
 	}
 }

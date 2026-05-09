@@ -37,7 +37,7 @@ func setupTeamHandler(t *testing.T) (*TeamHandler, models.UserRepository, models
 			"POSTGRES_DB":       "testdb",
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForLog("database system is ready to accept connections"),
+		WaitingFor:   wait.ForAll(wait.ForLog("database system is ready to accept connections"), wait.ForListeningPort("5432/tcp")),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -124,7 +124,7 @@ func createAuthUser(t *testing.T, userRepo models.UserRepository) (*models.User,
 	return user, token
 }
 
-func executeWithAuth(t *testing.T, handler gin.HandlerFunc, method, path string, body string, userID int, token string) *httptest.ResponseRecorder {
+func executeWithAuth(t *testing.T, handler gin.HandlerFunc, method, path string, body string, user *models.User, token string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	w := httptest.NewRecorder()
@@ -138,8 +138,10 @@ func executeWithAuth(t *testing.T, handler gin.HandlerFunc, method, path string,
 	req.Header.Set("Authorization", "Bearer "+token)
 	c.Request = req
 
-	c.Set("user_id", userID)
-	c.Params = gin.Params{{Key: "id", Value: strings.TrimPrefix(path, "/api/v1/teams/")}}
+	c.Set("user", user)
+	pathStr := strings.TrimPrefix(path, "/api/v1/teams/")
+	parts := strings.SplitN(pathStr, "/", 2)
+	c.Params = gin.Params{{Key: "id", Value: parts[0]}}
 
 	handler(c)
 
@@ -153,7 +155,7 @@ func TestTeamHandler_Create_Success(t *testing.T) {
 	user, token := createAuthUser(t, userRepo)
 
 	w := executeWithAuth(t, handler.Create, http.MethodPost, "/api/v1/teams",
-		`{"name": "New Team"}`, user.ID, token)
+		`{"name": "New Team"}`, user, token)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
@@ -175,10 +177,10 @@ func TestTeamHandler_Create_NoName(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	handler, userRepo, _, _, _ := setupTeamHandler(t)
-	_, token := createAuthUser(t, userRepo)
+	user, token := createAuthUser(t, userRepo)
 
 	w := executeWithAuth(t, handler.Create, http.MethodPost, "/api/v1/teams",
-		`{}`, 0, token)
+		`{}`, user, token)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -201,7 +203,7 @@ func TestTeamHandler_ListMyTeams_Success(t *testing.T) {
 	}
 
 	w := executeWithAuth(t, handler.ListMyTeams, http.MethodGet, "/api/v1/teams",
-		"", user.ID, token)
+		"", user, token)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -228,7 +230,7 @@ func TestTeamHandler_GetTeam_Success(t *testing.T) {
 	}
 
 	w := executeWithAuth(t, handler.GetTeam, http.MethodGet,
-		fmt.Sprintf("/api/v1/teams/%d", team.ID), "", user.ID, token)
+		fmt.Sprintf("/api/v1/teams/%d", team.ID), "", user, token)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -273,7 +275,7 @@ func TestTeamHandler_GetTeam_NonMember(t *testing.T) {
 	}
 
 	w := executeWithAuth(t, handler.GetTeam, http.MethodGet,
-		fmt.Sprintf("/api/v1/teams/%d", team.ID), "", user.ID, token)
+		fmt.Sprintf("/api/v1/teams/%d", team.ID), "", user, token)
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", w.Code)
@@ -287,7 +289,7 @@ func TestTeamHandler_GetTeam_NotFound(t *testing.T) {
 	user, token := createAuthUser(t, userRepo)
 
 	w := executeWithAuth(t, handler.GetTeam, http.MethodGet,
-		"/api/v1/teams/99999", "", user.ID, token)
+		"/api/v1/teams/99999", "", user, token)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
@@ -307,7 +309,7 @@ func TestTeamHandler_UpdateTeam_ByCaptain_Success(t *testing.T) {
 
 	w := executeWithAuth(t, handler.UpdateTeam, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d", team.ID),
-		`{"name": "Updated Name"}`, user.ID, token)
+		`{"name": "Updated Name"}`, user, token)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -327,11 +329,11 @@ func TestTeamHandler_UpdateTeam_ByNonCaptain_Returns403(t *testing.T) {
 
 	handler, userRepo, teamRepo, memberRepo, _ := setupTeamHandler(t)
 
-	captain, err := userRepo.FindOrCreateByDiscordID("update-captain-" + t.Name())
+	captain, _, err := userRepo.FindOrCreateByDiscordID("update-captain-" + t.Name())
 	if err != nil {
 		t.Fatalf("failed to create captain: %v", err)
 	}
-	member, err := userRepo.FindOrCreateByDiscordID("update-member-" + t.Name())
+	member, _, err := userRepo.FindOrCreateByDiscordID("update-member-" + t.Name())
 	if err != nil {
 		t.Fatalf("failed to create member: %v", err)
 	}
@@ -353,7 +355,7 @@ func TestTeamHandler_UpdateTeam_ByNonCaptain_Returns403(t *testing.T) {
 
 	w := executeWithAuth(t, handler.UpdateTeam, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d", team.ID),
-		`{"name": "Hacked Name"}`, member.ID, memberToken)
+		`{"name": "Hacked Name"}`, member, memberToken)
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", w.Code)
@@ -373,7 +375,7 @@ func TestTeamHandler_DeleteTeam_ByCaptain_Success(t *testing.T) {
 
 	w := executeWithAuth(t, handler.DeleteTeam, http.MethodDelete,
 		fmt.Sprintf("/api/v1/teams/%d", team.ID),
-		`{"confirm_with_name": "Ma Team"}`, user.ID, token)
+		`{"confirm_with_name": "Ma Team"}`, user, token)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -401,7 +403,7 @@ func TestTeamHandler_DeleteTeam_WrongName(t *testing.T) {
 
 	w := executeWithAuth(t, handler.DeleteTeam, http.MethodDelete,
 		fmt.Sprintf("/api/v1/teams/%d", team.ID),
-		`{"confirm_with_name": "Wrong Name"}`, user.ID, token)
+		`{"confirm_with_name": "Wrong Name"}`, user, token)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -429,7 +431,7 @@ func TestTeamHandler_DeleteTeam_NoName(t *testing.T) {
 
 	w := executeWithAuth(t, handler.DeleteTeam, http.MethodDelete,
 		fmt.Sprintf("/api/v1/teams/%d", team.ID),
-		`{}`, user.ID, token)
+		`{}`, user, token)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -441,11 +443,11 @@ func TestTeamHandler_LeaveTeam_Member_Success(t *testing.T) {
 
 	handler, userRepo, teamRepo, memberRepo, _ := setupTeamHandler(t)
 
-	captain, err := userRepo.FindOrCreateByDiscordID("leave-captain-" + t.Name())
+	captain, _, err := userRepo.FindOrCreateByDiscordID("leave-captain-" + t.Name())
 	if err != nil {
 		t.Fatalf("failed to create captain: %v", err)
 	}
-	memberUser, err := userRepo.FindOrCreateByDiscordID("leave-member-" + t.Name())
+	memberUser, _, err := userRepo.FindOrCreateByDiscordID("leave-member-" + t.Name())
 	if err != nil {
 		t.Fatalf("failed to create member: %v", err)
 	}
@@ -467,7 +469,7 @@ func TestTeamHandler_LeaveTeam_Member_Success(t *testing.T) {
 
 	w := executeWithAuth(t, handler.LeaveTeam, http.MethodPost,
 		fmt.Sprintf("/api/v1/teams/%d/leave", team.ID),
-		"", memberUser.ID, memberToken)
+		"", memberUser, memberToken)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -505,7 +507,7 @@ func TestTeamHandler_LeaveTeam_Captain_DeletesTeam(t *testing.T) {
 
 	w := executeWithAuth(t, handler.LeaveTeam, http.MethodPost,
 		fmt.Sprintf("/api/v1/teams/%d/leave", team.ID),
-		"", user.ID, token)
+		"", user, token)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
@@ -530,11 +532,11 @@ func TestTeamHandler_DeleteTeam_ByNonCaptain_Returns403(t *testing.T) {
 
 	handler, userRepo, teamRepo, memberRepo, _ := setupTeamHandler(t)
 
-	captain, err := userRepo.FindOrCreateByDiscordID("delcaptain-" + t.Name())
+	captain, _, err := userRepo.FindOrCreateByDiscordID("delcaptain-" + t.Name())
 	if err != nil {
 		t.Fatalf("failed to create captain: %v", err)
 	}
-	memberUser, err := userRepo.FindOrCreateByDiscordID("delmember-" + t.Name())
+	memberUser, _, err := userRepo.FindOrCreateByDiscordID("delmember-" + t.Name())
 	if err != nil {
 		t.Fatalf("failed to create member: %v", err)
 	}
@@ -556,7 +558,7 @@ func TestTeamHandler_DeleteTeam_ByNonCaptain_Returns403(t *testing.T) {
 
 	w := executeWithAuth(t, handler.DeleteTeam, http.MethodDelete,
 		fmt.Sprintf("/api/v1/teams/%d", team.ID),
-		`{"confirm_with_name": "Delete By NonCaptain"}`, memberUser.ID, memberToken)
+		`{"confirm_with_name": "Delete By NonCaptain"}`, memberUser, memberToken)
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", w.Code)
@@ -570,7 +572,7 @@ func TestTeamHandler_ListMyTeams_Empty(t *testing.T) {
 	user, token := createAuthUser(t, userRepo)
 
 	w := executeWithAuth(t, handler.ListMyTeams, http.MethodGet, "/api/v1/teams",
-		"", user.ID, token)
+		"", user, token)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -598,7 +600,7 @@ func TestTeamHandler_UpdateTeam_NoName_Returns400(t *testing.T) {
 
 	w := executeWithAuth(t, handler.UpdateTeam, http.MethodPut,
 		fmt.Sprintf("/api/v1/teams/%d", team.ID),
-		`{}`, user.ID, token)
+		`{}`, user, token)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)

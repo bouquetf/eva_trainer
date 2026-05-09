@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -68,4 +69,25 @@ func GetTeamMember(c *gin.Context) (*models.TeamMember, bool) {
 	}
 	m, ok := member.(*models.TeamMember)
 	return m, ok
+}
+
+func RequireAuthOrMember(teamMemberRepo models.TeamMemberRepository, userRepo models.UserRepository, jwtService *services.JWTService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, err := MustGetUser(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+			c.Abort()
+			return
+		}
+
+		teamID, err := strconv.Atoi(c.Param("id"))
+		if err == nil {
+			member, err := teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
+			if err == nil {
+				c.Set("team_member", member)
+			}
+		}
+
+		c.Next()
+	}
 }

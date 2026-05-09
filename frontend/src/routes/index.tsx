@@ -9,6 +9,7 @@ import AdminGuard from '../components/AdminGuard'
 import TeamsList from '../pages/TeamsList'
 import CreateTeam from '../pages/CreateTeam'
 import TeamSettings from '../pages/TeamSettings'
+import InviteAccept from '../pages/InviteAccept'
 import ProfileSettings from '../pages/ProfileSettings'
 import AdminDashboard from '../pages/AdminDashboard'
 
@@ -26,6 +27,7 @@ export function AppRoutes() {
         <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
       </Route>
       <Route path="/editor" element={<Editor />} />
+      <Route path="/invite/:token" element={<InviteAccept />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

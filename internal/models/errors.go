@@ -28,3 +28,16 @@ var (
 	ErrMapNameRequired = errors.New("map name is required")
 	ErrMapNotFound     = errors.New("map not found")
 )
+
+var (
+	ErrInvitationNotFound    = errors.New("invitation not found")
+	ErrInvitationExpired     = errors.New("invitation has expired")
+	ErrInvitationAlreadyUsed = errors.New("invitation has already been used")
+	ErrCannotInviteSelf      = errors.New("cannot invite yourself")
+)
+
+var (
+	ErrJoinRequestNotFound      = errors.New("join request not found")
+	ErrJoinRequestAlreadyExists = errors.New("you already have a pending join request for this team")
+	ErrJoinRequestAlreadyMember = errors.New("you are already a member of this team")
+)

@@ -12,6 +12,8 @@ type UserRepository interface {
 	RemoveAdmin(userID int) error
 	IsFirstUser() (bool, error)
 	AdminCount() (int, error)
+	FindByDisplayNameOrDiscordUsername(query string) (*User, error)
+	SearchUsers(query string, limit int) ([]*User, error)
 }
 
 type RefreshTokenRepository interface {
@@ -27,6 +29,7 @@ type TeamRepository interface {
 	FindByID(id int) (*Team, error)
 	FindAll() ([]*Team, error)
 	FindByUserID(userID int) ([]*Team, error)
+	FindAllPaginated(q string, page, perPage int) ([]*Team, int, error)
 	UpdateName(id int, name string) error
 	UpdateCaptain(teamID, newCaptainID int) error
 	TransferCaptaincy(teamID, oldCaptainID, newCaptainID int) error
@@ -50,6 +53,31 @@ type PermissionRepository interface {
 	FindByID(id int) (*Permission, error)
 	FindByFeature(feature string) (*Permission, error)
 	Create(feature, description string) (*Permission, error)
+}
+
+type TeamInvitationRepository interface {
+	CreateByUser(teamID, invitedUserID, invitedByUserID int) (*TeamInvitation, error)
+	CreateLink(teamID, invitedByUserID int, token string, expiresAt time.Time) (*TeamInvitation, error)
+	FindByID(id int) (*TeamInvitation, error)
+	FindByToken(token string) (*TeamInvitation, error)
+	FindPendingByTeam(teamID int) ([]*TeamInvitation, error)
+	FindPendingByUser(userID int) ([]*TeamInvitation, error)
+	AcceptInvitation(id int) error
+	AcceptByToken(token string, userID int) error
+	DeclineInvitation(id int) error
+	CancelInvitation(id int) error
+	ExpireOverdue() (int64, error)
+}
+
+type TeamJoinRequestRepository interface {
+	Create(teamID, userID int) (*TeamJoinRequest, error)
+	FindByID(id int) (*TeamJoinRequest, error)
+	FindPendingByTeam(teamID int) ([]*TeamJoinRequest, error)
+	FindPendingByUser(userID int) ([]*TeamJoinRequest, error)
+	FindByUserAndTeam(userID, teamID int) (*TeamJoinRequest, error)
+	AcceptRequest(id int) error
+	DeclineRequest(id int) error
+	CancelRequest(id int) error
 }
 
 type MapRepository interface {
