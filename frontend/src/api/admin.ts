@@ -68,9 +68,9 @@ export async function listAdminTeams(): Promise<AdminTeamsResponse> {
   return api.get<AdminTeamsResponse>('/api/v1/admin/teams')
 }
 
-export async function toggleAdmin(userId: number, isAdmin: boolean): Promise<void> {
+export async function promoteUser(userId: number): Promise<void> {
   const api = getApiClient()
-  return api.put(`/api/v1/admin/users/${userId}/admin`, { is_admin: isAdmin })
+  return api.post(`/api/v1/admin/users/${userId}/promote`)
 }
 
 export async function updateUserRole(userId: number, teamId: number, role: string): Promise<void> {

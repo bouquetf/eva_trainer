@@ -7,7 +7,7 @@ import {
   getUserDetail,
   getRolePermissions,
   listAdminTeams,
-  toggleAdmin,
+  promoteUser,
   updateUserRole,
   addUserToTeam,
   removeUserFromTeam,
@@ -91,14 +91,17 @@ function AdminDashboard() {
     enabled: selectedRole !== null,
   })
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ userId, isAdmin }: { userId: number; isAdmin: boolean }) =>
-      toggleAdmin(userId, isAdmin),
+  const promoteMutation = useMutation({
+    mutationFn: (userId: number) => promoteUser(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      setSuccess('Utilisateur promu administrateur')
       setError(null)
     },
-    onError: () => setError('Impossible de modifier le statut administrateur'),
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Impossible de promouvoir l'utilisateur")
+    },
   })
 
   const updateRoleMutation = useMutation({
@@ -383,21 +386,39 @@ function AdminDashboard() {
                         <td>{u.display_name || '-'}</td>
                         <td>
                           {u.is_admin ? (
-                            <span className="role-badge admin">Admin</span>
+                            <>
+                              {u.id === currentUserId ? (
+                                <span className="self-label">Vous</span>
+                              ) : (
+                                <span className="role-badge admin">Admin</span>
+                              )}
+                            </>
                           ) : (
-                            <span className="role-badge member">Utilisateur</span>
+                            <button
+                              className="btn-small btn-primary"
+                              onClick={() => {
+                                if (window.confirm(`Promouvoir ${u.display_name || u.discord_username || `#${u.id}`} au rôle admin ? Cette action est irréversible.`)) {
+                                  promoteMutation.mutate(u.id)
+                                }
+                              }}
+                              disabled={promoteMutation.isPending}
+                            >
+                              Promouvoir admin
+                            </button>
                           )}
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
                           {isSelf ? (
                             <span className="self-label">Vous</span>
+                          ) : u.is_admin ? (
+                            <span className="role-badge admin" style={{ fontSize: 13 }}>Admin</span>
                           ) : (
                             <button
                               className="btn-secondary btn-small"
-                              onClick={() => toggleMutation.mutate({ userId: u.id, isAdmin: !u.is_admin })}
-                              disabled={toggleMutation.isPending}
+                              onClick={() => promoteMutation.mutate(u.id)}
+                              disabled={promoteMutation.isPending}
                             >
-                              {u.is_admin ? 'Retirer admin' : 'Promouvoir admin'}
+                              Promouvoir admin
                             </button>
                           )}
                         </td>
@@ -447,12 +468,14 @@ function AdminDashboard() {
                                               {m.role !== 'captain' && (
                                                 <button
                                                   className="btn-small btn-danger"
-                                                  onClick={() =>
-                                                    removeMutation.mutate({
-                                                      userId: u.id,
-                                                      teamId: m.team_id,
-                                                    })
-                                                  }
+                                                  onClick={() => {
+                                                    if (window.confirm(`Retirer ${u.display_name || u.discord_username || `#${u.id}`} de l'équipe "${m.team_name}" ?`)) {
+                                                      removeMutation.mutate({
+                                                        userId: u.id,
+                                                        teamId: m.team_id,
+                                                      })
+                                                    }
+                                                  }}
                                                   disabled={removeMutation.isPending}
                                                 >
                                                   Retirer

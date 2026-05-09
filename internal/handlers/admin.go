@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -329,7 +328,7 @@ func (h *AdminHandler) GetRolePermissions(c *gin.Context) {
 	})
 }
 
-func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
+func (h *AdminHandler) PromoteToAdmin(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -339,33 +338,7 @@ func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		IsAdmin bool `json:"is_admin"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_body",
-			"message": "invalid request body",
-		})
-		return
-	}
-
-	adminUser, _ := middleware.MustGetUser(c)
-	if adminUser != nil && adminUser.ID == userID {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "cannot_self_demote",
-			"message": "you cannot change your own admin status",
-		})
-		return
-	}
-
-	if req.IsAdmin {
-		err = h.userRepo.SetAdmin(userID)
-	} else {
-		err = h.userRepo.RemoveAdmin(userID)
-	}
-
+	targetUser, err := h.userRepo.FindByID(userID)
 	if err == models.ErrUserNotFound {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error":   "user_not_found",
@@ -376,10 +349,30 @@ func (h *AdminHandler) ToggleAdmin(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
-			"message": "failed to update user",
+			"message": "failed to find user",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	if targetUser.IsAdmin {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "already_admin",
+			"message": "user is already an administrator",
+		})
+		return
+	}
+
+	if err := h.userRepo.SetAdmin(userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "internal_error",
+			"message": "failed to promote user",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "user promoted to admin",
+		"user_id":  userID,
+		"is_admin": true,
+	})
 }

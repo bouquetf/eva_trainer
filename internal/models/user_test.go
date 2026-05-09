@@ -171,6 +171,51 @@ func TestUserRepository_SetAdmin_UserNotFound(t *testing.T) {
 	}
 }
 
+func TestUserRepository_FindAll_ReturnsMultiple(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	_, _, err := repo.FindOrCreateByDiscordID("findall-user1")
+	if err != nil {
+		t.Fatalf("failed to create user1: %v", err)
+	}
+	_, _, err = repo.FindOrCreateByDiscordID("findall-user2")
+	if err != nil {
+		t.Fatalf("failed to create user2: %v", err)
+	}
+	_, _, err = repo.FindOrCreateByDiscordID("findall-user3")
+	if err != nil {
+		t.Fatalf("failed to create user3: %v", err)
+	}
+
+	users, err := repo.FindAll()
+	if err != nil {
+		t.Fatalf("FindAll returned error: %v", err)
+	}
+
+	if len(users) < 3 {
+		t.Errorf("expected at least 3 users, got %d", len(users))
+	}
+}
+
+func TestUserRepository_FindAll_Empty(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewUserRepository(db)
+
+	users, err := repo.FindAll()
+	if err != nil {
+		t.Fatalf("FindAll returned error: %v", err)
+	}
+
+	if len(users) != 0 {
+		t.Errorf("expected 0 users, got %d", len(users))
+	}
+}
+
 func TestUserRepository_FindByDisplayNameOrDiscordUsername_ByDisplayName(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

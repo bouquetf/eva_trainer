@@ -4,13 +4,13 @@
 En tant qu'administrateur système, je veux que chaque appel API vérifie les rôles utilisateur afin de sécuriser l'accès aux fonctionnalités.
 
 ## Critères d'acceptation
-- [ ] Chaque fonctionnalité de l'application est identifiée en base de données
-- [ ] Chaque rôle a accès à certaines de ces fonctionnalités
-- [ ] La vérification des rôles se fait lors de chaque appel à l'API
-- [ ] En cas d'accès non autorisé : code HTTP + message d'erreur spécifique
-- [ ] Le rôle Admin a accès complet (lecture/écriture) à toutes les données (équivalent à toutes les équipes)
-- [ ] Le premier utilisateur à se connecter est automatiquement promu administrateur
-- [ ] Les autres administrateurs sont promus par un administrateur existant
+- [x] Chaque fonctionnalité de l'application est identifiée en base de données
+- [x] Chaque rôle a accès à certaines de ces fonctionnalités
+- [x] La vérification des rôles se fait lors de chaque appel à l'API
+- [x] En cas d'accès non autorisé : code HTTP + message d'erreur spécifique
+- [x] Le rôle Admin a accès complet (lecture/écriture) à toutes les données (équivalent à toutes les équipes)
+- [x] Le premier utilisateur à se connecter est automatiquement promu administrateur
+- [x] Les autres administrateurs sont promus par un administrateur existant
 
 ## Tests automatisés
 - Test unitaire : Middleware de vérification des rôles et permissions

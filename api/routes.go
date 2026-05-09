@@ -211,7 +211,7 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		admin.GET("/permissions", adminHandler.ListPermissions)
 		admin.GET("/permissions/:role", adminHandler.GetRolePermissions)
 		admin.GET("/teams", adminHandler.ListAllTeams)
-		admin.PUT("/users/:id/admin", adminHandler.ToggleAdmin)
+		admin.POST("/users/:id/promote", adminHandler.PromoteToAdmin)
 		admin.PUT("/users/:id/teams/:teamId/role", adminHandler.UpdateUserRole)
 		admin.POST("/users/:id/teams", adminHandler.AddUserToTeam)
 		admin.DELETE("/users/:id/teams/:teamId", adminHandler.RemoveUserFromTeam)
