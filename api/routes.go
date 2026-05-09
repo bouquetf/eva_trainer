@@ -14,6 +14,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type coreDeps struct {
+	userRepo     models.UserRepository
+	jwtService   *services.JWTService
+	permRepo     models.PermissionRepository
+	rolePermRepo models.RolePermissionRepository
+}
+
+func newCoreDeps(cfg *config.AppConfig) coreDeps {
+	db := database.DB()
+	userRepo := models.NewUserRepository(db)
+	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
+	permRepo := models.NewPermissionRepository(db)
+	rolePermRepo := models.NewRolePermissionRepository(db)
+	return coreDeps{userRepo: userRepo, jwtService: jwtService, permRepo: permRepo, rolePermRepo: rolePermRepo}
+}
+
 func serveFrontendFile(c *gin.Context, name string, fs http.FileSystem) {
 	f, err := fs.Open(name)
 	if err != nil {
@@ -48,6 +64,18 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 	setupAdminRoutes(apiV1, cfg)
 
 	apiV1.GET("/maps/:id/image", handlers.NewMapHandler(models.NewMapRepository(database.DB())).ServeImage)
+
+	deps := newCoreDeps(cfg)
+	splitPublicRepo := models.NewSplitRepository(database.DB())
+	splitPublicHandler := handlers.NewSplitHandler(splitPublicRepo)
+
+	splitsPublic := apiV1.Group("/splits")
+	splitsPublic.Use(middleware.RequireAuth(deps.userRepo, deps.jwtService))
+	splitsPublic.Use(middleware.RequireGlobalPermission(deps.permRepo, deps.rolePermRepo, "split:view"))
+	{
+		splitsPublic.GET("", splitPublicHandler.ListSplitsPublic)
+		splitsPublic.GET("/:id/maps", splitPublicHandler.GetSplitMapsPublic)
+	}
 
 	if gin.Mode() == gin.ReleaseMode {
 		r.StaticFS("/assets", assetsFS)
@@ -192,6 +220,24 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		admin.GET("/maps", mapHandler.ListMaps)
 		admin.GET("/maps/:id", mapHandler.GetMapDetail)
 		admin.POST("/maps/purge", mapHandler.PurgeObsoleteMaps)
+
+		splitRepo := models.NewSplitRepository(db)
+		splitHandler := handlers.NewSplitHandler(splitRepo)
+
+		admin.POST("/splits", splitHandler.CreateSplit)
+		admin.GET("/splits", splitHandler.ListSplits)
+		admin.GET("/splits/:id", splitHandler.GetSplit)
+		admin.PUT("/splits/:id", splitHandler.UpdateSplit)
+		admin.DELETE("/splits/:id", splitHandler.DeleteSplit)
+		admin.GET("/splits/:id/maps", splitHandler.GetSplitMaps)
+
+		mapCatalogRepo := models.NewMapCatalogRepository(db)
+		mapCatalogHandler := handlers.NewMapCatalogHandler(mapCatalogRepo)
+
+		admin.GET("/map-catalog", mapCatalogHandler.List)
+		admin.POST("/map-catalog", mapCatalogHandler.Create)
+		admin.PUT("/map-catalog/:id", mapCatalogHandler.Update)
+		admin.DELETE("/map-catalog/:id", mapCatalogHandler.Delete)
 	}
 }
 

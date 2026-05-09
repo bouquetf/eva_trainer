@@ -92,6 +92,11 @@ func SeedRolePermissions(db *sql.DB) error {
 		{role: "member", feature: "review:start"},
 		{role: "member", feature: "template:duplicate"},
 		{role: "member", feature: "edit_history:view"},
+
+		{role: "captain", feature: "split:view"},
+		{role: "cocaptain", feature: "split:view"},
+		{role: "editor", feature: "split:view"},
+		{role: "member", feature: "split:view"},
 	}
 
 	tx, err := db.Begin()

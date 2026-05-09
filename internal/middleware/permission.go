@@ -120,6 +120,60 @@ func GetUserPermissions(
 	return features, nil
 }
 
+func RequireGlobalPermission(
+	permRepo models.PermissionRepository,
+	rolePermRepo models.RolePermissionRepository,
+	feature string,
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, err := MustGetUser(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "unauthorized",
+				"message": "unauthorized",
+			})
+			c.Abort()
+			return
+		}
+
+		if user.IsAdmin {
+			c.Next()
+			return
+		}
+
+		perm, err := permRepo.FindByFeature(feature)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   "insufficient_permission",
+				"message": "you don't have the required permission for this action",
+			})
+			c.Abort()
+			return
+		}
+
+		hasPerm, err := rolePermRepo.RoleHasPermission("member", perm.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "internal_error",
+				"message": "internal server error",
+			})
+			c.Abort()
+			return
+		}
+
+		if !hasPerm {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   "insufficient_permission",
+				"message": "you don't have the required permission for this action",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func GetRequiredRole(
 	feature string,
 	rolePermRepo models.RolePermissionRepository,

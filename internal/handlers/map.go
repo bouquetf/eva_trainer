@@ -110,7 +110,14 @@ type previousVersionInfo struct {
 }
 
 func (h *MapHandler) ListMaps(c *gin.Context) {
-	maps, err := h.mapRepo.FindAll()
+	name := c.Query("name")
+	var maps []*models.Map
+	var err error
+	if name != "" {
+		maps, err = h.mapRepo.FindByName(name)
+	} else {
+		maps, err = h.mapRepo.FindAll()
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",

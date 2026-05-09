@@ -1,0 +1,5 @@
+CREATE TABLE map_catalog (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

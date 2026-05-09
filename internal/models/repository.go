@@ -93,6 +93,22 @@ type MapRepository interface {
 	GetBlob(mapID int) ([]byte, error)
 }
 
+type SplitRepository interface {
+	Create(name string, mapNames []string) (*Split, error)
+	FindByID(id int) (*Split, error)
+	FindAll() ([]*Split, error)
+	Update(id int, name string, mapNames []string) (*Split, error)
+	Delete(id int) error
+	FindMapsBySplitID(splitID int) ([]*Map, error)
+}
+
+type MapCatalogRepository interface {
+	FindAll() ([]*MapCatalogEntry, error)
+	Create(name string) (*MapCatalogEntry, error)
+	Update(id int, name string) (*MapCatalogEntry, error)
+	Delete(id int) error
+}
+
 type RolePermissionRepository interface {
 	FindByRole(role string) ([]*Permission, error)
 	FindByPermissionID(permissionID int) ([]*RolePermission, error)

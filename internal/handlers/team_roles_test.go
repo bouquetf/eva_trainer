@@ -83,6 +83,7 @@ func setupTeamRolesHandler(t *testing.T) (*TeamRolesHandler, models.UserReposito
 		"000003_add_display_name.up.sql",
 		"000004_add_discord_username.up.sql",
 		"000005_seed_permissions.up.sql",
+		"000008_add_split_permission.up.sql",
 	}
 
 	for _, mf := range allMigrationFiles {

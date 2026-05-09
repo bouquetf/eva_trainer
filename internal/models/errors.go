@@ -41,3 +41,9 @@ var (
 	ErrJoinRequestAlreadyExists = errors.New("you already have a pending join request for this team")
 	ErrJoinRequestAlreadyMember = errors.New("you are already a member of this team")
 )
+
+var (
+	ErrSplitNameRequired     = errors.New("split name is required")
+	ErrSplitMapNamesRequired = errors.New("split must have at least one map name")
+	ErrSplitNotFound         = errors.New("split not found")
+)
