@@ -5,9 +5,15 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"eva_trainer/api"
 	"eva_trainer/db/seed"
+	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
 	"eva_trainer/pkg/config"
 	"eva_trainer/pkg/database"
 
@@ -56,11 +62,24 @@ func main() {
 		log.Printf("Warning: failed to seed maps: %v", err)
 	}
 
+	lockRepo := models.NewEditLockRepository(db)
+	lockCleanup := services.NewLockCleanupService(lockRepo, 5*time.Minute)
+	lockCleanup.Start()
+
 	r := gin.Default()
 	api.SetupRoutes(r, cfg, http.FS(subFS), http.FS(assetsSubFS))
 
-	log.Printf("Server starting on port %s", cfg.Server.Port)
-	if err := r.Run(":" + cfg.Server.Port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("Server starting on port %s", cfg.Server.Port)
+		if err := r.Run(":" + cfg.Server.Port); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	<-quit
+	log.Println("Shutting down server...")
+	lockCleanup.Stop()
 }

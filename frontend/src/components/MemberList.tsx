@@ -124,6 +124,7 @@ function MemberList({ teamId, members, currentUserId, currentUserRole, onRoleCha
             : ''
         }
         confirmLabel="Confirmer"
+        cancelLabel="Annuler"
         onConfirm={() => {
           if (confirmTarget) {
             handleRoleAction(confirmTarget.userId, confirmTarget.role)

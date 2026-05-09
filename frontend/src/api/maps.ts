@@ -39,6 +39,11 @@ export async function listAdminMaps(): Promise<AdminMapsResponse> {
   return api.get<AdminMapsResponse>('/api/v1/admin/maps')
 }
 
+export async function listTeamMaps(teamId: number): Promise<AdminMapsResponse> {
+  const api = getApiClient()
+  return api.get<AdminMapsResponse>(`/api/v1/teams/${teamId}/maps`)
+}
+
 export async function getMapDetail(mapId: number): Promise<MapDetailResponse> {
   const api = getApiClient()
   return api.get<MapDetailResponse>(`/api/v1/admin/maps/${mapId}`)

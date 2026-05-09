@@ -22,6 +22,7 @@ var migrationFiles = []string{
 	"000003_add_display_name.up.sql",
 	"000004_add_discord_username.up.sql",
 	"000007_add_team_invitations_and_join_requests.up.sql",
+	"000011_add_zone_polygon_constraints.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

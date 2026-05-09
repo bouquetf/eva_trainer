@@ -387,7 +387,7 @@ function AdminDashboard() {
                         <td>
                           {u.is_admin ? (
                             <>
-                              {u.id === currentUserId ? (
+                              {u.id === currentUser?.id ? (
                                 <span className="self-label">Vous</span>
                               ) : (
                                 <span className="role-badge admin">Admin</span>

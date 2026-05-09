@@ -42,6 +42,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.teams-content:has(.editor-container) {
+  max-width: none;
+  padding: 0;
+}
+
 .editor-container {
   display: flex;
   flex-direction: column;
@@ -66,12 +71,12 @@ button:disabled {
 
 .canvas-area {
   flex: 1;
-  overflow: auto;
-  padding: 20px;
+  overflow: hidden;
+  padding: 1cm;
   background-color: #0a0a0a;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .side-panel {
@@ -87,18 +92,13 @@ button:disabled {
 .map-wrapper {
   position: relative;
   box-shadow: 0 0 20px rgba(0,0,0,0.5);
-  width: fit-content;
-}
-
-.map-image {
-  display: block;
-  max-width: none;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .svg-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
+  display: block;
   width: 100%;
   height: 100%;
   pointer-events: all;

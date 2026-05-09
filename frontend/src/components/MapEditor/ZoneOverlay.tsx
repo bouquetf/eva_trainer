@@ -1,27 +1,33 @@
 import React from "react";
-import type { Point, ZoneDto } from "../../lib/api/types";
-import { getPolygonCentroid } from "../../lib/geometry/transforms";
+import type { Point, Zone } from "../../lib/api/types";
 
 interface ZoneOverlayProps {
-  zones: ZoneDto[];
-  selectedZoneIds: Set<string>;
+  zones: Zone[];
+  selectedZoneIds: Set<number>;
+  selectedPolygonIndexes: Set<number>;
   tempPoints: Point[];
   imageWidth: number;
   imageHeight: number;
-  onZoneClick: (zoneId: string, event: React.MouseEvent) => void;
-  onZoneRightClick: (zoneId: string, clientX: number, clientY: number) => void;
-  onPointInsert: (zoneId: string, pointIndexAfter: number, newPoint: Point) => void;
+  onPolygonClick: (zoneId: number, polygonIndex: number, event: React.MouseEvent) => void;
+  onZoneRightClick: (zoneId: number, clientX: number, clientY: number) => void;
+  onPointInsert: (zoneId: number, polygonIndex: number, pointIndexAfter: number, newPoint: Point) => void;
 }
 
 export const ZoneOverlay: React.FC<ZoneOverlayProps> = ({
   zones,
   selectedZoneIds,
+  selectedPolygonIndexes,
   tempPoints,
-  onZoneClick,
+  onPolygonClick,
   onZoneRightClick,
   onPointInsert,
 }) => {
-  const handleSegmentDoubleClick = (e: React.MouseEvent, zoneId: string, pointIndexAfter: number) => {
+  const handleSegmentDoubleClick = (
+    e: React.MouseEvent,
+    zoneId: number,
+    polygonIndex: number,
+    pointIndexAfter: number,
+  ) => {
     e.stopPropagation();
     const svg = e.currentTarget.closest("svg");
     if (!svg) return;
@@ -30,74 +36,76 @@ export const ZoneOverlay: React.FC<ZoneOverlayProps> = ({
     const y = e.clientY - rect.top;
     const scaleX = parseFloat(svg.getAttribute("viewBox")?.split(" ")[2] || "1") / rect.width;
     const scaleY = parseFloat(svg.getAttribute("viewBox")?.split(" ")[3] || "1") / rect.height;
-    onPointInsert(zoneId, pointIndexAfter, { x: Math.round(x * scaleX), y: Math.round(y * scaleY) });
+    onPointInsert(zoneId, polygonIndex, pointIndexAfter, {
+      x: Math.round(x * scaleX),
+      y: Math.round(y * scaleY),
+    });
   };
 
   return (
     <g className="zone-layer">
-      {/* Zones existantes */}
+      <defs>
+        <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#ff5252" strokeWidth="1" />
+        </pattern>
+      </defs>
       {zones.map((zone) => {
-        const isSelected = selectedZoneIds.has(zone.id);
-        const pointsString = zone.points.map((p) => `${p.x},${p.y}`).join(" ");
-        const style = zone.style || {
-          fill: "rgba(0, 255, 150, 0.25)",
-          stroke: "#00e676",
-          strokeWidth: 4,
-        };
-
-        const centroid = getPolygonCentroid(zone.points);
-        const segmentCount = zone.points.length;
+        const isZoneSelected = selectedZoneIds.has(zone.id);
 
         return (
           <g key={zone.id} data-zone-id={zone.id}>
-            <polygon
-              points={pointsString}
-              fill={isSelected ? "rgba(0, 255, 150, 0.5)" : style.fill}
-              stroke={style.stroke}
-              strokeWidth={isSelected ? (style.strokeWidth || 4) + 2 : style.strokeWidth}
-              strokeDasharray={style.strokeDasharray}
-              style={{ transition: "fill 0.2s, stroke-width 0.2s", cursor: "pointer" }}
-              onClick={(e) => onZoneClick(zone.id, e)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onZoneRightClick(zone.id, e.clientX, e.clientY);
-              }}
-            />
-            {/* Lignes invisibles pour la détection de double-clic sur les segments */}
-            {isSelected && zone.points.map((_, i) => {
-              const next = (i + 1) % segmentCount;
-              const p1 = zone.points[i];
-              const p2 = zone.points[next];
+            {zone.polygons.map((polygon, pIdx) => {
+              const pointsString = polygon.points.map((p) => `${p.x},${p.y}`).join(" ");
+              const segmentCount = polygon.points.length;
+              const isPolySelected = isZoneSelected && selectedPolygonIndexes.has(pIdx);
+
               return (
-                <line
-                  key={`seg-${i}`}
-                  x1={p1.x}
-                  y1={p1.y}
-                  x2={p2.x}
-                  y2={p2.y}
-                  stroke="transparent"
-                  strokeWidth="12"
-                  style={{ cursor: "pointer" }}
-                  onDoubleClick={(e) => handleSegmentDoubleClick(e, zone.id, i)}
-                />
+                <g key={polygon.id || `${zone.id}-poly-${pIdx}`}>
+                  <polygon
+                    points={pointsString}
+                    fill={isZoneSelected ? "rgba(255,80,80,0.15)" : "rgba(255,80,80,0.08)"}
+                    stroke="none"
+                  />
+                  <polygon
+                    points={pointsString}
+                    fill="url(#hatch)"
+                    stroke="#ff5252"
+                    strokeWidth={isZoneSelected ? 6 : 4}
+                    style={{ cursor: "pointer" }}
+                    onClick={(e) => onPolygonClick(zone.id, pIdx, e)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      onZoneRightClick(zone.id, e.clientX, e.clientY);
+                    }}
+                  />
+                  {isPolySelected && polygon.points.map((_, i) => {
+                    const next = (i + 1) % segmentCount;
+                    const p1 = polygon.points[i];
+                    const p2 = polygon.points[next];
+                    return (
+                      <line
+                        key={`seg-${pIdx}-${i}`}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke="transparent"
+                        strokeWidth="12"
+                        style={{ cursor: "pointer" }}
+                        onDoubleClick={(e) =>
+                          handleSegmentDoubleClick(e, zone.id, pIdx, i)
+                        }
+                      />
+                    );
+                  })}
+                </g>
               );
             })}
-            {/* Label de la zone */}
-            <text
-              x={centroid.x}
-              y={centroid.y}
-              className="zone-label"
-              textAnchor="middle"
-              dominantBaseline="middle"
-            >
-              {zone.label}
-              {isSelected ? " (Sel)" : ""}
-            </text>
+
           </g>
         );
       })}
 
-      {/* Zone temporaire en cours de dessin */}
       {tempPoints.length > 0 && (
         <g className="temp-zone">
           {tempPoints.length > 1 ? (

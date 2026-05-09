@@ -25,8 +25,8 @@ export function AppRoutes() {
         <Route path="/teams/create" element={<CreateTeam />} />
         <Route path="/teams/:id" element={<TeamSettings />} />
         <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+        <Route path="/teams/:id/editor/:mapId" element={<Editor />} />
       </Route>
-      <Route path="/editor" element={<Editor />} />
       <Route path="/invite/:token" element={<InviteAccept />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

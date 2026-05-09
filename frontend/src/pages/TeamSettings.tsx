@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getTeam, updateTeam, deleteTeam, leaveTeam } from '../api/teams'
 import { listMembers } from '../api/roles'
+import { listTeamMaps } from '../api/maps'
 import { searchUsers, inviteByDisplayName, generateInviteLink, listPendingInvitations } from '../api/invitations'
 import type { UserSearchResult } from '../api/invitations'
 import { listPendingJoinRequests, acceptJoinRequest, declineJoinRequest } from '../api/joinRequests'
@@ -48,7 +49,14 @@ function TeamSettings() {
     enabled: !isNaN(teamId),
   })
 
+  const { data: mapsData, isLoading: mapsLoading } = useQuery({
+    queryKey: ['team-maps', teamId],
+    queryFn: () => listTeamMaps(teamId),
+    enabled: !isNaN(teamId),
+  })
+
   const members = membersData?.members ?? teamData?.members ?? []
+  const maps = mapsData?.maps ?? []
   const team = teamData?.team
 
   const currentUser = useAuthStore.getState().user
@@ -300,6 +308,39 @@ function TeamSettings() {
         )}
       </div>
 
+      <div className="section">
+        <h2 className="section-title">Cartes ({maps.length})</h2>
+        {mapsLoading ? (
+          <div className="spinner" />
+        ) : maps.length === 0 ? (
+          <p style={{ color: '#888', fontSize: 14 }}>Aucune carte disponible.</p>
+        ) : (
+          <table className="invitations-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {maps.map(m => (
+                <tr key={m.id}>
+                  <td>{m.name}</td>
+                  <td>
+                    <button
+                      className="btn-primary btn-small"
+                      onClick={() => navigate(`/teams/${teamId}/editor/${m.id}`)}
+                    >
+                      Éditeur
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {canManageRoles && (
         <div className="section">
           <h2 className="section-title">Invitations</h2>
@@ -494,6 +535,7 @@ function TeamSettings() {
         title="Supprimer l'équipe"
         message="Êtes-vous sûr de vouloir supprimer cette équipe ? Cette action est irréversible."
         confirmLabel="Supprimer"
+        cancelLabel="Annuler"
         danger
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setConfirmDelete(false)}
@@ -504,6 +546,7 @@ function TeamSettings() {
         title="Quitter l'équipe"
         message="Êtes-vous sûr de vouloir quitter cette équipe ?"
         confirmLabel="Quitter"
+        cancelLabel="Annuler"
         danger
         onConfirm={() => leaveMutation.mutate()}
         onCancel={() => setConfirmLeave(false)}

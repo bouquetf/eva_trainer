@@ -132,6 +132,32 @@ func (r *mapRepo) FindAll() ([]*Map, error) {
 	return maps, nil
 }
 
+func (r *mapRepo) FindAllActive() ([]*Map, error) {
+	rows, err := r.db.Query(
+		`SELECT id, name, added_at, obsolete_of, is_obsolete FROM maps WHERE is_obsolete = FALSE ORDER BY name ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var maps []*Map
+	for rows.Next() {
+		m, err := scanMap(rows)
+		if err != nil {
+			return nil, err
+		}
+		maps = append(maps, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if maps == nil {
+		return []*Map{}, nil
+	}
+	return maps, nil
+}
+
 func (r *mapRepo) FindByName(name string) ([]*Map, error) {
 	rows, err := r.db.Query(
 		`SELECT id, name, added_at, obsolete_of, is_obsolete FROM maps WHERE name = $1 ORDER BY added_at DESC`,

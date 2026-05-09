@@ -47,3 +47,15 @@ var (
 	ErrSplitMapNamesRequired = errors.New("split must have at least one map name")
 	ErrSplitNotFound         = errors.New("split not found")
 )
+
+var (
+	ErrZoneNotFound           = errors.New("zone not found")
+	ErrZoneNameRequired       = errors.New("zone name is required")
+	ErrZoneNameTooLong        = errors.New("zone name exceeds maximum length of 250 characters")
+	ErrZoneNameTaken          = errors.New("zone name already exists for this team on this map")
+	ErrPolygonNotFound        = errors.New("polygon not found")
+	ErrPolygonHasTooFewPoints = errors.New("polygon must have at least 3 points")
+	ErrLockNotFound           = errors.New("edit lock not found")
+	ErrLockAlreadyAcquired    = errors.New("edit lock already acquired by another editor")
+	ErrLockNotOwned           = errors.New("edit lock is owned by another editor")
+)

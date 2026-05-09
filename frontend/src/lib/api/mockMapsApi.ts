@@ -1,3 +1,7 @@
+/**
+ * @deprecated Use the real API functions from `src/api/zones.ts`, `src/api/locks.ts`,
+ *             and `src/api/maps.ts` instead. This mock will be removed in a future task.
+ */
 import type { MapsApi, MapDto, ZoneDto } from "./types";
 
 const DELAY = 200;
@@ -5,16 +9,15 @@ const STORAGE_PREFIX = "eva_trainer_zones_";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** @deprecated */
 export class MockMapsApi implements MapsApi {
   async getMap(mapId: string): Promise<MapDto> {
     await sleep(DELAY);
-    // Pour le MVP, on retourne une map par défaut
     return {
-      id: mapId,
+      id: parseInt(mapId, 10) || 1,
       name: "Atlantis Map",
-      imageUrl: "/maps/atlantis-map.webp",
-      width: 2000,
-      height: 1500,
+      added_at: new Date().toISOString(),
+      is_obsolete: false,
     };
   }
 
@@ -38,4 +41,5 @@ export class MockMapsApi implements MapsApi {
   }
 }
 
+/** @deprecated */
 export const mockMapsApi = new MockMapsApi();

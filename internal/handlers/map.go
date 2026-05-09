@@ -109,6 +109,19 @@ type previousVersionInfo struct {
 	Name string `json:"name"`
 }
 
+func (h *MapHandler) ListTeamMaps(c *gin.Context) {
+	maps, err := h.mapRepo.FindAllActive()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "internal_error",
+			"message": "failed to list maps",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"maps": maps})
+}
+
 func (h *MapHandler) ListMaps(c *gin.Context) {
 	name := c.Query("name")
 	var maps []*models.Map

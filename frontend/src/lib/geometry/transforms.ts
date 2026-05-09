@@ -1,99 +1,196 @@
-import type { Point, ZoneDto } from "../api/types";
+import type { Point, Zone } from "../api/types";
 
-export function getZoneBoundingBox(points: Point[]) {
-  if (points.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0, centerX: 0, centerY: 0 };
+export function getPolygonCentroid(points: Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const sumX = points.reduce((s, p) => s + p.x, 0);
+  const sumY = points.reduce((s, p) => s + p.y, 0);
+  return {
+    x: Math.round(sumX / points.length),
+    y: Math.round(sumY / points.length),
+  };
+}
 
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
+export function getZoneCentroid(zone: Zone): Point {
+  if (zone.polygons.length === 0) return { x: 0, y: 0 };
+  let sumX = 0;
+  let sumY = 0;
+  let total = 0;
+  for (const poly of zone.polygons) {
+    for (const p of poly.points) {
+      sumX += p.x;
+      sumY += p.y;
+      total++;
+    }
+  }
+  if (total === 0) return { x: 0, y: 0 };
+  return { x: Math.round(sumX / total), y: Math.round(sumY / total) };
+}
 
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+export function getZoneBoundingBox(zone: Zone) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (const poly of zone.polygons) {
+    for (const p of poly.points) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+
+  if (!isFinite(minX)) return { minX: 0, maxX: 0, minY: 0, maxY: 0, centerX: 0, centerY: 0 };
 
   return {
     minX,
     maxX,
     minY,
     maxY,
-    centerX: (minX + maxX) / 2,
-    centerY: (minY + maxY) / 2,
+    centerX: Math.round((minX + maxX) / 2),
+    centerY: Math.round((minY + maxY) / 2),
   };
 }
 
-export function translateZone(zone: ZoneDto, dx: number, dy: number): ZoneDto {
+export function translateZone(zone: Zone, dx: number, dy: number): Zone {
   return {
     ...zone,
-    points: zone.points.map((p) => ({
-      x: Math.round(p.x + dx),
-      y: Math.round(p.y + dy),
+    polygons: zone.polygons.map((poly) => ({
+      ...poly,
+      points: poly.points.map((p) => ({
+        x: Math.round(p.x + dx),
+        y: Math.round(p.y + dy),
+      })),
     })),
-    updatedAt: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 }
 
-export function moveZonePoint(zone: ZoneDto, pointIndex: number, newPoint: Point): ZoneDto {
-  const newPoints = [...zone.points];
-  newPoints[pointIndex] = {
-    x: Math.round(newPoint.x),
-    y: Math.round(newPoint.y),
-  };
+export function translateSelectedPolygons(
+  zone: Zone,
+  selectedIndexes: Set<number>,
+  dx: number,
+  dy: number,
+): Zone {
   return {
     ...zone,
-    points: newPoints,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-export function removeZonePoint(zone: ZoneDto, pointIndex: number): ZoneDto | null {
-  if (zone.points.length <= 3) return null;
-  const newPoints = zone.points.filter((_, i) => i !== pointIndex);
-  return {
-    ...zone,
-    points: newPoints,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-export function addZonePointAt(zone: ZoneDto, pointIndexAfter: number, newPoint: Point): ZoneDto {
-  const newPoints = [...zone.points];
-  newPoints.splice(pointIndexAfter + 1, 0, { x: Math.round(newPoint.x), y: Math.round(newPoint.y) });
-  return {
-    ...zone,
-    points: newPoints,
-    updatedAt: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    polygons: zone.polygons.map((poly, i) =>
+      selectedIndexes.has(i)
+        ? {
+            ...poly,
+            points: poly.points.map((p) => ({
+              x: Math.round(p.x + dx),
+              y: Math.round(p.y + dy),
+            })),
+          }
+        : poly,
+    ),
   };
 }
 
-export function mirrorZoneHorizontally(zone: ZoneDto): ZoneDto {
-  const { centerY } = getZoneBoundingBox(zone.points);
+export function moveZonePoint(
+  zone: Zone,
+  polygonIndex: number,
+  pointIndex: number,
+  newPoint: Point,
+): Zone {
+  const newPolygons = zone.polygons.map((poly, pi) => {
+    if (pi !== polygonIndex) return poly;
+    const newPoints = poly.points.map((p, i) =>
+      i === pointIndex ? { x: Math.round(newPoint.x), y: Math.round(newPoint.y) } : p,
+    );
+    return { ...poly, points: newPoints };
+  });
   return {
     ...zone,
-    points: zone.points.map((p) => ({
-      x: p.x,
-      y: Math.round(2 * centerY - p.y),
+    polygons: newPolygons,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function removeZonePoint(
+  zone: Zone,
+  polygonIndex: number,
+  pointIndex: number,
+): Zone | null {
+  const targetPoly = zone.polygons[polygonIndex];
+  if (!targetPoly || targetPoly.points.length <= 3) return null;
+
+  const newPolygons = zone.polygons.map((poly, pi) => {
+    if (pi !== polygonIndex) return poly;
+    const newPoints = poly.points.filter((_, i) => i !== pointIndex);
+    return { ...poly, points: newPoints };
+  });
+
+  return {
+    ...zone,
+    polygons: newPolygons,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function removePolygonsByIndex(
+  zone: Zone,
+  indices: Set<number>,
+): Zone {
+  return {
+    ...zone,
+    updated_at: new Date().toISOString(),
+    polygons: zone.polygons.filter((_, i) => !indices.has(i)),
+  };
+}
+
+export function addZonePointAt(
+  zone: Zone,
+  polygonIndex: number,
+  pointIndexAfter: number,
+  newPoint: Point,
+): Zone {
+  const newPolygons = zone.polygons.map((poly, pi) => {
+    if (pi !== polygonIndex) return poly;
+    const newPoints = [...poly.points];
+    newPoints.splice(pointIndexAfter + 1, 0, {
+      x: Math.round(newPoint.x),
+      y: Math.round(newPoint.y),
+    });
+    return { ...poly, points: newPoints };
+  });
+
+  return {
+    ...zone,
+    polygons: newPolygons,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mirrorZoneHorizontally(zone: Zone): Zone {
+  const box = getZoneBoundingBox(zone);
+  return {
+    ...zone,
+    polygons: zone.polygons.map((poly) => ({
+      ...poly,
+      points: poly.points.map((p) => ({
+        x: p.x,
+        y: Math.round(2 * box.centerY - p.y),
+      })),
     })),
-    updatedAt: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 }
 
-export function mirrorZoneVertically(zone: ZoneDto): ZoneDto {
-  const { centerX } = getZoneBoundingBox(zone.points);
+export function mirrorZoneVertically(zone: Zone): Zone {
+  const box = getZoneBoundingBox(zone);
   return {
     ...zone,
-    points: zone.points.map((p) => ({
-      x: Math.round(2 * centerX - p.x),
-      y: p.y,
+    polygons: zone.polygons.map((poly) => ({
+      ...poly,
+      points: poly.points.map((p) => ({
+        x: Math.round(2 * box.centerX - p.x),
+        y: p.y,
+      })),
     })),
-    updatedAt: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
-}
-
-export function offsetZone(zone: ZoneDto, dx: number, dy: number): ZoneDto {
-  return translateZone(zone, dx, dy);
-}
-
-export function getPolygonCentroid(points: Point[]): Point {
-  const { centerX, centerY } = getZoneBoundingBox(points);
-  return { x: centerX, y: centerY };
 }

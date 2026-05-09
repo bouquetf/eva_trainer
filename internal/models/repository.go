@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type UserRepository interface {
 	FindOrCreateByDiscordID(discordID string) (*User, bool, error)
@@ -84,6 +87,7 @@ type MapRepository interface {
 	Create(name string, blobData []byte) (*Map, error)
 	FindByID(id int) (*Map, error)
 	FindAll() ([]*Map, error)
+	FindAllActive() ([]*Map, error)
 	FindByName(name string) ([]*Map, error)
 	FindByNameLatest(name string) (*Map, error)
 	MarkObsolete(mapID int, replacedByMapID int) error
@@ -116,4 +120,39 @@ type RolePermissionRepository interface {
 	RemovePermissionFromRole(role string, permissionID int) error
 	FindAllRoles() ([]string, error)
 	RoleHasPermission(role string, permissionID int) (bool, error)
+}
+
+type ZoneRepository interface {
+	Create(teamID, mapID int) (*Zone, error)
+	FindByID(zoneID int) (*Zone, error)
+	FindByTeamAndMap(teamID, mapID int) ([]*Zone, error)
+	FindWithDetailsByTeamAndMap(teamID, mapID int) ([]*ZoneWithDetails, error)
+	Delete(zoneID int) error
+
+	AddPolygon(zoneID int, points []Point, orderIndex int) (*ZonePolygon, error)
+	GetPolygons(zoneID int) ([]ZonePolygon, error)
+	UpdatePolygonPoints(polygonID int, points []Point) error
+	RemovePolygon(polygonID int) error
+	PolygonCount(zoneID int) (int, error)
+
+	SetName(zoneID int, name string) error
+	GetName(zoneID int) (*ZoneName, error)
+	IsNameTaken(teamID, mapID int, name string) (bool, error)
+}
+
+type EditLockRepository interface {
+	Acquire(teamID, mapID, editorID int) (*EditLock, error)
+	Release(teamID, mapID int) error
+	ReleaseByEditor(teamID, mapID, editorID int) error
+	Get(teamID, mapID int) (*EditLock, error)
+	Refresh(teamID, mapID int) (*EditLock, error)
+	IsLocked(teamID, mapID int) (bool, error)
+	IsLockedByEditor(teamID, mapID, editorID int) (bool, error)
+	CleanupExpired() (int64, error)
+}
+
+type EditHistoryRepository interface {
+	Log(zoneID int, editorID *int, action string, oldData, newData json.RawMessage) (*EditHistory, error)
+	FindByZone(zoneID int) ([]*EditHistory, error)
+	FindByTeamAndMap(teamID, mapID int) ([]*EditHistory, error)
 }

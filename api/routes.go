@@ -105,6 +105,14 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	teamInvitationHandler := handlers.NewTeamInvitationHandler(invitationRepo, teamMemberRepo, userRepo, teamRepo, cfg.Server.FrontendURL)
 	joinRequestHandler := handlers.NewTeamJoinRequestHandler(joinRequestRepo, teamMemberRepo, teamRepo, userRepo)
 
+	mapRepo := models.NewMapRepository(db)
+	zoneRepo := models.NewZoneRepository(db)
+	lockRepo := models.NewEditLockRepository(db)
+	historyRepo := models.NewEditHistoryRepository(db)
+	mapHandler := handlers.NewMapHandler(mapRepo)
+	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo)
+	lockHandler := handlers.NewEditLockHandler(lockRepo)
+
 	rg.GET("/myteams", middleware.RequireAuth(userRepo, jwtService), teamHandler.ListMyTeams)
 
 	teams := rg.Group("/teams")
@@ -117,6 +125,7 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		teams.DELETE("/:id", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:delete"), teamHandler.DeleteTeam)
 		teams.POST("/:id/leave", middleware.RequireTeamRole(teamMemberRepo, "member"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:leave"), teamHandler.LeaveTeam)
 
+		teams.GET("/:id/maps", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), mapHandler.ListTeamMaps)
 		teams.GET("/:id/members", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamRolesHandler.ListMembers)
 		teams.PUT("/:id/members/:userId/role", middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:assign"), teamRolesHandler.UpdateRole)
 		teams.POST("/:id/transfer-captaincy", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:transfer-captain"), teamRolesHandler.TransferCaptaincy)
@@ -130,6 +139,81 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
 			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
 			teamInvitationHandler.GenerateInviteLink,
+		)
+
+		teams.GET("/:id/maps/:mapId/zones",
+			middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:view"),
+			zoneHandler.ListZones,
+		)
+		teams.POST("/:id/maps/:mapId/zones",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:create"),
+			zoneHandler.CreateZone,
+		)
+		teams.POST("/:id/maps/:mapId/zones/batch",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			zoneHandler.BatchActions,
+		)
+
+		teams.POST("/:id/maps/:mapId/lock",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:lock"),
+			lockHandler.AcquireLock,
+		)
+		teams.DELETE("/:id/maps/:mapId/lock",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			lockHandler.ReleaseLock,
+		)
+		teams.PUT("/:id/maps/:mapId/lock",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			lockHandler.RefreshLock,
+		)
+		teams.GET("/:id/maps/:mapId/lock",
+			middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			lockHandler.GetLockStatus,
+		)
+
+		teams.GET("/:id/zones/:zoneId",
+			middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:view"),
+			zoneHandler.GetZone,
+		)
+		teams.DELETE("/:id/zones/:zoneId",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:delete"),
+			zoneHandler.DeleteZone,
+		)
+		teams.PUT("/:id/zones/:zoneId/name",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			zoneHandler.SetZoneName,
+		)
+		teams.POST("/:id/zones/:zoneId/polygons",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			zoneHandler.AddPolygon,
+		)
+		teams.DELETE("/:id/zones/:zoneId/polygons/:polygonId",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			zoneHandler.RemovePolygon,
+		)
+		teams.PUT("/:id/zones/:zoneId/polygons/:polygonId/points",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			zoneHandler.UpdatePolygonPoints,
+		)
+		teams.POST("/:id/zones/:zoneId/polygons/:polygonId/points",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			zoneHandler.AddPolygonPoint,
+		)
+		teams.DELETE("/:id/zones/:zoneId/polygons/:polygonId/points/:pointIndex",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			zoneHandler.RemovePolygonPoint,
 		)
 		teams.GET("/:id/invitations/pending",
 			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
