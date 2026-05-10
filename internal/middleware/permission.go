@@ -5,11 +5,14 @@ import (
 	"strconv"
 
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
 
 func RequirePermission(
+	logger services.Logger,
 	teamMemberRepo models.TeamMemberRepository,
 	rolePermRepo models.RolePermissionRepository,
 	permRepo models.PermissionRepository,
@@ -18,11 +21,7 @@ func RequirePermission(
 	return func(c *gin.Context) {
 		user, err := MustGetUser(c)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "unauthorized",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeUnauthorized, "unauthorized", http.StatusUnauthorized))
 			return
 		}
 
@@ -33,11 +32,7 @@ func RequirePermission(
 
 		teamID, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "invalid_team_id",
-				"message": "invalid team id",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeBadRequest, "invalid team id", http.StatusBadRequest))
 			return
 		}
 
@@ -45,31 +40,19 @@ func RequirePermission(
 		if !exists {
 			member, err = teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 			if err != nil {
-				c.JSON(http.StatusForbidden, gin.H{
-					"error":   "not_team_member",
-					"message": "you are not a member of this team",
-				})
-				c.Abort()
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeForbidden, "you are not a member of this team", http.StatusForbidden))
 				return
 			}
 		}
 
 		hasPermission, err := models.HasPermission(member.Role, feature, rolePermRepo, permRepo)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "internal_error",
-				"message": "internal server error",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
 			return
 		}
 
 		if !hasPermission {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "insufficient_permission",
-				"message": "you don't have the required permission for this action",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeForbidden, "you don't have the required permission for this action", http.StatusForbidden))
 			return
 		}
 
@@ -121,6 +104,7 @@ func GetUserPermissions(
 }
 
 func RequireGlobalPermission(
+	logger services.Logger,
 	permRepo models.PermissionRepository,
 	rolePermRepo models.RolePermissionRepository,
 	feature string,
@@ -128,11 +112,7 @@ func RequireGlobalPermission(
 	return func(c *gin.Context) {
 		user, err := MustGetUser(c)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "unauthorized",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeUnauthorized, "unauthorized", http.StatusUnauthorized))
 			return
 		}
 
@@ -143,30 +123,18 @@ func RequireGlobalPermission(
 
 		perm, err := permRepo.FindByFeature(feature)
 		if err != nil {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "insufficient_permission",
-				"message": "you don't have the required permission for this action",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeForbidden, "you don't have the required permission for this action", http.StatusForbidden))
 			return
 		}
 
 		hasPerm, err := rolePermRepo.RoleHasPermission("member", perm.ID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "internal_error",
-				"message": "internal server error",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
 			return
 		}
 
 		if !hasPerm {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "insufficient_permission",
-				"message": "you don't have the required permission for this action",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeForbidden, "you don't have the required permission for this action", http.StatusForbidden))
 			return
 		}
 

@@ -25,7 +25,7 @@ func setupRequireAdminTest(isAdmin bool) *gin.Engine {
 			c.Set("user", user)
 			c.Next()
 		},
-		RequireAdmin(),
+		RequireAdmin(nil),
 		func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"ok": true})
 		},
@@ -77,7 +77,7 @@ func TestRequireAdmin_NoUser_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	r.GET("/api/v1/admin/test", RequireAdmin(), func(c *gin.Context) {
+	r.GET("/api/v1/admin/test", RequireAdmin(nil), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 

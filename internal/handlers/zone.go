@@ -3,13 +3,13 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
 	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,6 +22,7 @@ type ZoneHandler struct {
 	teamMemberRepo  models.TeamMemberRepository
 	templateSyncSvc *services.TemplateSyncService
 	versionRepo     models.ZoneVersionRepository
+	logger          services.Logger
 }
 
 func NewZoneHandler(
@@ -32,6 +33,7 @@ func NewZoneHandler(
 	teamMemberRepo models.TeamMemberRepository,
 	templateSyncSvc *services.TemplateSyncService,
 	versionRepo models.ZoneVersionRepository,
+	logger services.Logger,
 ) *ZoneHandler {
 	return &ZoneHandler{
 		zoneRepo:        zoneRepo,
@@ -41,29 +43,30 @@ func NewZoneHandler(
 		teamMemberRepo:  teamMemberRepo,
 		templateSyncSvc: templateSyncSvc,
 		versionRepo:     versionRepo,
+		logger:          logger,
 	}
 }
 
 func (h *ZoneHandler) ListZones(c *gin.Context) {
 	mapID, err := strconv.Atoi(c.Param("mapId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_map_id", "message": "invalid map id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_map_id", "invalid map id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	zones, err := h.zoneRepo.FindWithDetailsByTeamAndMap(teamID, mapID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to list zones"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list zones", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"zones": zones})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"zones": zones})
 }
 
 type createZoneRequest struct {
@@ -78,13 +81,13 @@ type createZonePolygon struct {
 func (h *ZoneHandler) CreateZone(c *gin.Context) {
 	mapID, err := strconv.Atoi(c.Param("mapId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_map_id", "message": "invalid map id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_map_id", "invalid map id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
@@ -95,33 +98,33 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 
 	obsolete, err := h.mapRepo.IsMapObsolete(mapID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check map status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check map status", http.StatusInternalServerError))
 		return
 	}
 	if obsolete {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "map_obsolete", "message": "this map is obsolete and cannot be edited"})
+		apierror.RespondWithError(c, apierror.NewAPIError("map_obsolete", "this map is obsolete and cannot be edited", http.StatusBadRequest))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(teamID, mapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
 	var req createZoneRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_body", "message": "invalid request body"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	zone, err := h.zoneRepo.Create(teamID, mapID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to create zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to create zone", http.StatusInternalServerError))
 		return
 	}
 
@@ -130,11 +133,11 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 		if err != nil {
 			if errors.Is(err, models.ErrPolygonHasTooFewPoints) {
 				h.zoneRepo.Delete(zone.ID)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "polygon_too_few_points", "message": "each polygon must have at least 3 points"})
+				apierror.RespondWithError(c, apierror.NewAPIError("polygon_too_few_points", "each polygon must have at least 3 points", http.StatusBadRequest))
 				return
 			}
 			h.zoneRepo.Delete(zone.ID)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to add polygon"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to add polygon", http.StatusInternalServerError))
 			return
 		}
 	}
@@ -143,22 +146,22 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 		taken, err := h.zoneRepo.IsNameTaken(teamID, mapID, req.Name)
 		if err != nil {
 			h.zoneRepo.Delete(zone.ID)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check name uniqueness"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check name uniqueness", http.StatusInternalServerError))
 			return
 		}
 		if taken {
 			h.zoneRepo.Delete(zone.ID)
-			c.JSON(http.StatusConflict, gin.H{"error": "zone_name_taken", "message": "zone name already exists for this team on this map"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_name_taken", "zone name already exists for this team on this map", http.StatusConflict))
 			return
 		}
 		if len(req.Name) > 250 {
 			h.zoneRepo.Delete(zone.ID)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "zone_name_too_long", "message": "zone name exceeds maximum length of 250 characters"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_name_too_long", "zone name exceeds maximum length of 250 characters", http.StatusBadRequest))
 			return
 		}
 		if err := h.zoneRepo.SetName(zone.ID, req.Name); err != nil {
 			h.zoneRepo.Delete(zone.ID)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to set zone name"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to set zone name", http.StatusInternalServerError))
 			return
 		}
 	}
@@ -173,7 +176,7 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 	h.syncAfterZoneChange(teamID, mapID)
 	h.saveZoneSnapshot(zone.ID, user.ID)
 
-	c.JSON(http.StatusCreated, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{
 		"zone": models.ZoneWithDetails{
 			ID:        zone.ID,
 			TeamID:    zone.TeamID,
@@ -189,17 +192,17 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 func (h *ZoneHandler) GetZone(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
@@ -210,7 +213,7 @@ func (h *ZoneHandler) GetZone(c *gin.Context) {
 		zoneName = zn.Name
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"zone": models.ZoneWithDetails{
 			ID:        zone.ID,
 			TeamID:    zone.TeamID,
@@ -226,7 +229,7 @@ func (h *ZoneHandler) GetZone(c *gin.Context) {
 func (h *ZoneHandler) DeleteZone(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
@@ -238,20 +241,20 @@ func (h *ZoneHandler) DeleteZone(c *gin.Context) {
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
@@ -266,19 +269,19 @@ func (h *ZoneHandler) DeleteZone(c *gin.Context) {
 	h.historyRepo.Log(zoneID, editorID, "delete", json.RawMessage(oldData), nil)
 
 	if err := h.zoneRepo.Delete(zoneID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to delete zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to delete zone", http.StatusInternalServerError))
 		return
 	}
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
 
-	c.JSON(http.StatusOK, gin.H{"message": "zone deleted"})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "zone deleted"})
 }
 
 func (h *ZoneHandler) AddPolygon(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
@@ -290,20 +293,20 @@ func (h *ZoneHandler) AddPolygon(c *gin.Context) {
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
@@ -311,55 +314,55 @@ func (h *ZoneHandler) AddPolygon(c *gin.Context) {
 		Points []models.Point `json:"points"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_body", "message": "invalid request body"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	if len(req.Points) < 3 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "polygon_too_few_points", "message": "polygon must have at least 3 points"})
+		apierror.RespondWithError(c, apierror.NewAPIError("polygon_too_few_points", "polygon must have at least 3 points", http.StatusBadRequest))
 		return
 	}
 
 	count, err := h.zoneRepo.PolygonCount(zoneID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check polygon count"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check polygon count", http.StatusInternalServerError))
 		return
 	}
 
 	if count == 0 {
 		zn, nameErr := h.zoneRepo.GetName(zoneID)
 		if nameErr != nil && !errors.Is(nameErr, models.ErrZoneNotFound) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check zone name"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check zone name", http.StatusInternalServerError))
 			return
 		}
 		if zn == nil || zn.Name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "name_required", "message": "zone must have a name before adding the first polygon"})
+			apierror.RespondWithError(c, apierror.NewAPIError("name_required", "zone must have a name before adding the first polygon", http.StatusBadRequest))
 			return
 		}
 	}
 
 	polygon, err := h.zoneRepo.AddPolygon(zoneID, req.Points, count)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to add polygon"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to add polygon", http.StatusInternalServerError))
 		return
 	}
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
 	h.saveZoneSnapshot(zone.ID, user.ID)
 
-	c.JSON(http.StatusCreated, gin.H{"polygon": polygon})
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"polygon": polygon})
 }
 
 func (h *ZoneHandler) RemovePolygon(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
 	polygonID, err := strconv.Atoi(c.Param("polygonId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_polygon_id", "message": "invalid polygon id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_polygon_id", "invalid polygon id", http.StatusBadRequest))
 		return
 	}
 
@@ -371,29 +374,29 @@ func (h *ZoneHandler) RemovePolygon(c *gin.Context) {
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
 	if err := h.zoneRepo.RemovePolygon(polygonID); err != nil {
 		if errors.Is(err, models.ErrPolygonNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "polygon_not_found", "message": "polygon not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("polygon_not_found", "polygon not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to remove polygon"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to remove polygon", http.StatusInternalServerError))
 		return
 	}
 
@@ -413,7 +416,7 @@ func (h *ZoneHandler) RemovePolygon(c *gin.Context) {
 		h.saveZoneSnapshot(zone.ID, user.ID)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"polygon_deleted": true,
 		"zone_deleted":    zoneDeleted,
 	})
@@ -422,13 +425,13 @@ func (h *ZoneHandler) RemovePolygon(c *gin.Context) {
 func (h *ZoneHandler) UpdatePolygonPoints(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
 	polygonID, err := strconv.Atoi(c.Param("polygonId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_polygon_id", "message": "invalid polygon id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_polygon_id", "invalid polygon id", http.StatusBadRequest))
 		return
 	}
 
@@ -440,20 +443,20 @@ func (h *ZoneHandler) UpdatePolygonPoints(c *gin.Context) {
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
@@ -461,12 +464,12 @@ func (h *ZoneHandler) UpdatePolygonPoints(c *gin.Context) {
 		Points []models.Point `json:"points"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_body", "message": "invalid request body"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	if len(req.Points) < 3 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "polygon_too_few_points", "message": "polygon must have at least 3 points"})
+		apierror.RespondWithError(c, apierror.NewAPIError("polygon_too_few_points", "polygon must have at least 3 points", http.StatusBadRequest))
 		return
 	}
 
@@ -483,10 +486,10 @@ func (h *ZoneHandler) UpdatePolygonPoints(c *gin.Context) {
 
 	if err := h.zoneRepo.UpdatePolygonPoints(polygonID, req.Points); err != nil {
 		if errors.Is(err, models.ErrPolygonNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "polygon_not_found", "message": "polygon not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("polygon_not_found", "polygon not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to update polygon points"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to update polygon points", http.StatusInternalServerError))
 		return
 	}
 
@@ -502,7 +505,7 @@ func (h *ZoneHandler) UpdatePolygonPoints(c *gin.Context) {
 		polygon.Points = req.Points
 	}
 
-	c.JSON(http.StatusOK, gin.H{"polygon": polygon})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"polygon": polygon})
 }
 
 func (h *ZoneHandler) syncAfterZoneChange(teamID, mapID int) {
@@ -510,7 +513,7 @@ func (h *ZoneHandler) syncAfterZoneChange(teamID, mapID int) {
 		return
 	}
 	if err := h.templateSyncSvc.SyncOnZoneChange(teamID, mapID); err != nil {
-		log.Printf("warning: failed to sync template after zone change (team=%d, map=%d): %v", teamID, mapID, err)
+		h.logger.Warn("failed to sync template after zone change", "team", teamID, "map", mapID, "error", err)
 	}
 }
 
@@ -520,7 +523,7 @@ func (h *ZoneHandler) saveZoneSnapshot(zoneID, editorID int) {
 	}
 	polygons, err := h.zoneRepo.GetPolygons(zoneID)
 	if err != nil {
-		log.Printf("warning: failed to get polygons for snapshot (zone=%d): %v", zoneID, err)
+		h.logger.Warn("failed to get polygons for snapshot", "zone", zoneID, "error", err)
 		return
 	}
 
@@ -542,7 +545,7 @@ func (h *ZoneHandler) saveZoneSnapshot(zoneID, editorID int) {
 
 	editorIDPtr := &editorID
 	if _, err := h.versionRepo.Save(zoneID, editorIDPtr, snapshot); err != nil {
-		log.Printf("warning: failed to save zone snapshot (zone=%d): %v", zoneID, err)
+		h.logger.Warn("failed to save zone snapshot", "zone", zoneID, "error", err)
 	}
 }
 
@@ -558,13 +561,13 @@ func getPolygonByID(polygons []models.ZonePolygon, id int) *models.ZonePolygon {
 func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
 	polygonID, err := strconv.Atoi(c.Param("polygonId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_polygon_id", "message": "invalid polygon id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_polygon_id", "invalid polygon id", http.StatusBadRequest))
 		return
 	}
 
@@ -576,20 +579,20 @@ func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
@@ -598,13 +601,13 @@ func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 		IndexAfter int          `json:"index_after"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_body", "message": "invalid request body"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	polygons, err := h.zoneRepo.GetPolygons(zoneID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get polygons"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get polygons", http.StatusInternalServerError))
 		return
 	}
 
@@ -616,7 +619,7 @@ func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 		}
 	}
 	if targetPolygon == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "polygon_not_found", "message": "polygon not found"})
+		apierror.RespondWithError(c, apierror.NewAPIError("polygon_not_found", "polygon not found", http.StatusNotFound))
 		return
 	}
 
@@ -635,7 +638,7 @@ func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 	newPoints = append(newPoints, targetPolygon.Points[insertAt:]...)
 
 	if err := h.zoneRepo.UpdatePolygonPoints(polygonID, newPoints); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to update polygon points"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to update polygon points", http.StatusInternalServerError))
 		return
 	}
 
@@ -648,25 +651,25 @@ func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	targetPolygon.Points = newPoints
-	c.JSON(http.StatusOK, gin.H{"polygon": targetPolygon})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"polygon": targetPolygon})
 }
 
 func (h *ZoneHandler) RemovePolygonPoint(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
 	polygonID, err := strconv.Atoi(c.Param("polygonId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_polygon_id", "message": "invalid polygon id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_polygon_id", "invalid polygon id", http.StatusBadRequest))
 		return
 	}
 
 	pointIndex, err := strconv.Atoi(c.Param("pointIndex"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_point_index", "message": "invalid point index"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_point_index", "invalid point index", http.StatusBadRequest))
 		return
 	}
 
@@ -678,26 +681,26 @@ func (h *ZoneHandler) RemovePolygonPoint(c *gin.Context) {
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
 	polygons, err := h.zoneRepo.GetPolygons(zoneID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get polygons"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get polygons", http.StatusInternalServerError))
 		return
 	}
 
@@ -709,12 +712,12 @@ func (h *ZoneHandler) RemovePolygonPoint(c *gin.Context) {
 		}
 	}
 	if targetPolygon == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "polygon_not_found", "message": "polygon not found"})
+		apierror.RespondWithError(c, apierror.NewAPIError("polygon_not_found", "polygon not found", http.StatusNotFound))
 		return
 	}
 
 	if pointIndex < 0 || pointIndex >= len(targetPolygon.Points) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_point_index", "message": "point index out of range"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_point_index", "point index out of range", http.StatusBadRequest))
 		return
 	}
 
@@ -725,12 +728,12 @@ func (h *ZoneHandler) RemovePolygonPoint(c *gin.Context) {
 	newPoints = append(newPoints, targetPolygon.Points[pointIndex+1:]...)
 
 	if len(newPoints) < 3 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "polygon_too_few_points", "message": "polygon must have at least 3 points"})
+		apierror.RespondWithError(c, apierror.NewAPIError("polygon_too_few_points", "polygon must have at least 3 points", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.zoneRepo.UpdatePolygonPoints(polygonID, newPoints); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to update polygon points"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to update polygon points", http.StatusInternalServerError))
 		return
 	}
 
@@ -743,7 +746,7 @@ func (h *ZoneHandler) RemovePolygonPoint(c *gin.Context) {
 	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	targetPolygon.Points = newPoints
-	c.JSON(http.StatusOK, gin.H{"polygon": targetPolygon})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"polygon": targetPolygon})
 }
 
 type setZoneNameRequest struct {
@@ -753,7 +756,7 @@ type setZoneNameRequest struct {
 func (h *ZoneHandler) SetZoneName(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
@@ -765,26 +768,26 @@ func (h *ZoneHandler) SetZoneName(c *gin.Context) {
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
 	var req setZoneNameRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_body", "message": "invalid request body"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
@@ -798,13 +801,13 @@ func (h *ZoneHandler) SetZoneName(c *gin.Context) {
 	if err := h.zoneRepo.SetName(zoneID, req.Name); err != nil {
 		switch {
 		case errors.Is(err, models.ErrZoneNameRequired):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "zone_name_required", "message": err.Error()})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_name_required", err.Error(), http.StatusBadRequest))
 		case errors.Is(err, models.ErrZoneNameTooLong):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "zone_name_too_long", "message": err.Error()})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_name_too_long", err.Error(), http.StatusBadRequest))
 		case errors.Is(err, models.ErrZoneNameTaken):
-			c.JSON(http.StatusConflict, gin.H{"error": "zone_name_taken", "message": err.Error()})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_name_taken", err.Error(), http.StatusConflict))
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to set zone name"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to set zone name", http.StatusInternalServerError))
 		}
 		return
 	}
@@ -819,7 +822,7 @@ func (h *ZoneHandler) SetZoneName(c *gin.Context) {
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
 	h.saveZoneSnapshot(zone.ID, user.ID)
 
-	c.JSON(http.StatusOK, gin.H{"name": zn})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"name": zn})
 }
 
 type batchAction struct {
@@ -861,13 +864,13 @@ type batchResponse struct {
 func (h *ZoneHandler) BatchActions(c *gin.Context) {
 	mapID, err := strconv.Atoi(c.Param("mapId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_map_id", "message": "invalid map id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_map_id", "invalid map id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
@@ -878,30 +881,30 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 
 	var req batchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_body", "message": "invalid request body"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(teamID, mapID, user.ID)
 	if err != nil {
-		log.Printf("[batch] lock check failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		h.logger.Warn("lock check failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		log.Printf("[batch] lock required but not held (user=%d, team=%d, map=%d)", user.ID, teamID, mapID)
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before making changes"})
+		h.logger.Warn("lock required but not held", "user", user.ID, "team", teamID, "map", mapID)
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before making changes", http.StatusLocked))
 		return
 	}
 
 	obsolete, err := h.mapRepo.IsMapObsolete(mapID)
 	if err != nil {
-		log.Printf("[batch] map obsolete check failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check map status"})
+		h.logger.Warn("map obsolete check failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check map status", http.StatusInternalServerError))
 		return
 	}
 	if obsolete {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "map_obsolete", "message": "this map is obsolete and cannot be edited"})
+		apierror.RespondWithError(c, apierror.NewAPIError("map_obsolete", "this map is obsolete and cannot be edited", http.StatusBadRequest))
 		return
 	}
 
@@ -915,8 +918,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "create_zone":
 			result, err := h.batchCreateZone(teamID, mapID, user.ID, action, tempZoneMap)
 			if err != nil {
-				log.Printf("[batch] create_zone failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("create_zone failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			if action.TempID != "" {
@@ -927,8 +930,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "add_polygon":
 			result, err := h.batchAddPolygon(user.ID, action)
 			if err != nil {
-				log.Printf("[batch] add_polygon failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("add_polygon failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			results = append(results, result)
@@ -936,8 +939,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "remove_polygon":
 			result, err := h.batchRemovePolygon(user.ID, action)
 			if err != nil {
-				log.Printf("[batch] remove_polygon failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("remove_polygon failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			results = append(results, result)
@@ -945,8 +948,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "update_points":
 			result, err := h.batchUpdatePoints(user.ID, action)
 			if err != nil {
-				log.Printf("[batch] update_points failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("update_points failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			results = append(results, result)
@@ -954,8 +957,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "add_point":
 			result, err := h.batchAddPoint(user.ID, action)
 			if err != nil {
-				log.Printf("[batch] add_point failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("add_point failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			results = append(results, result)
@@ -963,8 +966,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "remove_point":
 			result, err := h.batchRemovePoint(user.ID, action)
 			if err != nil {
-				log.Printf("[batch] remove_point failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("remove_point failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			results = append(results, result)
@@ -972,8 +975,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "rename":
 			result, err := h.batchRename(user.ID, action)
 			if err != nil {
-				log.Printf("[batch] rename failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("rename failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			results = append(results, result)
@@ -981,14 +984,14 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 		case "delete_zone":
 			result, err := h.batchDeleteZone(user.ID, action)
 			if err != nil {
-				log.Printf("[batch] delete_zone failed (user=%d, team=%d, map=%d): %v", user.ID, teamID, mapID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "batch_action_failed", "message": err.Error()})
+				h.logger.Warn("delete_zone failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
 				return
 			}
 			results = append(results, result)
 
 		default:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown_action_type", "message": "unknown action type: " + action.Type})
+			apierror.RespondWithError(c, apierror.NewAPIError("unknown_action_type", "unknown action type: "+action.Type, http.StatusBadRequest))
 			return
 		}
 
@@ -1018,7 +1021,7 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 
 	h.syncAfterZoneChange(teamID, mapID)
 
-	c.JSON(http.StatusOK, batchResponse{Results: results})
+	apierror.RespondWithSuccess(c, http.StatusOK, batchResponse{Results: results})
 }
 
 func (h *ZoneHandler) batchCreateZone(teamID, mapID, editorID int, action batchAction, tempZoneMap map[string]int) (batchActionResult, error) {

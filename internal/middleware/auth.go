@@ -6,19 +6,16 @@ import (
 
 	"eva_trainer/internal/models"
 	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
 
-func RequireAuth(userRepo models.UserRepository, jwtService *services.JWTService) gin.HandlerFunc {
+func RequireAuth(logger services.Logger, userRepo models.UserRepository, jwtService *services.JWTService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, err := extractAndValidateUser(c, userRepo, jwtService)
+		user, err := extractAndValidateUser(c, logger, userRepo, jwtService)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   err.Code,
-				"message": err.Message,
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrorCode(err.Code), err.Message, http.StatusUnauthorized))
 			return
 		}
 
@@ -32,7 +29,7 @@ type authError struct {
 	Message string
 }
 
-func extractAndValidateUser(c *gin.Context, userRepo models.UserRepository, jwtService *services.JWTService) (*models.User, *authError) {
+func extractAndValidateUser(c *gin.Context, logger services.Logger, userRepo models.UserRepository, jwtService *services.JWTService) (*models.User, *authError) {
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
 		return nil, &authError{"missing_authorization", "missing authorization header"}

@@ -1,18 +1,17 @@
 package services
 
 import (
-	"log"
-
 	"eva_trainer/internal/models"
 )
 
 type TemplateSyncService struct {
 	templateRepo models.TemplateRepository
 	zoneRepo     models.ZoneRepository
+	Logger       Logger
 }
 
-func NewTemplateSyncService(templateRepo models.TemplateRepository, zoneRepo models.ZoneRepository) *TemplateSyncService {
-	return &TemplateSyncService{templateRepo: templateRepo, zoneRepo: zoneRepo}
+func NewTemplateSyncService(templateRepo models.TemplateRepository, zoneRepo models.ZoneRepository, logger Logger) *TemplateSyncService {
+	return &TemplateSyncService{templateRepo: templateRepo, zoneRepo: zoneRepo, Logger: logger}
 }
 
 func (s *TemplateSyncService) SyncOnZoneChange(teamID, mapID int) error {
@@ -29,7 +28,7 @@ func (s *TemplateSyncService) SyncOnZoneChange(teamID, mapID int) error {
 	}
 
 	if err := s.templateRepo.UpdateFromMap(template.ID, teamID, mapID); err != nil {
-		log.Printf("warning: failed to sync template %d after zone change on map %d: %v", template.ID, mapID, err)
+		s.Logger.Warn("failed to sync template after zone change", "template", template.ID, "map", mapID, "error", err)
 		return err
 	}
 

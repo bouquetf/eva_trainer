@@ -64,3 +64,15 @@ var (
 
 	ErrVersionNotFound = errors.New("version not found")
 )
+
+var (
+	ErrDiscordUnavailable  = errors.New("discord API is unavailable")
+	ErrDatabaseUnavailable = errors.New("database is unavailable")
+	ErrInternalServer      = errors.New("internal server error")
+	ErrForbidden           = errors.New("forbidden")
+	ErrUnauthorized        = errors.New("unauthorized")
+	ErrConflict            = errors.New("resource conflict")
+	ErrValidation          = errors.New("validation error")
+	ErrBadRequest          = errors.New("bad request")
+	ErrRateLimited         = errors.New("too many requests")
+)

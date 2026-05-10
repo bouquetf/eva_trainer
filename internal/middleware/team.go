@@ -6,11 +6,12 @@ import (
 
 	"eva_trainer/internal/models"
 	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
 
-func RequireTeamRole(teamMemberRepo models.TeamMemberRepository, allowedRoles ...string) gin.HandlerFunc {
+func RequireTeamRole(logger services.Logger, teamMemberRepo models.TeamMemberRepository, allowedRoles ...string) gin.HandlerFunc {
 	roleSet := make(map[string]bool, len(allowedRoles))
 	for _, r := range allowedRoles {
 		roleSet[r] = true
@@ -19,40 +20,24 @@ func RequireTeamRole(teamMemberRepo models.TeamMemberRepository, allowedRoles ..
 	return func(c *gin.Context) {
 		user, err := MustGetUser(c)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "unauthorized",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeUnauthorized, "unauthorized", http.StatusUnauthorized))
 			return
 		}
 
 		teamID, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "invalid_team_id",
-				"message": "invalid team id",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeBadRequest, "invalid team id", http.StatusBadRequest))
 			return
 		}
 
 		member, err := teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 		if err != nil {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "not_team_member",
-				"message": "you are not a member of this team",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeForbidden, "you are not a member of this team", http.StatusForbidden))
 			return
 		}
 
 		if len(roleSet) > 0 && !roleSet[member.Role] {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "insufficient_role",
-				"message": "you don't have the required role",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeForbidden, "you don't have the required role", http.StatusForbidden))
 			return
 		}
 
@@ -71,12 +56,11 @@ func GetTeamMember(c *gin.Context) (*models.TeamMember, bool) {
 	return m, ok
 }
 
-func RequireAuthOrMember(teamMemberRepo models.TeamMemberRepository, userRepo models.UserRepository, jwtService *services.JWTService) gin.HandlerFunc {
+func RequireAuthOrMember(logger services.Logger, teamMemberRepo models.TeamMemberRepository, userRepo models.UserRepository, jwtService *services.JWTService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, err := MustGetUser(c)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeUnauthorized, "unauthorized", http.StatusUnauthorized))
 			return
 		}
 

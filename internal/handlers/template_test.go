@@ -190,7 +190,8 @@ func setupTemplateTest(t *testing.T) *templateTestFixtures {
 	}
 
 	templateHandler := NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo)
-	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo)
+	testLogger := services.NewLogger(services.LogLevelError, services.LogFormatText)
+	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo, testLogger)
 
 	return &templateTestFixtures{
 		db:              db,
@@ -375,8 +376,8 @@ func TestTemplateHandler_PublishMap_NonCaptain(t *testing.T) {
 	createZoneWithPolygon(t, f.zoneRepo, f.team.ID, f.mapObj.ID, "Zone", pts)
 
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	authMw := middleware.RequireAuth(f.userRepo, jwtService)
-	roleMw := middleware.RequireTeamRole(f.teamMemberRepo, "captain", "cocaptain")
+	authMw := middleware.RequireAuth(nil, f.userRepo, jwtService)
+	roleMw := middleware.RequireTeamRole(nil, f.teamMemberRepo, "captain", "cocaptain")
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

@@ -1,7 +1,6 @@
 package services
 
 import (
-	"log"
 	"time"
 
 	"eva_trainer/internal/models"
@@ -11,13 +10,15 @@ type LockCleanupService struct {
 	lockRepo models.EditLockRepository
 	interval time.Duration
 	done     chan struct{}
+	Logger   Logger
 }
 
-func NewLockCleanupService(lockRepo models.EditLockRepository, interval time.Duration) *LockCleanupService {
+func NewLockCleanupService(lockRepo models.EditLockRepository, interval time.Duration, logger Logger) *LockCleanupService {
 	return &LockCleanupService{
 		lockRepo: lockRepo,
 		interval: interval,
 		done:     make(chan struct{}),
+		Logger:   logger,
 	}
 }
 
@@ -31,9 +32,9 @@ func (s *LockCleanupService) Start() {
 			case <-ticker.C:
 				cleaned, err := s.lockRepo.CleanupExpired()
 				if err != nil {
-					log.Printf("LockCleanupService: failed to cleanup expired locks: %v", err)
+					s.Logger.Warn("LockCleanupService: failed to cleanup expired locks", "error", err)
 				} else if cleaned > 0 {
-					log.Printf("LockCleanupService: cleaned %d expired locks", cleaned)
+					s.Logger.Warn("LockCleanupService: cleaned expired locks", "count", cleaned)
 				}
 			case <-s.done:
 				return

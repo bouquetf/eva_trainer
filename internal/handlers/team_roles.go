@@ -7,6 +7,8 @@ import (
 
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,6 +19,7 @@ type TeamRolesHandler struct {
 	userRepo       models.UserRepository
 	rolePermRepo   models.RolePermissionRepository
 	permRepo       models.PermissionRepository
+	logger         services.Logger
 }
 
 func NewTeamRolesHandler(
@@ -25,6 +28,7 @@ func NewTeamRolesHandler(
 	userRepo models.UserRepository,
 	rolePermRepo models.RolePermissionRepository,
 	permRepo models.PermissionRepository,
+	logger services.Logger,
 ) *TeamRolesHandler {
 	return &TeamRolesHandler{
 		teamRepo:       teamRepo,
@@ -32,25 +36,20 @@ func NewTeamRolesHandler(
 		userRepo:       userRepo,
 		rolePermRepo:   rolePermRepo,
 		permRepo:       permRepo,
+		logger:         logger,
 	}
 }
 
 func (h *TeamRolesHandler) ListMembers(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	members, err := h.teamMemberRepo.FindByTeamIDWithDisplayNames(teamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -71,36 +70,25 @@ func (h *TeamRolesHandler) ListMembers(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"members": items,
-	})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"members": items})
 }
 
 func (h *TeamRolesHandler) UpdateRole(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	targetUserID, err := strconv.Atoi(c.Param("userId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_user_id",
-			"message": "invalid user id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
 		return
 	}
 
 	currentMember, ok := middleware.GetTeamMember(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -109,94 +97,61 @@ func (h *TeamRolesHandler) UpdateRole(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.Role == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_role",
-			"message": "role is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_role", "role is required", http.StatusBadRequest))
 		return
 	}
 
 	if !models.ValidRoles[req.Role] {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_role",
-			"message": "invalid team role",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_role", "invalid team role", http.StatusBadRequest))
 		return
 	}
 
 	targetMember, err := h.teamMemberRepo.FindByUserAndTeam(targetUserID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrMemberNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "member_not_found",
-				"message": "member not found in team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("member_not_found", "member not found in team", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	targetUser, err := h.userRepo.FindByID(targetUserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if targetUser.IsAdmin {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "cannot_downgrade_admin",
-			"message": "cannot downgrade an admin",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("cannot_downgrade_admin", "cannot downgrade an admin", http.StatusForbidden))
 		return
 	}
 
 	if targetMember.Role == models.RoleCaptain {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "cannot_downgrade_captain",
-			"message": "cannot downgrade the captain, transfer captaincy first",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("cannot_downgrade_captain", "cannot downgrade the captain, transfer captaincy first", http.StatusForbidden))
 		return
 	}
 
 	if currentMember.Role == models.RoleCocaptain && req.Role == models.RoleCocaptain {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "insufficient_role",
-			"message": "only the captain can promote to cocaptain",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_role", "only the captain can promote to cocaptain", http.StatusForbidden))
 		return
 	}
 
 	if currentMember.Role == models.RoleCocaptain && targetMember.Role == models.RoleCocaptain {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "insufficient_role",
-			"message": "you cannot change the role of another cocaptain",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_role", "you cannot change the role of another cocaptain", http.StatusForbidden))
 		return
 	}
 
 	if err := h.teamMemberRepo.UpdateRole(teamID, targetUserID, req.Role); err != nil {
 		if errors.Is(err, models.ErrTeamAlreadyHasCocaptain) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "team_already_has_cocaptain",
-				"message": "team already has a cocaptain",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("team_already_has_cocaptain", "team already has a cocaptain", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message": "role updated",
 		"user_id": targetUserID,
 		"role":    req.Role,
@@ -206,36 +161,24 @@ func (h *TeamRolesHandler) UpdateRole(c *gin.Context) {
 func (h *TeamRolesHandler) TransferCaptaincy(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	currentMember, ok := middleware.GetTeamMember(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if currentMember.Role != models.RoleCaptain {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "insufficient_role",
-			"message": "only the captain can transfer captaincy",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_role", "only the captain can transfer captaincy", http.StatusForbidden))
 		return
 	}
 
@@ -244,63 +187,42 @@ func (h *TeamRolesHandler) TransferCaptaincy(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request",
-			"message": "user_id is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request", "user_id is required", http.StatusBadRequest))
 		return
 	}
 
 	if req.UserID == user.ID {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "same_user",
-			"message": "cannot transfer captaincy to yourself",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("same_user", "cannot transfer captaincy to yourself", http.StatusBadRequest))
 		return
 	}
 
 	_, err = h.teamMemberRepo.FindByUserAndTeam(req.UserID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrMemberNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "member_not_found",
-				"message": "target user is not a member of this team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("member_not_found", "target user is not a member of this team", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	targetUser, err := h.userRepo.FindByID(req.UserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if targetUser.IsAdmin {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "cannot_downgrade_admin",
-			"message": "cannot transfer captaincy to an admin",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("cannot_downgrade_admin", "cannot transfer captaincy to an admin", http.StatusForbidden))
 		return
 	}
 
 	if err := h.teamRepo.TransferCaptaincy(teamID, user.ID, req.UserID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message":        "captaincy transferred",
 		"new_captain_id": req.UserID,
 	})

@@ -8,6 +8,8 @@ import (
 
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +17,7 @@ import (
 type TeamHandler struct {
 	teamRepo       models.TeamRepository
 	teamMemberRepo models.TeamMemberRepository
+	logger         services.Logger
 }
 
 func (h *TeamHandler) ListAllTeams(c *gin.Context) {
@@ -33,10 +36,7 @@ func (h *TeamHandler) ListAllTeams(c *gin.Context) {
 
 	teams, total, err := h.teamRepo.FindAllPaginated(q, page, perPage)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -77,7 +77,7 @@ func (h *TeamHandler) ListAllTeams(c *gin.Context) {
 		myTeams = []myTeamStatus{}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"teams":    items,
 		"total":    total,
 		"page":     page,
@@ -86,20 +86,18 @@ func (h *TeamHandler) ListAllTeams(c *gin.Context) {
 	})
 }
 
-func NewTeamHandler(teamRepo models.TeamRepository, teamMemberRepo models.TeamMemberRepository) *TeamHandler {
+func NewTeamHandler(teamRepo models.TeamRepository, teamMemberRepo models.TeamMemberRepository, logger services.Logger) *TeamHandler {
 	return &TeamHandler{
 		teamRepo:       teamRepo,
 		teamMemberRepo: teamMemberRepo,
+		logger:         logger,
 	}
 }
 
 func (h *TeamHandler) Create(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
@@ -108,37 +106,25 @@ func (h *TeamHandler) Create(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_name",
-			"message": "team name is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_name", "team name is required", http.StatusBadRequest))
 		return
 	}
 
 	team, err := h.teamRepo.Create(req.Name, user.ID)
 	if err != nil {
 		if errors.Is(err, models.ErrInvalidTeamName) || errors.Is(err, models.ErrTeamNameTooLong) || errors.Is(err, models.ErrTeamNameRequired) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "invalid_team_name",
-				"message": err.Error(),
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_name", err.Error(), http.StatusBadRequest))
 			return
 		}
 		if strings.Contains(err.Error(), "already exists") {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "team_name_exists",
-				"message": "team name already exists",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("team_name_exists", "team name already exists", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{
 		"id":         team.ID,
 		"name":       team.Name,
 		"captain_id": team.CaptainID,
@@ -150,19 +136,13 @@ func (h *TeamHandler) Create(c *gin.Context) {
 func (h *TeamHandler) ListMyTeams(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teams, err := h.teamRepo.FindByUserID(user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -199,64 +179,43 @@ func (h *TeamHandler) ListMyTeams(c *gin.Context) {
 func (h *TeamHandler) GetTeam(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	team, err := h.teamRepo.FindByID(teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrTeamNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "team_not_found",
-				"message": "team not found",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("team_not_found", "team not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	_, err = h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrMemberNotFound) {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "not_team_member",
-				"message": "you are not a member of this team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	members, err := h.teamMemberRepo.FindByTeamIDWithDisplayNames(teamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"team":    team,
 		"members": members,
 	})
@@ -265,19 +224,13 @@ func (h *TeamHandler) GetTeam(c *gin.Context) {
 func (h *TeamHandler) UpdateTeam(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
@@ -286,69 +239,45 @@ func (h *TeamHandler) UpdateTeam(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_name",
-			"message": "team name is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_name", "team name is required", http.StatusBadRequest))
 		return
 	}
 
 	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrMemberNotFound) {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "not_team_member",
-				"message": "you are not a member of this team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if member.Role != models.RoleCaptain {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "insufficient_role",
-			"message": "only the captain can update the team",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_role", "only the captain can update the team", http.StatusForbidden))
 		return
 	}
 
 	if err := h.teamRepo.UpdateName(teamID, req.Name); err != nil {
 		if errors.Is(err, models.ErrInvalidTeamName) || errors.Is(err, models.ErrTeamNameTooLong) || errors.Is(err, models.ErrTeamNameRequired) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "invalid_team_name",
-				"message": err.Error(),
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_name", err.Error(), http.StatusBadRequest))
 			return
 		}
 		if strings.Contains(err.Error(), "already exists") {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "team_name_exists",
-				"message": "team name already exists",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("team_name_exists", "team name already exists", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	team, err := h.teamRepo.FindByID(teamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"id":         team.ID,
 		"name":       team.Name,
 		"captain_id": team.CaptainID,
@@ -360,59 +289,38 @@ func (h *TeamHandler) UpdateTeam(c *gin.Context) {
 func (h *TeamHandler) DeleteTeam(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	team, err := h.teamRepo.FindByID(teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrTeamNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "team_not_found",
-				"message": "team not found",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("team_not_found", "team not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrMemberNotFound) {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "not_team_member",
-				"message": "you are not a member of this team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if member.Role != models.RoleCaptain {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":   "insufficient_role",
-			"message": "only the captain can delete the team",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_role", "only the captain can delete the team", http.StatusForbidden))
 		return
 	}
 
@@ -421,45 +329,30 @@ func (h *TeamHandler) DeleteTeam(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.ConfirmWithName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "confirmation_name_mismatch",
-			"message": "you must provide the team name to confirm deletion",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("confirmation_name_mismatch", "you must provide the team name to confirm deletion", http.StatusBadRequest))
 		return
 	}
 
 	if req.ConfirmWithName != team.Name {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "confirmation_name_mismatch",
-			"message": "team name does not match, confirmation required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("confirmation_name_mismatch", "team name does not match, confirmation required", http.StatusBadRequest))
 		return
 	}
 
 	if err := convertTeamZonesToTemplates(teamID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if err := h.teamRepo.Delete(teamID); err != nil {
 		if errors.Is(err, models.ErrTeamNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "team_not_found",
-				"message": "team not found",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("team_not_found", "team not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message": "team deleted",
 	})
 }
@@ -467,56 +360,38 @@ func (h *TeamHandler) DeleteTeam(c *gin.Context) {
 func (h *TeamHandler) LeaveTeam(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrMemberNotFound) {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "not_team_member",
-				"message": "you are not a member of this team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if member.Role == models.RoleCaptain {
 		if err := convertTeamZonesToTemplates(teamID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "internal_error",
-				"message": "internal server error",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 			return
 		}
 
 		if err := h.teamRepo.Delete(teamID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "internal_error",
-				"message": "internal server error",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
+		apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 			"message": "team deleted (captain left without transfer)",
 		})
 		return
@@ -524,20 +399,14 @@ func (h *TeamHandler) LeaveTeam(c *gin.Context) {
 
 	if err := h.teamMemberRepo.RemoveMember(teamID, user.ID); err != nil {
 		if errors.Is(err, models.ErrMemberNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "member_not_found",
-				"message": "member not found in team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("member_not_found", "member not found in team", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message": "left team",
 	})
 }

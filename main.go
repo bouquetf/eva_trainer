@@ -12,6 +12,7 @@ import (
 
 	"eva_trainer/api"
 	"eva_trainer/db/seed"
+	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
 	"eva_trainer/internal/services"
 	"eva_trainer/pkg/config"
@@ -62,12 +63,17 @@ func main() {
 		log.Printf("Warning: failed to seed maps: %v", err)
 	}
 
+	logger := services.NewLoggerFromConfig(cfg)
+
 	lockRepo := models.NewEditLockRepository(db)
-	lockCleanup := services.NewLockCleanupService(lockRepo, 5*time.Minute)
+	lockCleanup := services.NewLockCleanupService(lockRepo, 5*time.Minute, logger)
 	lockCleanup.Start()
 
-	r := gin.Default()
-	api.SetupRoutes(r, cfg, http.FS(subFS), http.FS(assetsSubFS))
+	r := gin.New()
+	r.Use(services.RequestLogger(logger))
+	r.Use(middleware.RecoveryMiddleware(logger))
+	r.Use(middleware.ErrorHandlerMiddleware(logger))
+	api.SetupRoutes(r, cfg, logger, http.FS(subFS), http.FS(assetsSubFS))
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

@@ -3,13 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,6 +22,7 @@ type HistoryHandler struct {
 	teamMemberRepo models.TeamMemberRepository
 	userRepo       models.UserRepository
 	historyRepo    models.EditHistoryRepository
+	logger         services.Logger
 }
 
 func NewHistoryHandler(
@@ -30,6 +32,7 @@ func NewHistoryHandler(
 	teamMemberRepo models.TeamMemberRepository,
 	userRepo models.UserRepository,
 	historyRepo models.EditHistoryRepository,
+	logger services.Logger,
 ) *HistoryHandler {
 	return &HistoryHandler{
 		versionRepo:    versionRepo,
@@ -38,6 +41,7 @@ func NewHistoryHandler(
 		teamMemberRepo: teamMemberRepo,
 		userRepo:       userRepo,
 		historyRepo:    historyRepo,
+		logger:         logger,
 	}
 }
 
@@ -61,13 +65,13 @@ type listVersionsResponse struct {
 func (h *HistoryHandler) ListVersions(c *gin.Context) {
 	mapID, err := strconv.Atoi(c.Param("mapId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_map_id", "message": "invalid map id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_map_id", "invalid map id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
@@ -90,7 +94,7 @@ func (h *HistoryHandler) ListVersions(c *gin.Context) {
 
 	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not_team_member", "message": "you are not a member of this team"})
+		apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
 		return
 	}
 
@@ -100,29 +104,29 @@ func (h *HistoryHandler) ListVersions(c *gin.Context) {
 	if zoneIDStr != "" {
 		zoneID, err := strconv.Atoi(zoneIDStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+			apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 			return
 		}
 		versions, total, err = h.versionRepo.FindByZone(zoneID, page, limit)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to list zone versions"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list zone versions", http.StatusInternalServerError))
 			return
 		}
 	} else {
 		versions, total, err = h.versionRepo.FindByMap(teamID, mapID, page, limit)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to list versions"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list versions", http.StatusInternalServerError))
 			return
 		}
 	}
 
 	if editorIDStr != "" && member.Role != "captain" && member.Role != "cocaptain" && !user.IsAdmin {
-		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient_permission", "message": "only captains can filter by editor"})
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_permission", "only captains can filter by editor", http.StatusForbidden))
 		return
 	}
 
 	items := h.buildVersionResponseItems(versions)
-	c.JSON(http.StatusOK, listVersionsResponse{
+	apierror.RespondWithSuccess(c, http.StatusOK, listVersionsResponse{
 		Versions: items,
 		Total:    total,
 		Page:     page,
@@ -133,13 +137,13 @@ func (h *HistoryHandler) ListVersions(c *gin.Context) {
 func (h *HistoryHandler) ListZoneVersions(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
@@ -159,22 +163,22 @@ func (h *HistoryHandler) ListZoneVersions(c *gin.Context) {
 
 	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not_team_member", "message": "you are not a member of this team"})
+		apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
 		return
 	}
 
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	if zone.MapID == 0 || zone.TeamID != teamID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found in this team"})
+		apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found in this team", http.StatusNotFound))
 		return
 	}
 
@@ -182,13 +186,13 @@ func (h *HistoryHandler) ListZoneVersions(c *gin.Context) {
 	if member.Role != "captain" && member.Role != "cocaptain" && !user.IsAdmin {
 		boundaryVersionID, err := h.versionRepo.FindFirstOtherEditorVersion(zoneID, user.ID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check version visibility"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check version visibility", http.StatusInternalServerError))
 			return
 		}
 		if boundaryVersionID != nil {
 			boundaryVersion, err := h.versionRepo.FindByID(*boundaryVersionID)
 			if err != nil && !errors.Is(err, models.ErrVersionNotFound) {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get boundary version"})
+				apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get boundary version", http.StatusInternalServerError))
 				return
 			}
 			if boundaryVersion != nil {
@@ -199,7 +203,7 @@ func (h *HistoryHandler) ListZoneVersions(c *gin.Context) {
 
 	allVersions, total, err := h.versionRepo.FindByZone(zoneID, 1, 1000000)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to list zone versions"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list zone versions", http.StatusInternalServerError))
 		return
 	}
 
@@ -228,7 +232,7 @@ func (h *HistoryHandler) ListZoneVersions(c *gin.Context) {
 	}
 
 	items := h.buildVersionResponseItems(filtered)
-	c.JSON(http.StatusOK, listVersionsResponse{
+	apierror.RespondWithSuccess(c, http.StatusOK, listVersionsResponse{
 		Versions: items,
 		Total:    total,
 		Page:     page,
@@ -239,19 +243,19 @@ func (h *HistoryHandler) ListZoneVersions(c *gin.Context) {
 func (h *HistoryHandler) RestoreVersion(c *gin.Context) {
 	zoneID, err := strconv.Atoi(c.Param("zoneId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_zone_id", "message": "invalid zone id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_zone_id", "invalid zone id", http.StatusBadRequest))
 		return
 	}
 
 	versionID, err := strconv.Atoi(c.Param("versionId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_version_id", "message": "invalid version id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_version_id", "invalid version id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
@@ -263,46 +267,46 @@ func (h *HistoryHandler) RestoreVersion(c *gin.Context) {
 	version, err := h.versionRepo.FindByID(versionID)
 	if err != nil {
 		if errors.Is(err, models.ErrVersionNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "version_not_found", "message": "version not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("version_not_found", "version not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get version"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get version", http.StatusInternalServerError))
 		return
 	}
 
 	if version.ZoneID != zoneID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "version_mismatch", "message": "version does not belong to this zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("version_mismatch", "version does not belong to this zone", http.StatusBadRequest))
 		return
 	}
 
 	zone, err := h.zoneRepo.FindByID(zoneID)
 	if err != nil {
 		if errors.Is(err, models.ErrZoneNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to get zone"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to get zone", http.StatusInternalServerError))
 		return
 	}
 
 	if zone.TeamID != teamID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "zone_not_found", "message": "zone not found in this team"})
+		apierror.RespondWithError(c, apierror.NewAPIError("zone_not_found", "zone not found in this team", http.StatusNotFound))
 		return
 	}
 
 	locked, err := h.lockRepo.IsLockedByEditor(zone.TeamID, zone.MapID, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check lock status"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check lock status", http.StatusInternalServerError))
 		return
 	}
 	if !locked {
-		c.JSON(http.StatusLocked, gin.H{"error": "lock_required", "message": "you must acquire the edit lock before restoring a version"})
+		apierror.RespondWithError(c, apierror.NewAPIError("lock_required", "you must acquire the edit lock before restoring a version", http.StatusLocked))
 		return
 	}
 
 	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not_team_member", "message": "you are not a member of this team"})
+		apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
 		return
 	}
 
@@ -310,19 +314,19 @@ func (h *HistoryHandler) RestoreVersion(c *gin.Context) {
 
 	if !isCaptainOrCocaptain {
 		if version.EditorID == nil || *version.EditorID != user.ID {
-			c.JSON(http.StatusForbidden, gin.H{"error": "not_version_author", "message": "you are not the author of this version"})
+			apierror.RespondWithError(c, apierror.NewAPIError("not_version_author", "you are not the author of this version", http.StatusForbidden))
 			return
 		}
 
 		latestVersion, err := h.versionRepo.GetLatestForZone(zoneID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "failed to check latest version"})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check latest version", http.StatusInternalServerError))
 			return
 		}
 		if latestVersion != nil &&
 			latestVersion.ID != versionID &&
 			(latestVersion.EditorID == nil || *latestVersion.EditorID != user.ID) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "zone_modified_by_other", "message": "the zone has been modified by another editor since this version"})
+			apierror.RespondWithError(c, apierror.NewAPIError("zone_modified_by_other", "the zone has been modified by another editor since this version", http.StatusForbidden))
 			return
 		}
 	}
@@ -342,20 +346,20 @@ func (h *HistoryHandler) RestoreVersion(c *gin.Context) {
 
 	for _, p := range currentPolygons {
 		if err := h.zoneRepo.RemovePolygon(p.ID); err != nil {
-			log.Printf("warning: failed to remove polygon %d during restore: %v", p.ID, err)
+			h.logger.Warn("failed to remove polygon during restore", "polygon", p.ID, "error", err)
 		}
 	}
 
 	for _, sp := range version.VersionData.Polygons {
 		_, err := h.zoneRepo.AddPolygon(zoneID, sp.Points, sp.OrderIndex)
 		if err != nil {
-			log.Printf("warning: failed to restore polygon for zone %d: %v", zoneID, err)
+			h.logger.Warn("failed to restore polygon for zone", "zone", zoneID, "error", err)
 		}
 	}
 
 	if version.VersionData.Name != "" {
 		if err := h.zoneRepo.SetName(zoneID, version.VersionData.Name); err != nil {
-			log.Printf("warning: failed to restore name for zone %d: %v", zoneID, err)
+			h.logger.Warn("failed to restore name for zone", "zone", zoneID, "error", err)
 		}
 	}
 
@@ -370,7 +374,7 @@ func (h *HistoryHandler) RestoreVersion(c *gin.Context) {
 	h.historyRepo.Log(zoneID, editorIDPtr, "version_restore", json.RawMessage(oldData), json.RawMessage(newData))
 
 	if err := h.versionRepo.DeleteNewerThan(zoneID, version.CreatedAt); err != nil {
-		log.Printf("warning: failed to delete newer versions after restore (zone=%d): %v", zoneID, err)
+		h.logger.Warn("failed to delete newer versions after restore", "zone", zoneID, "error", err)
 	}
 
 	restoredPolygons, _ := h.zoneRepo.GetPolygons(zoneID)
@@ -380,7 +384,7 @@ func (h *HistoryHandler) RestoreVersion(c *gin.Context) {
 		restoredName = restoredZn.Name
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"zone": models.ZoneWithDetails{
 			ID:        zone.ID,
 			TeamID:    zone.TeamID,

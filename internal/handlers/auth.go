@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
 	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
@@ -21,6 +24,7 @@ type AuthHandler struct {
 	oauthCfg        *oauth2.Config
 	jwtService      *services.JWTService
 	frontendBaseURL string
+	logger          services.Logger
 }
 
 func NewAuthHandler(
@@ -29,6 +33,7 @@ func NewAuthHandler(
 	oauthCfg *oauth2.Config,
 	jwtService *services.JWTService,
 	frontendBaseURL string,
+	logger services.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
 		userRepo:        userRepo,
@@ -36,6 +41,7 @@ func NewAuthHandler(
 		oauthCfg:        oauthCfg,
 		jwtService:      jwtService,
 		frontendBaseURL: frontendBaseURL,
+		logger:          logger,
 	}
 }
 
@@ -44,10 +50,7 @@ func (h *AuthHandler) LoginRedirect(c *gin.Context) {
 
 	state, err := services.GenerateOAuthState(h.jwtService.SecretBytes(), redirect)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -60,45 +63,42 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 	state := c.Query("state")
 
 	if code == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_code",
-			"message": "authorization code is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_code", "authorization code is required", http.StatusBadRequest))
 		return
 	}
 
 	if state == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_state",
-			"message": "state parameter is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_state", "state parameter is required", http.StatusBadRequest))
 		return
 	}
 
 	redirectPath, err := services.ValidateOAuthState(h.jwtService.SecretBytes(), state)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_state",
-			"message": "invalid state parameter",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_state", "invalid state parameter", http.StatusBadRequest))
 		return
 	}
 
 	discordUser, err := services.GetDiscordUser(c.Request.Context(), h.oauthCfg, code)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error":   "discord_api_error",
-			"message": "connexion impossible",
-		})
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			apierror.RespondWithError(c, apierror.NewAPIError(
+				apierror.ErrCodeDiscordAPI,
+				"Discord est actuellement indisponible, veuillez réessayer",
+				http.StatusBadGateway,
+			))
+		} else {
+			apierror.RespondWithError(c, apierror.NewAPIError(
+				apierror.ErrCodeDiscordAPI,
+				"connexion impossible",
+				http.StatusBadGateway,
+			))
+		}
 		return
 	}
 
 	user, isNew, err := h.userRepo.FindOrCreateByDiscordID(discordUser.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -123,19 +123,13 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 
 	accessToken, expiresAt, err := h.jwtService.GenerateAccessToken(user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	refreshPlain, err := h.refreshRepo.CreateRefreshToken(user.ID, time.Now().Add(h.jwtService.RefreshExpiry()))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -157,10 +151,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.RefreshToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_refresh_token",
-			"message": "refresh_token is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_refresh_token", "refresh_token is required", http.StatusBadRequest))
 		return
 	}
 
@@ -168,48 +159,33 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 	existing, err := h.refreshRepo.FindRefreshTokenByHash(tokenHash)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "refresh_token_not_found",
-			"message": "invalid refresh token",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("refresh_token_not_found", "invalid refresh token", http.StatusUnauthorized))
 		return
 	}
 
 	if existing.RevokedAt != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "refresh_token_revoked",
-			"message": "refresh token has been revoked",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("refresh_token_revoked", "refresh token has been revoked", http.StatusUnauthorized))
 		return
 	}
 
 	if time.Now().After(existing.ExpiresAt) {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "refresh_token_expired",
-			"message": "refresh token has expired",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("refresh_token_expired", "refresh token has expired", http.StatusUnauthorized))
 		return
 	}
 
 	newPlain, err := h.refreshRepo.RotateRefreshToken(tokenHash, time.Now().Add(h.jwtService.RefreshExpiry()))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	accessToken, expiresAt, err := h.jwtService.GenerateAccessToken(existing.UserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"access_token":  accessToken,
 		"refresh_token": newPlain,
 		"expires_in":    int(time.Until(expiresAt).Seconds()),
@@ -219,14 +195,11 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 func (h *AuthHandler) Me(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"id":               user.ID,
 		"discord_id":       user.DiscordID,
 		"discord_username": user.DiscordUsername,
@@ -239,10 +212,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 func (h *AuthHandler) UpdateDisplayName(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "unauthorized",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
@@ -251,22 +221,16 @@ func (h *AuthHandler) UpdateDisplayName(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.DisplayName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_display_name",
-			"message": "display name is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_display_name", "display name is required", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.userRepo.UpdateDisplayName(user.ID, req.DisplayName); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "internal server error",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"display_name": req.DisplayName,
 	})
 }

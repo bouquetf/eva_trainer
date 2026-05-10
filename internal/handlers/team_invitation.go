@@ -8,6 +8,8 @@ import (
 
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,6 +20,7 @@ type TeamInvitationHandler struct {
 	userRepo           models.UserRepository
 	teamRepo           models.TeamRepository
 	frontendURL        string
+	logger             services.Logger
 }
 
 func NewTeamInvitationHandler(
@@ -26,6 +29,7 @@ func NewTeamInvitationHandler(
 	userRepo models.UserRepository,
 	teamRepo models.TeamRepository,
 	frontendURL string,
+	logger services.Logger,
 ) *TeamInvitationHandler {
 	return &TeamInvitationHandler{
 		teamInvitationRepo: teamInvitationRepo,
@@ -33,19 +37,20 @@ func NewTeamInvitationHandler(
 		userRepo:           userRepo,
 		teamRepo:           teamRepo,
 		frontendURL:        frontendURL,
+		logger:             logger,
 	}
 }
 
 func (h *TeamInvitationHandler) InviteByDisplayName(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
@@ -53,35 +58,35 @@ func (h *TeamInvitationHandler) InviteByDisplayName(c *gin.Context) {
 		DisplayName string `json:"display_name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.DisplayName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "display_name is required"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request", "display_name is required", http.StatusBadRequest))
 		return
 	}
 
 	targetUser, err := h.userRepo.FindByDisplayNameOrDiscordUsername(req.DisplayName)
 	if err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user_not_found", "message": "User not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("user_not_found", "User not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	inv, err := h.teamInvitationRepo.CreateByUser(teamID, targetUser.ID, user.ID)
 	if err != nil {
 		if errors.Is(err, models.ErrCannotInviteSelf) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot_invite_self", "message": "Vous ne pouvez pas vous inviter vous-même"})
+			apierror.RespondWithError(c, apierror.NewAPIError("cannot_invite_self", "Vous ne pouvez pas vous inviter vous-même", http.StatusBadRequest))
 			return
 		}
 		if errors.Is(err, models.ErrJoinRequestAlreadyMember) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "already_member", "message": "Vous êtes déjà membre de cette équipe"})
+			apierror.RespondWithError(c, apierror.NewAPIError("already_member", "Vous êtes déjà membre de cette équipe", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{
 		"id":                 inv.ID,
 		"team_id":            inv.TeamID,
 		"invited_user_id":    inv.InvitedUserID,
@@ -95,19 +100,19 @@ func (h *TeamInvitationHandler) InviteByDisplayName(c *gin.Context) {
 func (h *TeamInvitationHandler) GenerateInviteLink(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	token, err := models.GenerateInviteToken()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -115,13 +120,13 @@ func (h *TeamInvitationHandler) GenerateInviteLink(c *gin.Context) {
 
 	inv, err := h.teamInvitationRepo.CreateLink(teamID, user.ID, token, expiresAt)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	inviteURL := h.frontendURL + "/invite/" + token
 
-	c.JSON(http.StatusCreated, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{
 		"id":         inv.ID,
 		"team_id":    inv.TeamID,
 		"token":      inv.Token,
@@ -134,55 +139,55 @@ func (h *TeamInvitationHandler) GenerateInviteLink(c *gin.Context) {
 func (h *TeamInvitationHandler) AcceptInvitation(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	invitationID, err := strconv.Atoi(c.Param("invitationId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_invitation_id", "message": "invalid invitation id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_invitation_id", "invalid invitation id", http.StatusBadRequest))
 		return
 	}
 
 	inv, err := h.teamInvitationRepo.FindByID(invitationID)
 	if err != nil {
 		if errors.Is(err, models.ErrInvitationNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "invitation_not_found", "message": "Invitation not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if inv.InvitedUserID == nil || *inv.InvitedUserID != user.ID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not_your_invitation", "message": "Cette invitation ne vous est pas destinée"})
+		apierror.RespondWithError(c, apierror.NewAPIError("not_your_invitation", "Cette invitation ne vous est pas destinée", http.StatusForbidden))
 		return
 	}
 
 	if err := h.teamInvitationRepo.AcceptInvitation(invitationID); err != nil {
 		if errors.Is(err, models.ErrInvitationExpired) {
-			c.JSON(http.StatusGone, gin.H{"error": "invitation_expired", "message": "Ce lien d'invitation a expiré."})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_expired", "Ce lien d'invitation a expiré.", http.StatusGone))
 			return
 		}
 		if errors.Is(err, models.ErrInvitationAlreadyUsed) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invitation_already_used", "message": "Cette invitation a déjà été utilisée."})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_already_used", "Cette invitation a déjà été utilisée.", http.StatusBadRequest))
 			return
 		}
 		if errors.Is(err, models.ErrJoinRequestAlreadyMember) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "already_member", "message": "Vous êtes déjà membre de cette équipe"})
+			apierror.RespondWithError(c, apierror.NewAPIError("already_member", "Vous êtes déjà membre de cette équipe", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	team, err := h.teamRepo.FindByID(inv.TeamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message":   "Vous avez rejoint l'équipe",
 		"team_id":   inv.TeamID,
 		"team_name": team.Name,
@@ -192,90 +197,90 @@ func (h *TeamInvitationHandler) AcceptInvitation(c *gin.Context) {
 func (h *TeamInvitationHandler) DeclineInvitation(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	invitationID, err := strconv.Atoi(c.Param("invitationId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_invitation_id", "message": "invalid invitation id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_invitation_id", "invalid invitation id", http.StatusBadRequest))
 		return
 	}
 
 	inv, err := h.teamInvitationRepo.FindByID(invitationID)
 	if err != nil {
 		if errors.Is(err, models.ErrInvitationNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "invitation_not_found", "message": "Invitation not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if inv.InvitedUserID == nil || *inv.InvitedUserID != user.ID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not_your_invitation", "message": "Cette invitation ne vous est pas destinée"})
+		apierror.RespondWithError(c, apierror.NewAPIError("not_your_invitation", "Cette invitation ne vous est pas destinée", http.StatusForbidden))
 		return
 	}
 
 	if err := h.teamInvitationRepo.DeclineInvitation(invitationID); err != nil {
 		if errors.Is(err, models.ErrInvitationNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "invitation_not_found", "message": "Invitation not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Invitation refusée"})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Invitation refusée"})
 }
 
 func (h *TeamInvitationHandler) AcceptInviteLink(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	token := c.Param("token")
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_token", "message": "token is required"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_token", "token is required", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.teamInvitationRepo.AcceptByToken(token, user.ID); err != nil {
 		if errors.Is(err, models.ErrInvitationExpired) {
-			c.JSON(http.StatusGone, gin.H{"error": "invitation_expired", "message": "Ce lien d'invitation a expiré."})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_expired", "Ce lien d'invitation a expiré.", http.StatusGone))
 			return
 		}
 		if errors.Is(err, models.ErrInvitationAlreadyUsed) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invitation_already_used", "message": "Cette invitation a déjà été utilisée."})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_already_used", "Cette invitation a déjà été utilisée.", http.StatusBadRequest))
 			return
 		}
 		if errors.Is(err, models.ErrInvitationNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "invitation_not_found", "message": "Invitation not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
 			return
 		}
 		if errors.Is(err, models.ErrJoinRequestAlreadyMember) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "already_member", "message": "Vous êtes déjà membre de cette équipe"})
+			apierror.RespondWithError(c, apierror.NewAPIError("already_member", "Vous êtes déjà membre de cette équipe", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	inv, err := h.teamInvitationRepo.FindByToken(token)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	team, err := h.teamRepo.FindByID(inv.TeamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message":   "Vous avez rejoint l'équipe",
 		"team_id":   inv.TeamID,
 		"team_name": team.Name,
@@ -285,29 +290,29 @@ func (h *TeamInvitationHandler) AcceptInviteLink(c *gin.Context) {
 func (h *TeamInvitationHandler) GetInviteLinkInfo(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_token", "message": "token is required"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_token", "token is required", http.StatusBadRequest))
 		return
 	}
 
 	inv, err := h.teamInvitationRepo.FindByToken(token)
 	if err != nil {
 		if errors.Is(err, models.ErrInvitationNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "invitation_not_found", "message": "Invitation not found"})
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	team, err := h.teamRepo.FindByID(inv.TeamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	isExpired := time.Now().After(inv.ExpiresAt)
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"team_id":    inv.TeamID,
 		"team_name":  team.Name,
 		"expires_at": inv.ExpiresAt,
@@ -318,13 +323,13 @@ func (h *TeamInvitationHandler) GetInviteLinkInfo(c *gin.Context) {
 func (h *TeamInvitationHandler) ListMyInvitations(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	invs, err := h.teamInvitationRepo.FindPendingByUser(user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -361,13 +366,13 @@ func (h *TeamInvitationHandler) ListMyInvitations(c *gin.Context) {
 func (h *TeamInvitationHandler) ListPendingByTeam(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	invs, err := h.teamInvitationRepo.FindPendingByTeam(teamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -410,25 +415,25 @@ func (h *TeamInvitationHandler) ListPendingByTeam(c *gin.Context) {
 		items = append(items, item)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"invitations": items})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"invitations": items})
 }
 
 func (h *TeamInvitationHandler) SearchUsers(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	query := c.Query("q")
 	if query == "" {
-		c.JSON(http.StatusOK, gin.H{"users": []interface{}{}})
+		apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"users": []interface{}{}})
 		return
 	}
 
 	users, err := h.userRepo.SearchUsers(query, 10)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -450,5 +455,5 @@ func (h *TeamInvitationHandler) SearchUsers(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": items})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"users": items})
 }

@@ -82,7 +82,7 @@ func setupTest(t *testing.T) (*services.JWTService, *mockUserRepo, *gin.Engine) 
 	}
 
 	r := gin.New()
-	r.GET("/protected", RequireAuth(repo, svc), func(c *gin.Context) {
+	r.GET("/protected", RequireAuth(nil, repo, svc), func(c *gin.Context) {
 		user, _ := GetUser(c)
 		c.JSON(http.StatusOK, gin.H{
 			"user_id":    user.ID,
@@ -171,7 +171,7 @@ func TestRequireAuth_ExpiredToken(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/protected", RequireAuth(repo, svc), func(c *gin.Context) {
+	r.GET("/protected", RequireAuth(nil, repo, svc), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
@@ -206,7 +206,7 @@ func TestRequireAuth_UserNotFound(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/protected", RequireAuth(repo, svc), func(c *gin.Context) {
+	r.GET("/protected", RequireAuth(nil, repo, svc), func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 

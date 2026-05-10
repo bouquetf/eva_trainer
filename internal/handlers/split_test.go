@@ -311,7 +311,7 @@ func TestSplitHandler_CreateSplit_ForbiddenForNonAdmin(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 
-	authMw := middleware.RequireAuth(userRepo, jwtService)
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
 	adminMw := middleware.RequireAdmin()
 
 	authMw(c)
@@ -347,7 +347,7 @@ func TestSplitHandler_CreateSplit_Unauthorized(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 
-	authMw := middleware.RequireAuth(userRepo, jwtService)
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
 	authMw(c)
 	if !c.IsAborted() {
 		c.Next()
@@ -765,8 +765,8 @@ func TestSplitHandler_GetSplitMapsPublic_Success(t *testing.T) {
 	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", splitID)}}
 	c.Request.Header.Set("Authorization", "Bearer "+nonAdminToken)
 
-	authMw := middleware.RequireAuth(userRepo, jwtService)
-	permMw := middleware.RequireGlobalPermission(permRepo, rolePermRepo, "split:view")
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
+	permMw := middleware.RequireGlobalPermission(nil, permRepo, rolePermRepo, "split:view")
 
 	authMw(c)
 	if !c.IsAborted() {
@@ -805,8 +805,8 @@ func TestSplitHandler_GetSplitMapsPublic_NotFound(t *testing.T) {
 	c.Params = gin.Params{{Key: "id", Value: "99999"}}
 	c.Request.Header.Set("Authorization", "Bearer "+token)
 
-	authMw := middleware.RequireAuth(userRepo, jwtService)
-	permMw := middleware.RequireGlobalPermission(permRepo, rolePermRepo, "split:view")
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
+	permMw := middleware.RequireGlobalPermission(nil, permRepo, rolePermRepo, "split:view")
 
 	authMw(c)
 	if !c.IsAborted() {
@@ -846,8 +846,8 @@ func TestSplitHandler_ListSplitsPublic_Success(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/splits", nil)
 	c.Request.Header.Set("Authorization", "Bearer "+nonAdminToken)
 
-	authMw := middleware.RequireAuth(userRepo, jwtService)
-	permMw := middleware.RequireGlobalPermission(permRepo, rolePermRepo, "split:view")
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
+	permMw := middleware.RequireGlobalPermission(nil, permRepo, rolePermRepo, "split:view")
 
 	authMw(c)
 	if !c.IsAborted() {
@@ -883,7 +883,7 @@ func TestSplitHandler_ListSplitsPublic_Unauthorized(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/splits", nil)
 
-	authMw := middleware.RequireAuth(userRepo, jwtService)
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
 	authMw(c)
 	if !c.IsAborted() {
 		c.Next()
@@ -917,8 +917,8 @@ func TestSplitHandler_ListSplitsPublic_Forbidden(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/splits", nil)
 	c.Request.Header.Set("Authorization", "Bearer "+token)
 
-	authMw := middleware.RequireAuth(userRepo, jwtService)
-	permMw := middleware.RequireGlobalPermission(permRepo, rolePermRepo, "split:view")
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
+	permMw := middleware.RequireGlobalPermission(nil, permRepo, rolePermRepo, "split:view")
 
 	authMw(c)
 	if !c.IsAborted() {

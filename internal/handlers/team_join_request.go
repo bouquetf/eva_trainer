@@ -8,6 +8,8 @@ import (
 
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,6 +19,7 @@ type TeamJoinRequestHandler struct {
 	teamMemberRepo  models.TeamMemberRepository
 	teamRepo        models.TeamRepository
 	userRepo        models.UserRepository
+	logger          services.Logger
 }
 
 func NewTeamJoinRequestHandler(
@@ -24,43 +27,45 @@ func NewTeamJoinRequestHandler(
 	teamMemberRepo models.TeamMemberRepository,
 	teamRepo models.TeamRepository,
 	userRepo models.UserRepository,
+	logger services.Logger,
 ) *TeamJoinRequestHandler {
 	return &TeamJoinRequestHandler{
 		joinRequestRepo: joinRequestRepo,
 		teamMemberRepo:  teamMemberRepo,
 		teamRepo:        teamRepo,
 		userRepo:        userRepo,
+		logger:          logger,
 	}
 }
 
 func (h *TeamJoinRequestHandler) RequestJoin(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	jr, err := h.joinRequestRepo.Create(teamID, user.ID)
 	if err != nil {
 		if errors.Is(err, models.ErrJoinRequestAlreadyMember) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "already_member", "message": "Vous êtes déjà membre de cette équipe"})
+			apierror.RespondWithError(c, apierror.NewAPIError("already_member", "Vous êtes déjà membre de cette équipe", http.StatusBadRequest))
 			return
 		}
 		if errors.Is(err, models.ErrJoinRequestAlreadyExists) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "request_already_exists", "message": "Vous avez déjà une demande en attente pour cette équipe"})
+			apierror.RespondWithError(c, apierror.NewAPIError("request_already_exists", "Vous avez déjà une demande en attente pour cette équipe", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{
 		"id":         jr.ID,
 		"team_id":    jr.TeamID,
 		"user_id":    jr.UserID,
@@ -72,13 +77,13 @@ func (h *TeamJoinRequestHandler) RequestJoin(c *gin.Context) {
 func (h *TeamJoinRequestHandler) ListPendingRequests(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	reqs, err := h.joinRequestRepo.FindPendingByTeam(teamID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -107,52 +112,52 @@ func (h *TeamJoinRequestHandler) ListPendingRequests(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"requests": items})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"requests": items})
 }
 
 func (h *TeamJoinRequestHandler) AcceptRequest(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	requestID, err := strconv.Atoi(c.Param("requestId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_id", "message": "invalid request id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_id", "invalid request id", http.StatusBadRequest))
 		return
 	}
 
 	jr, err := h.joinRequestRepo.FindByID(requestID)
 	if err != nil {
 		if errors.Is(err, models.ErrJoinRequestNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Demande d'adhésion introuvable"})
+			apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Demande d'adhésion introuvable", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if jr.TeamID != teamID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Demande d'adhésion introuvable"})
+		apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Demande d'adhésion introuvable", http.StatusNotFound))
 		return
 	}
 
 	if jr.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "request_already_processed", "message": "Cette demande a déjà été traitée"})
+		apierror.RespondWithError(c, apierror.NewAPIError("request_already_processed", "Cette demande a déjà été traitée", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.joinRequestRepo.AcceptRequest(requestID); err != nil {
 		if errors.Is(err, models.ErrJoinRequestAlreadyMember) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "already_member", "message": "Vous êtes déjà membre de cette équipe"})
+			apierror.RespondWithError(c, apierror.NewAPIError("already_member", "Vous êtes déjà membre de cette équipe", http.StatusBadRequest))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message": "Demande acceptée",
 		"user_id": jr.UserID,
 	})
@@ -161,46 +166,46 @@ func (h *TeamJoinRequestHandler) AcceptRequest(c *gin.Context) {
 func (h *TeamJoinRequestHandler) DeclineRequest(c *gin.Context) {
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	requestID, err := strconv.Atoi(c.Param("requestId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request_id", "message": "invalid request id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_id", "invalid request id", http.StatusBadRequest))
 		return
 	}
 
 	jr, err := h.joinRequestRepo.FindByID(requestID)
 	if err != nil {
 		if errors.Is(err, models.ErrJoinRequestNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Demande d'adhésion introuvable"})
+			apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Demande d'adhésion introuvable", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if jr.TeamID != teamID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Demande d'adhésion introuvable"})
+		apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Demande d'adhésion introuvable", http.StatusNotFound))
 		return
 	}
 
 	if jr.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "request_already_processed", "message": "Cette demande a déjà été traitée"})
+		apierror.RespondWithError(c, apierror.NewAPIError("request_already_processed", "Cette demande a déjà été traitée", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.joinRequestRepo.DeclineRequest(requestID); err != nil {
 		if errors.Is(err, models.ErrJoinRequestNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Demande d'adhésion introuvable"})
+			apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Demande d'adhésion introuvable", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message": "Demande refusée",
 		"user_id": jr.UserID,
 	})
@@ -209,27 +214,27 @@ func (h *TeamJoinRequestHandler) DeclineRequest(c *gin.Context) {
 func (h *TeamJoinRequestHandler) GetMyRequest(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	jr, err := h.joinRequestRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrJoinRequestNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Aucune demande d'adhésion trouvée"})
+			apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Aucune demande d'adhésion trouvée", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"id":         jr.ID,
 		"team_id":    jr.TeamID,
 		"user_id":    jr.UserID,
@@ -241,44 +246,44 @@ func (h *TeamJoinRequestHandler) GetMyRequest(c *gin.Context) {
 func (h *TeamJoinRequestHandler) CancelMyRequest(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized", "message": "unauthorized"})
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_team_id", "message": "invalid team id"})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	jr, err := h.joinRequestRepo.FindByUserAndTeam(user.ID, teamID)
 	if err != nil {
 		if errors.Is(err, models.ErrJoinRequestNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Aucune demande d'adhésion trouvée"})
+			apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Aucune demande d'adhésion trouvée", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
 	if jr.UserID != user.ID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not_your_request", "message": "Vous n'êtes pas l'auteur de cette demande"})
+		apierror.RespondWithError(c, apierror.NewAPIError("not_your_request", "Vous n'êtes pas l'auteur de cette demande", http.StatusForbidden))
 		return
 	}
 
 	if jr.Status != "pending" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "request_already_processed", "message": "Cette demande a déjà été traitée"})
+		apierror.RespondWithError(c, apierror.NewAPIError("request_already_processed", "Cette demande a déjà été traitée", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.joinRequestRepo.CancelRequest(jr.ID); err != nil {
 		if errors.Is(err, models.ErrJoinRequestNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "request_not_found", "message": "Demande d'adhésion introuvable"})
+			apierror.RespondWithError(c, apierror.NewAPIError("request_not_found", "Demande d'adhésion introuvable", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error", "message": "internal server error"})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Demande annulée"})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Demande annulée"})
 }

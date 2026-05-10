@@ -3,27 +3,22 @@ package middleware
 import (
 	"net/http"
 
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
+
 	"github.com/gin-gonic/gin"
 )
 
-func RequireAdmin() gin.HandlerFunc {
+func RequireAdmin(logger services.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, err := MustGetUser(c)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "unauthorized",
-				"message": "unauthorized",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeUnauthorized, "unauthorized", http.StatusUnauthorized))
 			return
 		}
 
 		if !user.IsAdmin {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "admin access required",
-			})
-			c.Abort()
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeForbidden, "admin access required", http.StatusForbidden))
 			return
 		}
 

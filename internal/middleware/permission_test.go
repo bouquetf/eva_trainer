@@ -144,7 +144,7 @@ func setupPermissionMiddlewareTest(t *testing.T, role string, isAdmin bool, hasP
 			c.Set("team_member", member)
 			c.Next()
 		},
-		RequirePermission(memberRepo, rolePermRepo, permRepo, "team:delete"),
+		RequirePermission(nil, memberRepo, rolePermRepo, permRepo, "team:delete"),
 		func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"ok": true})
 		},
@@ -196,8 +196,8 @@ func TestRequirePermission_MemberWithoutPermission(t *testing.T) {
 
 	var resp map[string]string
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["error"] != "insufficient_permission" {
-		t.Errorf("expected 'insufficient_permission', got '%s'", resp["error"])
+	if resp["error"] != "forbidden" {
+		t.Errorf("expected 'forbidden', got '%s'", resp["error"])
 	}
 }
 
@@ -223,7 +223,7 @@ func TestRequirePermission_NonMember(t *testing.T) {
 			c.Set("user", user)
 			c.Next()
 		},
-		RequirePermission(memberRepo, rolePermRepo, permRepo, "team:delete"),
+		RequirePermission(nil, memberRepo, rolePermRepo, permRepo, "team:delete"),
 		func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"ok": true})
 		},
@@ -239,8 +239,8 @@ func TestRequirePermission_NonMember(t *testing.T) {
 
 	var resp map[string]string
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["error"] != "not_team_member" {
-		t.Errorf("expected 'not_team_member', got '%s'", resp["error"])
+	if resp["error"] != "forbidden" {
+		t.Errorf("expected 'forbidden', got '%s'", resp["error"])
 	}
 }
 
@@ -269,7 +269,7 @@ func TestRequireTeamRole_BlocksBeforePermission(t *testing.T) {
 			c.Set("team_member", member)
 			c.Next()
 		},
-		RequireTeamRole(memberRepo, "captain"),
+		RequireTeamRole(nil, memberRepo, "captain"),
 		func(c *gin.Context) {
 			t.Error("handler should not be reached")
 			c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -286,7 +286,7 @@ func TestRequireTeamRole_BlocksBeforePermission(t *testing.T) {
 
 	var resp map[string]string
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["error"] != "insufficient_role" {
-		t.Errorf("expected 'insufficient_role', got '%s'", resp["error"])
+	if resp["error"] != "forbidden" {
+		t.Errorf("expected 'forbidden', got '%s'", resp["error"])
 	}
 }

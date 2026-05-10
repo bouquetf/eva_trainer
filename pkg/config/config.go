@@ -33,12 +33,18 @@ type CORSConfig struct {
 	Origins []string
 }
 
+type LogConfig struct {
+	Level  string
+	Format string
+}
+
 type AppConfig struct {
 	Server   ServerConfig
 	Database database.Config
 	Discord  DiscordConfig
 	JWT      JWTConfig
 	CORS     CORSConfig
+	Log      LogConfig
 }
 
 func Load() (*AppConfig, error) {
@@ -65,6 +71,10 @@ func Load() (*AppConfig, error) {
 		Database: database.LoadConfigFromEnv(),
 		CORS: CORSConfig{
 			Origins: getOrigins("CORS_ORIGINS"),
+		},
+		Log: LogConfig{
+			Level:  getEnv("LOG_LEVEL", "info"),
+			Format: getEnv("LOG_FORMAT", "auto"),
 		},
 	}
 

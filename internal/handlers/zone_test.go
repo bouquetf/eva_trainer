@@ -157,7 +157,8 @@ func setupZoneTest(t *testing.T) *zoneTestFixtures {
 		t.Fatalf("GenerateAccessToken failed: %v", err)
 	}
 
-	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo)
+	testLogger := services.NewLogger(services.LogLevelError, services.LogFormatText)
+	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo, testLogger)
 	lockHandler := NewEditLockHandler(lockRepo, userRepo)
 
 	return &zoneTestFixtures{

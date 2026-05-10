@@ -238,8 +238,8 @@ func TestTeamRolesHandler_ListMembers_NonMember(t *testing.T) {
 	}
 
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	authMw := middleware.RequireAuth(userRepo, jwtService)
-	memberMw := middleware.RequireTeamRole(memberRepo)
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
+	memberMw := middleware.RequireTeamRole(nil, memberRepo)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -393,7 +393,7 @@ func TestTeamRolesHandler_UpdateRole_NonCaptain(t *testing.T) {
 
 	// Set up context with auth middleware manually
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	authMw := middleware.RequireAuth(userRepo, jwtService)
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -408,7 +408,7 @@ func TestTeamRolesHandler_UpdateRole_NonCaptain(t *testing.T) {
 		{Key: "userId", Value: fmt.Sprintf("%d", target.ID)},
 	}
 
-	roleMw := middleware.RequireTeamRole(memberRepo, "captain")
+	roleMw := middleware.RequireTeamRole(nil, memberRepo, "captain")
 
 	authMw(c)
 	if !c.IsAborted() {
@@ -659,7 +659,7 @@ func TestTeamRolesHandler_TransferCaptaincy_NonCaptain(t *testing.T) {
 	}
 
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	authMw := middleware.RequireAuth(userRepo, jwtService)
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

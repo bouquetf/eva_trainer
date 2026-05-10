@@ -47,7 +47,7 @@ func serveFrontendFile(c *gin.Context, name string, fs http.FileSystem) {
 	http.ServeContent(c.Writer, c.Request, stat.Name(), stat.ModTime(), f)
 }
 
-func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSystem, assetsFS http.FileSystem) {
+func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, logger services.Logger, frontendFS http.FileSystem, assetsFS http.FileSystem) {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.CORS.Origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -59,19 +59,19 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 
 	apiV1 := r.Group("/api/v1")
 
-	setupAuthRoutes(apiV1, cfg)
-	setupTeamRoutes(apiV1, cfg)
-	setupAdminRoutes(apiV1, cfg)
+	setupAuthRoutes(apiV1, cfg, logger)
+	setupTeamRoutes(apiV1, cfg, logger)
+	setupAdminRoutes(apiV1, cfg, logger)
 
-	apiV1.GET("/maps/:id/image", handlers.NewMapHandler(models.NewMapRepository(database.DB())).ServeImage)
+	apiV1.GET("/maps/:id/image", handlers.NewMapHandler(models.NewMapRepository(database.DB()), logger).ServeImage)
 
 	deps := newCoreDeps(cfg)
 	splitPublicRepo := models.NewSplitRepository(database.DB())
-	splitPublicHandler := handlers.NewSplitHandler(splitPublicRepo)
+	splitPublicHandler := handlers.NewSplitHandler(splitPublicRepo, logger)
 
 	splitsPublic := apiV1.Group("/splits")
-	splitsPublic.Use(middleware.RequireAuth(deps.userRepo, deps.jwtService))
-	splitsPublic.Use(middleware.RequireGlobalPermission(deps.permRepo, deps.rolePermRepo, "split:view"))
+	splitsPublic.Use(middleware.RequireAuth(logger, deps.userRepo, deps.jwtService))
+	splitsPublic.Use(middleware.RequireGlobalPermission(logger, deps.permRepo, deps.rolePermRepo, "split:view"))
 	{
 		splitsPublic.GET("", splitPublicHandler.ListSplitsPublic)
 		splitsPublic.GET("/:id/maps", splitPublicHandler.GetSplitMapsPublic)
@@ -88,7 +88,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, frontendFS http.FileSyste
 	}
 }
 
-func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
+func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services.Logger) {
 	db := database.DB()
 	userRepo := models.NewUserRepository(db)
 	teamRepo := models.NewTeamRepository(db)
@@ -97,196 +97,196 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	permRepo := models.NewPermissionRepository(db)
 	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
 
-	teamHandler := handlers.NewTeamHandler(teamRepo, teamMemberRepo)
-	teamRolesHandler := handlers.NewTeamRolesHandler(teamRepo, teamMemberRepo, userRepo, rolePermRepo, permRepo)
+	teamHandler := handlers.NewTeamHandler(teamRepo, teamMemberRepo, logger)
+	teamRolesHandler := handlers.NewTeamRolesHandler(teamRepo, teamMemberRepo, userRepo, rolePermRepo, permRepo, logger)
 
 	invitationRepo := models.NewTeamInvitationRepository(db, teamMemberRepo)
 	joinRequestRepo := models.NewTeamJoinRequestRepository(db, teamMemberRepo)
-	teamInvitationHandler := handlers.NewTeamInvitationHandler(invitationRepo, teamMemberRepo, userRepo, teamRepo, cfg.Server.FrontendURL)
-	joinRequestHandler := handlers.NewTeamJoinRequestHandler(joinRequestRepo, teamMemberRepo, teamRepo, userRepo)
+	teamInvitationHandler := handlers.NewTeamInvitationHandler(invitationRepo, teamMemberRepo, userRepo, teamRepo, cfg.Server.FrontendURL, logger)
+	joinRequestHandler := handlers.NewTeamJoinRequestHandler(joinRequestRepo, teamMemberRepo, teamRepo, userRepo, logger)
 
 	mapRepo := models.NewMapRepository(db)
 	zoneRepo := models.NewZoneRepository(db)
 	lockRepo := models.NewEditLockRepository(db)
 	historyRepo := models.NewEditHistoryRepository(db)
 	versionRepo := models.NewZoneVersionRepository(db)
-	mapHandler := handlers.NewMapHandler(mapRepo)
+	mapHandler := handlers.NewMapHandler(mapRepo, logger)
 	templateRepo := models.NewTemplateRepository(db)
-	templateSyncSvc := services.NewTemplateSyncService(templateRepo, zoneRepo)
-	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc, versionRepo)
-	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo)
-	historyHandler := handlers.NewHistoryHandler(versionRepo, zoneRepo, lockRepo, teamMemberRepo, userRepo, historyRepo)
+	templateSyncSvc := services.NewTemplateSyncService(templateRepo, zoneRepo, logger)
+	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc, versionRepo, logger)
+	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo, logger)
+	historyHandler := handlers.NewHistoryHandler(versionRepo, zoneRepo, lockRepo, teamMemberRepo, userRepo, historyRepo, logger)
 
-	templateHandler := handlers.NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo)
+	templateHandler := handlers.NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo, logger)
 
-	rg.GET("/myteams", middleware.RequireAuth(userRepo, jwtService), teamHandler.ListMyTeams)
+	rg.GET("/myteams", middleware.RequireAuth(logger, userRepo, jwtService), teamHandler.ListMyTeams)
 
 	teams := rg.Group("/teams")
-	teams.Use(middleware.RequireAuth(userRepo, jwtService))
+	teams.Use(middleware.RequireAuth(logger, userRepo, jwtService))
 	{
 		teams.POST("", teamHandler.Create)
 		teams.GET("", teamHandler.ListAllTeams)
-		teams.GET("/:id", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamHandler.GetTeam)
-		teams.PUT("/:id", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:edit"), teamHandler.UpdateTeam)
-		teams.DELETE("/:id", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:delete"), teamHandler.DeleteTeam)
-		teams.POST("/:id/leave", middleware.RequireTeamRole(teamMemberRepo, "member"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:leave"), teamHandler.LeaveTeam)
+		teams.GET("/:id", middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamHandler.GetTeam)
+		teams.PUT("/:id", middleware.RequireTeamRole(logger, teamMemberRepo, "captain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:edit"), teamHandler.UpdateTeam)
+		teams.DELETE("/:id", middleware.RequireTeamRole(logger, teamMemberRepo, "captain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:delete"), teamHandler.DeleteTeam)
+		teams.POST("/:id/leave", middleware.RequireTeamRole(logger, teamMemberRepo, "member"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:leave"), teamHandler.LeaveTeam)
 
-		teams.GET("/:id/maps", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), mapHandler.ListTeamMaps)
-		teams.GET("/:id/members", middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamRolesHandler.ListMembers)
-		teams.PUT("/:id/members/:userId/role", middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:assign"), teamRolesHandler.UpdateRole)
-		teams.POST("/:id/transfer-captaincy", middleware.RequireTeamRole(teamMemberRepo, "captain"), middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "member:role:transfer-captain"), teamRolesHandler.TransferCaptaincy)
+		teams.GET("/:id/maps", middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"), mapHandler.ListTeamMaps)
+		teams.GET("/:id/members", middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamRolesHandler.ListMembers)
+		teams.PUT("/:id/members/:userId/role", middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:role:assign"), teamRolesHandler.UpdateRole)
+		teams.POST("/:id/transfer-captaincy", middleware.RequireTeamRole(logger, teamMemberRepo, "captain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:role:transfer-captain"), teamRolesHandler.TransferCaptaincy)
 
 		teams.POST("/:id/invitations",
-			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
 			teamInvitationHandler.InviteByDisplayName,
 		)
 		teams.POST("/:id/invitations/link",
-			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
 			teamInvitationHandler.GenerateInviteLink,
 		)
 
 		teams.GET("/:id/maps/:mapId/zones",
-			middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:view"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:view"),
 			zoneHandler.ListZones,
 		)
 		teams.POST("/:id/maps/:mapId/zones",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:create"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:create"),
 			zoneHandler.CreateZone,
 		)
 		teams.POST("/:id/maps/:mapId/zones/batch",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.BatchActions,
 		)
 
 		teams.POST("/:id/maps/:mapId/lock",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:lock"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:lock"),
 			lockHandler.AcquireLock,
 		)
 		teams.POST("/:id/maps/:mapId/lock/release",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			lockHandler.ReleaseLockForEditor,
 		)
 		teams.DELETE("/:id/maps/:mapId/lock",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			lockHandler.ReleaseLock,
 		)
 		teams.PUT("/:id/maps/:mapId/lock",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			lockHandler.RefreshLock,
 		)
 		teams.GET("/:id/maps/:mapId/lock",
-			middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
 			lockHandler.GetLockStatus,
 		)
 
 		teams.POST("/:id/maps/:mapId/publish",
-			middleware.RequireTeamRole(teamMemberRepo, "cocaptain", "captain"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "cocaptain", "captain"),
 			templateHandler.PublishMap,
 		)
 		teams.GET("/:id/maps/:mapId/publish-status",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			templateHandler.GetPublishStatus,
 		)
 
 		teams.GET("/:id/zones/:zoneId",
-			middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:view"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:view"),
 			zoneHandler.GetZone,
 		)
 		teams.DELETE("/:id/zones/:zoneId",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:delete"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:delete"),
 			zoneHandler.DeleteZone,
 		)
 		teams.PUT("/:id/zones/:zoneId/name",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.SetZoneName,
 		)
 		teams.POST("/:id/zones/:zoneId/polygons",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.AddPolygon,
 		)
 		teams.DELETE("/:id/zones/:zoneId/polygons/:polygonId",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.RemovePolygon,
 		)
 		teams.PUT("/:id/zones/:zoneId/polygons/:polygonId/points",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.UpdatePolygonPoints,
 		)
 		teams.POST("/:id/zones/:zoneId/polygons/:polygonId/points",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.AddPolygonPoint,
 		)
 		teams.DELETE("/:id/zones/:zoneId/polygons/:polygonId/points/:pointIndex",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.RemovePolygonPoint,
 		)
 		teams.GET("/:id/maps/:mapId/versions",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
 			historyHandler.ListVersions,
 		)
 		teams.GET("/:id/zones/:zoneId/versions",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
 			historyHandler.ListZoneVersions,
 		)
 		teams.POST("/:id/zones/:zoneId/versions/:versionId/restore",
-			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
 			historyHandler.RestoreVersion,
 		)
 
 		teams.GET("/:id/invitations/pending",
-			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:view"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:requests:view"),
 			teamInvitationHandler.ListPendingByTeam,
 		)
 
 		teams.GET("/:id/join-requests/mine",
-			middleware.RequireAuthOrMember(teamMemberRepo, userRepo, jwtService),
+			middleware.RequireAuthOrMember(logger, teamMemberRepo, userRepo, jwtService),
 			joinRequestHandler.GetMyRequest,
 		)
 		teams.DELETE("/:id/join-requests/mine",
-			middleware.RequireAuthOrMember(teamMemberRepo, userRepo, jwtService),
+			middleware.RequireAuthOrMember(logger, teamMemberRepo, userRepo, jwtService),
 			joinRequestHandler.CancelMyRequest,
 		)
 		teams.POST("/:id/join-requests",
-			middleware.RequireAuthOrMember(teamMemberRepo, userRepo, jwtService),
+			middleware.RequireAuthOrMember(logger, teamMemberRepo, userRepo, jwtService),
 			joinRequestHandler.RequestJoin,
 		)
 		teams.GET("/:id/join-requests",
-			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:view"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:requests:view"),
 			joinRequestHandler.ListPendingRequests,
 		)
 		teams.PUT("/:id/join-requests/:requestId/accept",
-			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:manage"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:requests:manage"),
 			joinRequestHandler.AcceptRequest,
 		)
 		teams.PUT("/:id/join-requests/:requestId/decline",
-			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
-			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:manage"),
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:requests:manage"),
 			joinRequestHandler.DeclineRequest,
 		)
 	}
 
 	invitations := rg.Group("/invitations")
-	invitations.Use(middleware.RequireAuth(userRepo, jwtService))
+	invitations.Use(middleware.RequireAuth(logger, userRepo, jwtService))
 	{
 		invitations.GET("", teamInvitationHandler.ListMyInvitations)
 		invitations.POST("/:invitationId/accept", teamInvitationHandler.AcceptInvitation)
@@ -297,19 +297,19 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	{
 		inviteLinks.GET("/:token", teamInvitationHandler.GetInviteLinkInfo)
 		inviteLinks.POST("/:token/accept",
-			middleware.RequireAuth(userRepo, jwtService),
+			middleware.RequireAuth(logger, userRepo, jwtService),
 			teamInvitationHandler.AcceptInviteLink,
 		)
 	}
 
 	users := rg.Group("/users")
-	users.Use(middleware.RequireAuth(userRepo, jwtService))
+	users.Use(middleware.RequireAuth(logger, userRepo, jwtService))
 	{
 		users.GET("/search", teamInvitationHandler.SearchUsers)
 	}
 }
 
-func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
+func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services.Logger) {
 	db := database.DB()
 	userRepo := models.NewUserRepository(db)
 	permRepo := models.NewPermissionRepository(db)
@@ -318,19 +318,19 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	teamMemberRepo := models.NewTeamMemberRepository(db)
 	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
 	mapRepo := models.NewMapRepository(db)
-	mapHandler := handlers.NewMapHandler(mapRepo)
-	adminHandler := handlers.NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo)
+	mapHandler := handlers.NewMapHandler(mapRepo, logger)
+	adminHandler := handlers.NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo, logger)
 
 	lockRepoAdmin := models.NewEditLockRepository(db)
-	lockHandlerAdmin := handlers.NewEditLockHandler(lockRepoAdmin, userRepo)
+	lockHandlerAdmin := handlers.NewEditLockHandler(lockRepoAdmin, userRepo, logger)
 
 	templateRepoAdmin := models.NewTemplateRepository(db)
 	zoneRepoAdmin := models.NewZoneRepository(db)
-	templateHandlerAdmin := handlers.NewTemplateHandler(templateRepoAdmin, zoneRepoAdmin, teamMemberRepo)
+	templateHandlerAdmin := handlers.NewTemplateHandler(templateRepoAdmin, zoneRepoAdmin, teamMemberRepo, logger)
 
 	admin := rg.Group("/admin")
-	admin.Use(middleware.RequireAuth(userRepo, jwtService))
-	admin.Use(middleware.RequireAdmin())
+	admin.Use(middleware.RequireAuth(logger, userRepo, jwtService))
+	admin.Use(middleware.RequireAdmin(logger))
 	{
 		admin.GET("/users", adminHandler.ListUsers)
 		admin.GET("/users/:id", adminHandler.GetUserDetail)
@@ -353,7 +353,7 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		admin.DELETE("/templates/:templateId", templateHandlerAdmin.AdminDeleteTemplate)
 
 		splitRepo := models.NewSplitRepository(db)
-		splitHandler := handlers.NewSplitHandler(splitRepo)
+		splitHandler := handlers.NewSplitHandler(splitRepo, logger)
 
 		admin.POST("/splits", splitHandler.CreateSplit)
 		admin.GET("/splits", splitHandler.ListSplits)
@@ -363,7 +363,7 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		admin.GET("/splits/:id/maps", splitHandler.GetSplitMaps)
 
 		mapCatalogRepo := models.NewMapCatalogRepository(db)
-		mapCatalogHandler := handlers.NewMapCatalogHandler(mapCatalogRepo)
+		mapCatalogHandler := handlers.NewMapCatalogHandler(mapCatalogRepo, logger)
 
 		admin.GET("/map-catalog", mapCatalogHandler.List)
 		admin.POST("/map-catalog", mapCatalogHandler.Create)
@@ -372,20 +372,20 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	}
 }
 
-func setupAuthRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
+func setupAuthRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services.Logger) {
 	db := database.DB()
 	userRepo := models.NewUserRepository(db)
 	refreshRepo := models.NewRefreshTokenRepository(db)
 	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
 	oauthCfg := services.DiscordOAuthConfig(cfg.Discord.ClientID, cfg.Discord.ClientSecret, cfg.Discord.RedirectURL)
-	authHandler := handlers.NewAuthHandler(userRepo, refreshRepo, oauthCfg, jwtService, cfg.Server.FrontendURL)
+	authHandler := handlers.NewAuthHandler(userRepo, refreshRepo, oauthCfg, jwtService, cfg.Server.FrontendURL, logger)
 
 	rg.GET("/auth/discord/login", authHandler.LoginRedirect)
 	rg.GET("/auth/discord/callback", authHandler.Callback)
 	rg.POST("/auth/refresh", authHandler.Refresh)
 
 	protected := rg.Group("")
-	protected.Use(middleware.RequireAuth(userRepo, jwtService))
+	protected.Use(middleware.RequireAuth(logger, userRepo, jwtService))
 	{
 		protected.GET("/auth/me", authHandler.Me)
 		protected.PUT("/auth/display-name", authHandler.UpdateDisplayName)

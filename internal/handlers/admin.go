@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +17,7 @@ type AdminHandler struct {
 	rolePermRepo   models.RolePermissionRepository
 	teamRepo       models.TeamRepository
 	teamMemberRepo models.TeamMemberRepository
+	logger         services.Logger
 }
 
 func NewAdminHandler(
@@ -23,6 +26,7 @@ func NewAdminHandler(
 	rolePermRepo models.RolePermissionRepository,
 	teamRepo models.TeamRepository,
 	teamMemberRepo models.TeamMemberRepository,
+	logger services.Logger,
 ) *AdminHandler {
 	return &AdminHandler{
 		userRepo:       userRepo,
@@ -30,54 +34,40 @@ func NewAdminHandler(
 		rolePermRepo:   rolePermRepo,
 		teamRepo:       teamRepo,
 		teamMemberRepo: teamMemberRepo,
+		logger:         logger,
 	}
 }
 
 func (h *AdminHandler) ListUsers(c *gin.Context) {
 	users, err := h.userRepo.FindAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list users",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list users", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"users": users})
 }
 
 func (h *AdminHandler) GetUserDetail(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_user_id",
-			"message": "invalid user id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
 		return
 	}
 
 	user, err := h.userRepo.FindByID(userID)
 	if err == models.ErrUserNotFound {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "user_not_found",
-			"message": "user not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("user_not_found", "user not found", http.StatusNotFound))
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to find user",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to find user", http.StatusInternalServerError))
 		return
 	}
 
 	memberships, err := h.teamMemberRepo.FindByUserID(userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list memberships",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list memberships", http.StatusInternalServerError))
 		return
 	}
 
@@ -100,7 +90,7 @@ func (h *AdminHandler) GetUserDetail(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"user":        user,
 		"memberships": result,
 	})
@@ -109,32 +99,23 @@ func (h *AdminHandler) GetUserDetail(c *gin.Context) {
 func (h *AdminHandler) ListAllTeams(c *gin.Context) {
 	teams, err := h.teamRepo.FindAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list teams",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list teams", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"teams": teams})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"teams": teams})
 }
 
 func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_user_id",
-			"message": "invalid user id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("teamId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
@@ -142,38 +123,26 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		Role string `json:"role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Role == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_body",
-			"message": "role is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_body", "role is required", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.teamMemberRepo.UpdateRole(teamID, userID, req.Role); err != nil {
 		if err == models.ErrMemberNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "member_not_found",
-				"message": "user is not a member of this team",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("member_not_found", "user is not a member of this team", http.StatusNotFound))
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_role",
-			"message": err.Error(),
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_role", err.Error(), http.StatusBadRequest))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *AdminHandler) AddUserToTeam(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_user_id",
-			"message": "invalid user id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
 		return
 	}
 
@@ -182,87 +151,60 @@ func (h *AdminHandler) AddUserToTeam(c *gin.Context) {
 		Role   string `json:"role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.TeamID == 0 || req.Role == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_body",
-			"message": "team_id and role are required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_body", "team_id and role are required", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.teamMemberRepo.AddMember(req.TeamID, userID, req.Role); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "add_member_failed",
-			"message": err.Error(),
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("add_member_failed", err.Error(), http.StatusBadRequest))
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"ok": true})
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"ok": true})
 }
 
 func (h *AdminHandler) RemoveUserFromTeam(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_user_id",
-			"message": "invalid user id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
 		return
 	}
 
 	teamID, err := strconv.Atoi(c.Param("teamId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_team_id",
-			"message": "invalid team id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
 		return
 	}
 
 	member, err := h.teamMemberRepo.FindByUserAndTeam(userID, teamID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "member_not_found",
-			"message": "user is not a member of this team",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("member_not_found", "user is not a member of this team", http.StatusNotFound))
 		return
 	}
 
 	if member.Role == models.RoleCaptain {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "cannot_remove_captain",
-			"message": "cannot remove a captain from a team. transfer captaincy first",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("cannot_remove_captain", "cannot remove a captain from a team. transfer captaincy first", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.teamMemberRepo.RemoveMember(teamID, userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to remove member",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to remove member", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *AdminHandler) ListPermissions(c *gin.Context) {
 	perms, err := h.permRepo.FindAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list permissions",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list permissions", http.StatusInternalServerError))
 		return
 	}
 
 	roles, err := h.rolePermRepo.FindAllRoles()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list roles",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list roles", http.StatusInternalServerError))
 		return
 	}
 
@@ -277,10 +219,7 @@ func (h *AdminHandler) ListPermissions(c *gin.Context) {
 	for _, p := range perms {
 		rps, err := h.rolePermRepo.FindByPermissionID(p.ID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "internal_error",
-				"message": "failed to find role permissions",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to find role permissions", http.StatusInternalServerError))
 			return
 		}
 
@@ -297,7 +236,7 @@ func (h *AdminHandler) ListPermissions(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"permissions": result,
 		"roles":       roles,
 	})
@@ -306,23 +245,17 @@ func (h *AdminHandler) ListPermissions(c *gin.Context) {
 func (h *AdminHandler) GetRolePermissions(c *gin.Context) {
 	role := c.Param("role")
 	if role == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_role",
-			"message": "role is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_role", "role is required", http.StatusBadRequest))
 		return
 	}
 
 	perms, err := h.rolePermRepo.FindByRole(role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list permissions",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list permissions", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"role":        role,
 		"permissions": perms,
 	})
@@ -331,46 +264,31 @@ func (h *AdminHandler) GetRolePermissions(c *gin.Context) {
 func (h *AdminHandler) PromoteToAdmin(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_user_id",
-			"message": "invalid user id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
 		return
 	}
 
 	targetUser, err := h.userRepo.FindByID(userID)
 	if err == models.ErrUserNotFound {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "user_not_found",
-			"message": "user not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("user_not_found", "user not found", http.StatusNotFound))
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to find user",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to find user", http.StatusInternalServerError))
 		return
 	}
 
 	if targetUser.IsAdmin {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "already_admin",
-			"message": "user is already an administrator",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("already_admin", "user is already an administrator", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.userRepo.SetAdmin(userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to promote user",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to promote user", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
 		"message":  "user promoted to admin",
 		"user_id":  userID,
 		"is_admin": true,

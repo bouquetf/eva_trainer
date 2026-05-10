@@ -5,28 +5,28 @@ import (
 	"strconv"
 
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
 
 type MapCatalogHandler struct {
-	repo models.MapCatalogRepository
+	repo   models.MapCatalogRepository
+	logger services.Logger
 }
 
-func NewMapCatalogHandler(repo models.MapCatalogRepository) *MapCatalogHandler {
-	return &MapCatalogHandler{repo: repo}
+func NewMapCatalogHandler(repo models.MapCatalogRepository, logger services.Logger) *MapCatalogHandler {
+	return &MapCatalogHandler{repo: repo, logger: logger}
 }
 
 func (h *MapCatalogHandler) List(c *gin.Context) {
 	entries, err := h.repo.FindAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list map catalog",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list map catalog", http.StatusInternalServerError))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"entries": entries})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"entries": entries})
 }
 
 func (h *MapCatalogHandler) Create(c *gin.Context) {
@@ -34,31 +34,22 @@ func (h *MapCatalogHandler) Create(c *gin.Context) {
 		Name string `json:"name" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request_body",
-			"message": "name is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "name is required", http.StatusBadRequest))
 		return
 	}
 
 	entry, err := h.repo.Create(req.Name)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to create map catalog entry",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to create map catalog entry", http.StatusInternalServerError))
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"entry": entry})
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"entry": entry})
 }
 
 func (h *MapCatalogHandler) Update(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_id",
-			"message": "invalid id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_id", "invalid id", http.StatusBadRequest))
 		return
 	}
 
@@ -66,40 +57,28 @@ func (h *MapCatalogHandler) Update(c *gin.Context) {
 		Name string `json:"name" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request_body",
-			"message": "name is required",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "name is required", http.StatusBadRequest))
 		return
 	}
 
 	entry, err := h.repo.Update(id, req.Name)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "entry_not_found",
-			"message": "map catalog entry not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("entry_not_found", "map catalog entry not found", http.StatusNotFound))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"entry": entry})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"entry": entry})
 }
 
 func (h *MapCatalogHandler) Delete(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_id",
-			"message": "invalid id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_id", "invalid id", http.StatusBadRequest))
 		return
 	}
 
 	if err := h.repo.Delete(id); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "entry_not_found",
-			"message": "map catalog entry not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("entry_not_found", "map catalog entry not found", http.StatusNotFound))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "entry deleted"})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "entry deleted"})
 }

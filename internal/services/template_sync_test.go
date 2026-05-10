@@ -143,7 +143,8 @@ func setupSyncTest(t *testing.T) *syncTestFixtures {
 		t.Fatalf("failed to create map: %v", err)
 	}
 
-	syncService := NewTemplateSyncService(templateRepo, zoneRepo)
+	testLogger := NewLogger(LogLevelError, LogFormatText)
+	syncService := NewTemplateSyncService(templateRepo, zoneRepo, testLogger)
 
 	return &syncTestFixtures{
 		db:           db,

@@ -65,7 +65,7 @@ func TestCORS_DevMode_AllowsAllOrigins(t *testing.T) {
 	cfg := setupTestConfig()
 	cfg.CORS.Origins = []string{"*"}
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -84,7 +84,7 @@ func TestCORS_ProdMode_Restricted(t *testing.T) {
 	cfg := setupTestConfig()
 	cfg.CORS.Origins = []string{"http://localhost:8080"}
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -103,7 +103,7 @@ func TestCORS_Preflight(t *testing.T) {
 	cfg := setupTestConfig()
 	cfg.CORS.Origins = []string{"*"}
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("OPTIONS", "/health", nil)
@@ -128,7 +128,7 @@ func TestTeamRoute_List_WithoutAuth_Returns401(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/teams", nil)
@@ -145,7 +145,7 @@ func TestTeamRoute_Create_WithoutAuth_Returns401(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/api/v1/teams", nil)
@@ -162,7 +162,7 @@ func TestTeamRoute_GetByID_WithoutAuth_Returns401(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/teams/1", nil)
@@ -179,7 +179,7 @@ func TestTeamRoute_Members_WithoutAuth_Returns401(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/teams/1/members", nil)
@@ -196,7 +196,7 @@ func TestTeamRoute_UpdateMemberRole_WithoutAuth_Returns401(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/api/v1/teams/1/members/2/role", nil)
@@ -213,7 +213,7 @@ func TestTeamRoute_TransferCaptaincy_WithoutAuth_Returns401(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/api/v1/teams/1/transfer-captaincy", nil)
@@ -230,7 +230,7 @@ func TestCORS_RouteAPIIntact(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -255,7 +255,7 @@ func TestProd_ServesIndexHTML(t *testing.T) {
 	cfg := setupTestConfig()
 	frontendFS, assetsFS := setupTestFS(t)
 	r := gin.New()
-	SetupRoutes(r, cfg, frontendFS, assetsFS)
+	SetupRoutes(r, cfg, nil, frontendFS, assetsFS)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/", nil)
@@ -276,7 +276,7 @@ func TestProd_ServesStaticAsset(t *testing.T) {
 	cfg := setupTestConfig()
 	frontendFS, assetsFS := setupTestFS(t)
 	r := gin.New()
-	SetupRoutes(r, cfg, frontendFS, assetsFS)
+	SetupRoutes(r, cfg, nil, frontendFS, assetsFS)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/assets/test.js", nil)
@@ -297,7 +297,7 @@ func TestProd_ServesSPAFallback(t *testing.T) {
 	cfg := setupTestConfig()
 	frontendFS, assetsFS := setupTestFS(t)
 	r := gin.New()
-	SetupRoutes(r, cfg, frontendFS, assetsFS)
+	SetupRoutes(r, cfg, nil, frontendFS, assetsFS)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/unknown-route", nil)
@@ -317,7 +317,7 @@ func TestDev_Returns404ForRoot(t *testing.T) {
 
 	cfg := setupTestConfig()
 	r := gin.New()
-	SetupRoutes(r, cfg, nil, nil)
+	SetupRoutes(r, cfg, nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/", nil)
@@ -325,5 +325,70 @@ func TestDev_Returns404ForRoot(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404 in dev mode, got %d", w.Code)
+	}
+}
+
+func TestErrorResponse_InvalidToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := setupTestConfig()
+	r := gin.New()
+	SetupRoutes(r, cfg, nil, nil, nil)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/teams", nil)
+	req.Header.Set("Authorization", "Bearer invalid_token_here")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	if resp["error"] == "" {
+		t.Error("missing 'error' field in response")
+	}
+	if resp["message"] == "" {
+		t.Error("missing 'message' field in response")
+	}
+}
+
+func TestErrorResponse_MissingAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := setupTestConfig()
+	r := gin.New()
+	SetupRoutes(r, cfg, nil, nil, nil)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/teams", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	if resp["error"] != "missing_authorization" {
+		t.Errorf("expected 'missing_authorization', got '%s'", resp["error"])
+	}
+}
+
+func TestErrorResponse_HealthEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := setupTestConfig()
+	r := gin.New()
+	SetupRoutes(r, cfg, nil, nil, nil)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/health", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }

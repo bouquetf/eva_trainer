@@ -6,16 +6,19 @@ import (
 	"strconv"
 
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
+	"eva_trainer/pkg/apierror"
 
 	"github.com/gin-gonic/gin"
 )
 
 type SplitHandler struct {
 	splitRepo models.SplitRepository
+	logger    services.Logger
 }
 
-func NewSplitHandler(splitRepo models.SplitRepository) *SplitHandler {
-	return &SplitHandler{splitRepo: splitRepo}
+func NewSplitHandler(splitRepo models.SplitRepository, logger services.Logger) *SplitHandler {
+	return &SplitHandler{splitRepo: splitRepo, logger: logger}
 }
 
 type createSplitRequest struct {
@@ -26,10 +29,7 @@ type createSplitRequest struct {
 func (h *SplitHandler) CreateSplit(c *gin.Context) {
 	var req createSplitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request_body",
-			"message": "invalid request body",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
@@ -37,216 +37,147 @@ func (h *SplitHandler) CreateSplit(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, models.ErrSplitNameRequired):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "split_name_required",
-				"message": err.Error(),
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("split_name_required", err.Error(), http.StatusBadRequest))
 		case errors.Is(err, models.ErrSplitMapNamesRequired):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "split_map_names_required",
-				"message": err.Error(),
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("split_map_names_required", err.Error(), http.StatusBadRequest))
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "internal_error",
-				"message": "failed to create split",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to create split", http.StatusInternalServerError))
 		}
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"split": split})
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"split": split})
 }
 
 func (h *SplitHandler) ListSplits(c *gin.Context) {
 	splits, err := h.splitRepo.FindAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list splits",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list splits", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"splits": splits})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"splits": splits})
 }
 
 func (h *SplitHandler) GetSplit(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_split_id",
-			"message": "invalid split id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_split_id", "invalid split id", http.StatusBadRequest))
 		return
 	}
 
 	split, err := h.splitRepo.FindByID(id)
 	if err == models.ErrSplitNotFound {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "split_not_found",
-			"message": "split not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("split_not_found", "split not found", http.StatusNotFound))
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to find split",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to find split", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"split": split})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"split": split})
 }
 
 func (h *SplitHandler) UpdateSplit(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_split_id",
-			"message": "invalid split id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_split_id", "invalid split id", http.StatusBadRequest))
 		return
 	}
 
 	var req createSplitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_request_body",
-			"message": "invalid request body",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
 		return
 	}
 
 	split, err := h.splitRepo.Update(id, req.Name, req.MapNames)
 	if err != nil {
 		if errors.Is(err, models.ErrSplitNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "split_not_found",
-				"message": "split not found",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("split_not_found", "split not found", http.StatusNotFound))
 			return
 		}
 		switch {
 		case errors.Is(err, models.ErrSplitNameRequired):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "split_name_required",
-				"message": err.Error(),
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("split_name_required", err.Error(), http.StatusBadRequest))
 		case errors.Is(err, models.ErrSplitMapNamesRequired):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "split_map_names_required",
-				"message": err.Error(),
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("split_map_names_required", err.Error(), http.StatusBadRequest))
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "internal_error",
-				"message": "failed to update split",
-			})
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to update split", http.StatusInternalServerError))
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"split": split})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"split": split})
 }
 
 func (h *SplitHandler) DeleteSplit(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_split_id",
-			"message": "invalid split id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_split_id", "invalid split id", http.StatusBadRequest))
 		return
 	}
 
 	err = h.splitRepo.Delete(id)
 	if err == models.ErrSplitNotFound {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "split_not_found",
-			"message": "split not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("split_not_found", "split not found", http.StatusNotFound))
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to delete split",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to delete split", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "split deleted"})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "split deleted"})
 }
 
 func (h *SplitHandler) GetSplitMaps(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_split_id",
-			"message": "invalid split id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_split_id", "invalid split id", http.StatusBadRequest))
 		return
 	}
 
 	maps, err := h.splitRepo.FindMapsBySplitID(id)
 	if err == models.ErrSplitNotFound {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "split_not_found",
-			"message": "split not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("split_not_found", "split not found", http.StatusNotFound))
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to find maps for split",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to find maps for split", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"maps": maps})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"maps": maps})
 }
 
 func (h *SplitHandler) ListSplitsPublic(c *gin.Context) {
 	splits, err := h.splitRepo.FindAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to list splits",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list splits", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"splits": splits})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"splits": splits})
 }
 
 func (h *SplitHandler) GetSplitMapsPublic(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_split_id",
-			"message": "invalid split id",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_split_id", "invalid split id", http.StatusBadRequest))
 		return
 	}
 
 	maps, err := h.splitRepo.FindMapsBySplitID(id)
 	if err == models.ErrSplitNotFound {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "split_not_found",
-			"message": "split not found",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("split_not_found", "split not found", http.StatusNotFound))
 		return
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal_error",
-			"message": "failed to find maps for split",
-		})
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to find maps for split", http.StatusInternalServerError))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"maps": maps})
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"maps": maps})
 }

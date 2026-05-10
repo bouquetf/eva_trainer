@@ -171,7 +171,7 @@ func TestMe_WithoutToken_Returns401(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
 
-	middleware.RequireAuth(userRepo, jwtService)(c)
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
 	if !c.IsAborted() {
 		c.Next()
 		handler.Me(c)
@@ -202,7 +202,7 @@ func TestMe_WithValidToken_Returns200(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
 	c.Request.Header.Set("Authorization", "Bearer "+token)
 
-	middleware.RequireAuth(userRepo, jwtService)(c)
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
 	if !c.IsAborted() {
 		c.Next()
 
