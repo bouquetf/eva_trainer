@@ -149,6 +149,7 @@ type EditLockRepository interface {
 	IsLocked(teamID, mapID int) (bool, error)
 	IsLockedByEditor(teamID, mapID, editorID int) (bool, error)
 	CleanupExpired() (int64, error)
+	ForceClearAll() (int64, error)
 }
 
 type EditHistoryRepository interface {

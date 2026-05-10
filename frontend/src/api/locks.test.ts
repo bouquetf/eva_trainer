@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { acquireLock, releaseLock, refreshLock, getLockStatus } from './locks'
+import { acquireLock, releaseLock, refreshLock, getLockStatus, releaseLockSync } from './locks'
+
+const mockGetAccessToken = vi.fn()
+vi.mock('../store/auth', () => ({
+  useAuthStore: {
+    getState: () => ({
+      getAccessToken: mockGetAccessToken,
+    }),
+  },
+}))
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -139,5 +148,29 @@ describe('locks API', () => {
 
     expect(result.locked).toBe(false)
     expect(result.lock).toBeNull()
+  })
+})
+
+describe('releaseLockSync', () => {
+  beforeEach(() => {
+    mockGetAccessToken.mockReturnValue('test-token-123')
+  })
+
+  it('appelle POST avec keepalive et le bon token', () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    releaseLockSync(1, 2)
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/v1/teams/1/maps/2/lock/release',
+      expect.objectContaining({
+        method: 'POST',
+        keepalive: true,
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-token-123',
+        }),
+      }),
+    )
   })
 })

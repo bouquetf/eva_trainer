@@ -6,7 +6,7 @@ import {
   batchActions,
   type BatchAction,
 } from "../../api/zones";
-import { acquireLock, releaseLock, refreshLock } from "../../api/locks";
+import { acquireLock, releaseLock, refreshLock, releaseLockSync } from "../../api/locks";
 import { getMapImageUrl, listTeamMaps } from "../../api/maps";
 import type { Map as MapInfo } from "../../api/maps";
 import { ApiError } from "../../api/client";
@@ -71,29 +71,58 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
   const [isLocked, setIsLocked] = useState(false);
   const [lockedByMe, setLockedByMe] = useState(false);
   const [editorName, setEditorName] = useState<string | undefined>();
+  const [remainingSeconds, setRemainingSeconds] = useState<number | undefined>();
+  const [showReacquireButton, setShowReacquireButton] = useState(false);
   // (showNameDialog removed - polygon completion adds directly)
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const pendingZoneSwitch = useRef<PendingSwitch | null>(null);
 
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+
+  const startCountdown = useCallback((expiresAt: string) => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    const tick = () => {
+      const now = Date.now();
+      const exp = new Date(expiresAt).getTime();
+      const rem = Math.max(0, Math.floor((exp - now) / 1000));
+      setRemainingSeconds(rem);
+      if (rem <= 0 && mountedRef.current) {
+        setCanEdit(false);
+        setLockedByMe(false);
+        setIsLocked(false);
+        setShowReacquireButton(true);
+        if (countdownRef.current) clearInterval(countdownRef.current);
+      }
+    };
+    tick();
+    countdownRef.current = setInterval(tick, 1000);
+  }, []);
 
   const ensureLock = useCallback(async (): Promise<boolean> => {
     if (lockedByMe) return true;
     try {
-      await acquireLock(teamId, mapId);
+      const result = await acquireLock(teamId, mapId);
       setCanEdit(true);
       setIsLocked(true);
       setLockedByMe(true);
+      setShowReacquireButton(false);
+      if (result.lock?.expires_at) startCountdown(result.lock.expires_at);
 
       if (!lockRefreshRef.current) {
         lockRefreshRef.current = setInterval(async () => {
           try {
-            await refreshLock(teamId, mapId);
+            const refreshed = await refreshLock(teamId, mapId);
+            if (refreshed.lock?.expires_at && mountedRef.current) {
+              startCountdown(refreshed.lock.expires_at);
+            }
           } catch {
             if (mountedRef.current) {
               setCanEdit(false);
+              setLockedByMe(false);
+              setShowReacquireButton(true);
               showError("Verrou d'édition perdu. Passage en lecture seule.");
             }
           }
@@ -106,7 +135,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         const body = err.body as any;
         setIsLocked(true);
         setLockedByMe(false);
-        setEditorName(body.locked_by ? `éditeur #${body.locked_by}` : "un autre éditeur");
+        setEditorName(body.editor_name ?? `éditeur #${body.locked_by}`);
         showError("Cette carte est en cours d'édition par un autre éditeur.");
         return false;
       }
@@ -117,7 +146,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
       showError("Impossible d'acquérir le verrou d'édition.");
       return false;
     }
-  }, [teamId, mapId, lockedByMe]);
+  }, [teamId, mapId, lockedByMe, startCountdown]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -173,15 +202,25 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
 
     init();
 
+    const beforeUnloadHandler = () => {
+      releaseLockSync(teamId, mapId);
+    };
+    window.addEventListener("beforeunload", beforeUnloadHandler);
+
     return () => {
       mountedRef.current = false;
+      window.removeEventListener("beforeunload", beforeUnloadHandler);
       if (lockRefreshRef.current) {
         clearInterval(lockRefreshRef.current);
         lockRefreshRef.current = null;
       }
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
       releaseLock(teamId, mapId).catch(() => {});
     };
-  }, [teamId, mapId]);
+  }, [teamId, mapId, startCountdown]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -629,6 +668,36 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+  const handleRefreshLock = useCallback(async () => {
+    try {
+      const refreshed = await refreshLock(teamId, mapId);
+      if (refreshed.lock?.expires_at) startCountdown(refreshed.lock.expires_at);
+    } catch {
+      showError("Impossible de prolonger le verrou.");
+    }
+  }, [teamId, mapId, startCountdown]);
+
+  const handleReacquireLock = useCallback(async () => {
+    try {
+      const result = await acquireLock(teamId, mapId);
+      setCanEdit(true);
+      setIsLocked(true);
+      setLockedByMe(true);
+      setShowReacquireButton(false);
+      if (result.lock?.expires_at) startCountdown(result.lock.expires_at);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const body = err.body as any;
+        setEditorName(body.editor_name ?? `éditeur #${body.locked_by}`);
+        setIsLocked(true);
+        setLockedByMe(false);
+        showError("Le verrou est déjà détenu par un autre éditeur.");
+      } else {
+        showError("Impossible de ré-acquérir le verrou.");
+      }
+    }
+  }, [teamId, mapId, startCountdown]);
+
   const selectionSet = selectedZoneId != null ? new Set([selectedZoneId]) : new Set<number>();
 
   if (isLoading || !imageSize) {
@@ -642,6 +711,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         isLocked={isLocked}
         lockedByMe={lockedByMe}
         editorName={editorName}
+        remainingSeconds={remainingSeconds}
+        onRefreshLock={handleRefreshLock}
+        onReacquireLock={handleReacquireLock}
+        showReacquireButton={showReacquireButton}
       />
 
       <div className="main-content">

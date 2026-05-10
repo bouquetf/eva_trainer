@@ -6,6 +6,10 @@ interface ToolbarProps {
   isLocked: boolean;
   lockedByMe: boolean;
   editorName?: string;
+  remainingSeconds?: number;
+  onRefreshLock?: () => void;
+  onReacquireLock?: () => void;
+  showReacquireButton?: boolean;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -13,6 +17,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   isLocked,
   lockedByMe,
   editorName,
+  remainingSeconds,
+  onRefreshLock,
+  onReacquireLock,
+  showReacquireButton,
 }) => {
   return (
     <div className="toolbar">
@@ -22,6 +30,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           lockedByMe={lockedByMe}
           editorName={editorName}
           canEdit={canEdit}
+          remainingSeconds={remainingSeconds}
+          onRefreshLock={onRefreshLock}
+          onReacquireLock={onReacquireLock}
+          showReacquireButton={showReacquireButton}
         />
       </div>
     </div>

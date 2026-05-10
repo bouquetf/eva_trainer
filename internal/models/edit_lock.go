@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -121,7 +122,7 @@ func (r *editLockRepo) Get(teamID, mapID int) (*EditLock, error) {
 		 FROM edit_locks WHERE team_id = $1 AND map_id = $2`,
 		teamID, mapID,
 	))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -138,7 +139,7 @@ func (r *editLockRepo) Refresh(teamID, mapID int) (*EditLock, error) {
 		 RETURNING id, team_id, map_id, editor_id, locked_at, expires_at`,
 		teamID, mapID,
 	))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrLockNotFound
 	}
 	if err != nil {
@@ -179,6 +180,14 @@ func (r *editLockRepo) CleanupExpired() (int64, error) {
 	result, err := r.db.Exec(`DELETE FROM edit_locks WHERE expires_at < NOW()`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup expired locks: %w", err)
+	}
+	return result.RowsAffected()
+}
+
+func (r *editLockRepo) ForceClearAll() (int64, error) {
+	result, err := r.db.Exec(`DELETE FROM edit_locks`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to force clear all locks: %w", err)
 	}
 	return result.RowsAffected()
 }

@@ -111,7 +111,7 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	historyRepo := models.NewEditHistoryRepository(db)
 	mapHandler := handlers.NewMapHandler(mapRepo)
 	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo)
-	lockHandler := handlers.NewEditLockHandler(lockRepo)
+	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo)
 
 	rg.GET("/myteams", middleware.RequireAuth(userRepo, jwtService), teamHandler.ListMyTeams)
 
@@ -161,6 +161,10 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
 			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:lock"),
 			lockHandler.AcquireLock,
+		)
+		teams.POST("/:id/maps/:mapId/lock/release",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			lockHandler.ReleaseLockForEditor,
 		)
 		teams.DELETE("/:id/maps/:mapId/lock",
 			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
@@ -286,6 +290,9 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	mapHandler := handlers.NewMapHandler(mapRepo)
 	adminHandler := handlers.NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo)
 
+	lockRepoAdmin := models.NewEditLockRepository(db)
+	lockHandlerAdmin := handlers.NewEditLockHandler(lockRepoAdmin, userRepo)
+
 	admin := rg.Group("/admin")
 	admin.Use(middleware.RequireAuth(userRepo, jwtService))
 	admin.Use(middleware.RequireAdmin())
@@ -304,6 +311,9 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		admin.GET("/maps", mapHandler.ListMaps)
 		admin.GET("/maps/:id", mapHandler.GetMapDetail)
 		admin.POST("/maps/purge", mapHandler.PurgeObsoleteMaps)
+
+		admin.POST("/locks/cleanup", lockHandlerAdmin.CleanupExpiredLocks)
+		admin.DELETE("/locks", lockHandlerAdmin.ForceClearLocks)
 
 		splitRepo := models.NewSplitRepository(db)
 		splitHandler := handlers.NewSplitHandler(splitRepo)

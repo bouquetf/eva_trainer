@@ -1,0 +1,54 @@
+.container {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.lockedByOther {
+  color: #f44336;
+}
+
+.lockedByMe {
+  color: #00e676;
+}
+
+.expiringSoon {
+  color: #ff9800;
+}
+
+.critical {
+  color: #f44336;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.lost {
+  color: #f44336;
+}
+
+.extendButton {
+  margin-left: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid #00e676;
+  background: transparent;
+  color: #00e676;
+  border-radius: 4px;
+}
+
+.reacquireButton {
+  margin-left: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid #f44336;
+  background: transparent;
+  color: #f44336;
+  border-radius: 4px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

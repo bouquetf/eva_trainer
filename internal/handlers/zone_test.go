@@ -156,7 +156,7 @@ func setupZoneTest(t *testing.T) *zoneTestFixtures {
 	}
 
 	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo)
-	lockHandler := NewEditLockHandler(lockRepo)
+	lockHandler := NewEditLockHandler(lockRepo, userRepo)
 
 	return &zoneTestFixtures{
 		db:             db,
