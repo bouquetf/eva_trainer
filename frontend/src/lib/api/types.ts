@@ -59,6 +59,38 @@ export type ZoneStyle = {
   strokeDasharray?: string;
 };
 
+export type VersionSnapshot = {
+  polygons: {
+    points: Point[];
+    order_index: number;
+  }[];
+  name: string;
+}
+
+export type ZoneVersion = {
+  id: number;
+  zone_id: number;
+  zone_name: string;
+  editor_id: number | null;
+  editor_name: string;
+  version_data: VersionSnapshot;
+  created_at: string;
+}
+
+export type VersionPage = {
+  versions: ZoneVersion[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type VersionFilters = {
+  zone_id?: number;
+  editor_id?: number;
+  page?: number;
+  limit?: number;
+}
+
 /** @deprecated Use real API functions (zones.ts, locks.ts, maps.ts) instead. */
 export interface MapsApi {
   getMap(mapId: string): Promise<MapDto>;

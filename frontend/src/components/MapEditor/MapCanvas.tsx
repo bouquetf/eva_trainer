@@ -4,6 +4,11 @@ import { ZoneOverlay } from "./ZoneOverlay";
 import { PointHandles } from "./PointHandles";
 import { screenPointToImagePoint, screenDeltaToImageDelta } from "../../lib/geometry/coordinates";
 
+interface PreviewPolygon {
+  points: Point[];
+  order_index: number;
+}
+
 interface MapCanvasProps {
   zones: Zone[];
   selectedZoneIds: Set<number>;
@@ -23,6 +28,7 @@ interface MapCanvasProps {
   onMapRightClick: (clientX: number, clientY: number) => void;
   onZoneRightClick: (zoneId: number, clientX: number, clientY: number) => void;
   onMapDoubleClick: (point: Point) => void;
+  previewPolygons?: PreviewPolygon[];
 }
 
 export const MapCanvas: React.FC<MapCanvasProps> = ({
@@ -44,6 +50,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   onMapRightClick,
   onZoneRightClick,
   onMapDoubleClick,
+  previewPolygons,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
@@ -147,6 +154,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           onPolygonClick={onPolygonClick}
           onZoneRightClick={onZoneRightClick}
           onPointInsert={onPointInsert}
+          previewPolygons={previewPolygons}
         />
 
         {selectedZoneIds.size > 0 && selectedPolygonIndexes.size > 0 && (

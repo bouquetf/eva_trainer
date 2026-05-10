@@ -86,6 +86,87 @@ func (r *editHistoryRepo) FindByTeamAndMap(teamID, mapID int) ([]*EditHistory, e
 	return scanHistoryRows(rows)
 }
 
+func (r *editHistoryRepo) FindByTeamAndMapWithFilters(teamID, mapID int, page, limit int) ([]*EditHistory, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	var total int
+	err := r.db.QueryRow(
+		`SELECT COUNT(*)
+		 FROM edit_history eh
+		 JOIN zones z ON z.id = eh.zone_id
+		 WHERE z.team_id = $1 AND z.map_id = $2`,
+		teamID, mapID,
+	).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count edit history: %w", err)
+	}
+
+	rows, err := r.db.Query(
+		`SELECT eh.id, eh.zone_id, eh.editor_id, eh.action, eh.old_data, eh.new_data, eh.timestamp
+		 FROM edit_history eh
+		 JOIN zones z ON z.id = eh.zone_id
+		 WHERE z.team_id = $1 AND z.map_id = $2
+		 ORDER BY eh.timestamp DESC
+		 LIMIT $3 OFFSET $4`,
+		teamID, mapID, limit, offset,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	history, err := scanHistoryRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return history, total, nil
+}
+
+func (r *editHistoryRepo) FindByZoneWithFilters(zoneID int, page, limit int) ([]*EditHistory, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	var total int
+	err := r.db.QueryRow(
+		`SELECT COUNT(*) FROM edit_history WHERE zone_id = $1`,
+		zoneID,
+	).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count edit history: %w", err)
+	}
+
+	rows, err := r.db.Query(
+		`SELECT id, zone_id, editor_id, action, old_data, new_data, timestamp
+		 FROM edit_history WHERE zone_id = $1
+		 ORDER BY timestamp DESC
+		 LIMIT $2 OFFSET $3`,
+		zoneID, limit, offset,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	history, err := scanHistoryRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return history, total, nil
+}
+
 func scanHistoryRows(rows *sql.Rows) ([]*EditHistory, error) {
 	var history []*EditHistory
 	for rows.Next() {

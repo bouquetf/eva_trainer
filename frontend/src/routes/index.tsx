@@ -3,6 +3,7 @@ import Home from '../pages/Home'
 import Login from '../pages/Login'
 import Callback from '../pages/Callback'
 import Editor from '../pages/Editor'
+import History from '../pages/History'
 import NotFound from '../pages/NotFound'
 import AppLayout from '../components/AppLayout'
 import AdminGuard from '../components/AdminGuard'
@@ -26,6 +27,7 @@ export function AppRoutes() {
         <Route path="/teams/:id" element={<TeamSettings />} />
         <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
         <Route path="/teams/:id/editor/:mapId" element={<Editor />} />
+        <Route path="/teams/:id/maps/:mapId/history" element={<History />} />
       </Route>
       <Route path="/invite/:token" element={<InviteAccept />} />
       <Route path="*" element={<NotFound />} />

@@ -1,6 +1,11 @@
 import React from "react";
 import type { Point, Zone } from "../../lib/api/types";
 
+interface PreviewPolygon {
+  points: Point[];
+  order_index: number;
+}
+
 interface ZoneOverlayProps {
   zones: Zone[];
   selectedZoneIds: Set<number>;
@@ -11,6 +16,7 @@ interface ZoneOverlayProps {
   onPolygonClick: (zoneId: number, polygonIndex: number, event: React.MouseEvent) => void;
   onZoneRightClick: (zoneId: number, clientX: number, clientY: number) => void;
   onPointInsert: (zoneId: number, polygonIndex: number, pointIndexAfter: number, newPoint: Point) => void;
+  previewPolygons?: PreviewPolygon[];
 }
 
 export const ZoneOverlay: React.FC<ZoneOverlayProps> = ({
@@ -21,6 +27,7 @@ export const ZoneOverlay: React.FC<ZoneOverlayProps> = ({
   onPolygonClick,
   onZoneRightClick,
   onPointInsert,
+  previewPolygons,
 }) => {
   const handleSegmentDoubleClick = (
     e: React.MouseEvent,
@@ -105,6 +112,24 @@ export const ZoneOverlay: React.FC<ZoneOverlayProps> = ({
           </g>
         );
       })}
+
+      {previewPolygons && previewPolygons.length > 0 && (
+        <g className="preview-zone-layer" style={{ pointerEvents: "none" }}>
+          {previewPolygons.map((poly, pIdx) => {
+            const pointsString = poly.points.map((p) => `${p.x},${p.y}`).join(" ");
+            return (
+              <polygon
+                key={`preview-${pIdx}`}
+                points={pointsString}
+                fill="rgba(136,136,136,0.1)"
+                stroke="#888"
+                strokeWidth={2}
+                strokeDasharray="5,5"
+              />
+            );
+          })}
+        </g>
+      )}
 
       {tempPoints.length > 0 && (
         <g className="temp-zone">

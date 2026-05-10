@@ -184,7 +184,17 @@ func (r *zoneRepo) FindWithDetailsByTeamAndMap(teamID, mapID int) ([]*ZoneWithDe
 }
 
 func (r *zoneRepo) Delete(zoneID int) error {
-	result, err := r.db.Exec(`DELETE FROM zones WHERE id = $1`, zoneID)
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM zone_versions WHERE zone_id = $1`, zoneID); err != nil {
+		return fmt.Errorf("failed to delete zone versions: %w", err)
+	}
+
+	result, err := tx.Exec(`DELETE FROM zones WHERE id = $1`, zoneID)
 	if err != nil {
 		return fmt.Errorf("failed to delete zone: %w", err)
 	}
@@ -195,7 +205,8 @@ func (r *zoneRepo) Delete(zoneID int) error {
 	if rows == 0 {
 		return ErrZoneNotFound
 	}
-	return nil
+
+	return tx.Commit()
 }
 
 func (r *zoneRepo) AddPolygon(zoneID int, points []Point, orderIndex int) (*ZonePolygon, error) {

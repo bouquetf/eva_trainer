@@ -32,6 +32,7 @@ var zoneMigrationFiles = []string{
 	"000003_add_display_name.up.sql",
 	"000004_add_discord_username.up.sql",
 	"000011_add_zone_polygon_constraints.up.sql",
+	"000013_add_zone_versions.up.sql",
 }
 
 func setupZoneTestDB(t *testing.T) *sql.DB {
@@ -133,6 +134,7 @@ func setupZoneTest(t *testing.T) *zoneTestFixtures {
 	lockRepo := models.NewEditLockRepository(db)
 	historyRepo := models.NewEditHistoryRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
+	versionRepo := models.NewZoneVersionRepository(db)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("zone-handler-user-" + t.Name())
 	if err != nil {
@@ -155,7 +157,7 @@ func setupZoneTest(t *testing.T) *zoneTestFixtures {
 		t.Fatalf("GenerateAccessToken failed: %v", err)
 	}
 
-	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil)
+	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo)
 	lockHandler := NewEditLockHandler(lockRepo, userRepo)
 
 	return &zoneTestFixtures{

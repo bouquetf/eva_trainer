@@ -109,11 +109,13 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	zoneRepo := models.NewZoneRepository(db)
 	lockRepo := models.NewEditLockRepository(db)
 	historyRepo := models.NewEditHistoryRepository(db)
+	versionRepo := models.NewZoneVersionRepository(db)
 	mapHandler := handlers.NewMapHandler(mapRepo)
 	templateRepo := models.NewTemplateRepository(db)
 	templateSyncSvc := services.NewTemplateSyncService(templateRepo, zoneRepo)
-	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc)
+	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc, versionRepo)
 	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo)
+	historyHandler := handlers.NewHistoryHandler(versionRepo, zoneRepo, lockRepo, teamMemberRepo, userRepo, historyRepo)
 
 	templateHandler := handlers.NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo)
 
@@ -232,6 +234,22 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),
 			zoneHandler.RemovePolygonPoint,
 		)
+		teams.GET("/:id/maps/:mapId/versions",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
+			historyHandler.ListVersions,
+		)
+		teams.GET("/:id/zones/:zoneId/versions",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
+			historyHandler.ListZoneVersions,
+		)
+		teams.POST("/:id/zones/:zoneId/versions/:versionId/restore",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
+			historyHandler.RestoreVersion,
+		)
+
 		teams.GET("/:id/invitations/pending",
 			middleware.RequireTeamRole(teamMemberRepo, "captain", "cocaptain"),
 			middleware.RequirePermission(teamMemberRepo, rolePermRepo, permRepo, "team:requests:view"),

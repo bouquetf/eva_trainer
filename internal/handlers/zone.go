@@ -21,6 +21,7 @@ type ZoneHandler struct {
 	historyRepo     models.EditHistoryRepository
 	teamMemberRepo  models.TeamMemberRepository
 	templateSyncSvc *services.TemplateSyncService
+	versionRepo     models.ZoneVersionRepository
 }
 
 func NewZoneHandler(
@@ -30,6 +31,7 @@ func NewZoneHandler(
 	historyRepo models.EditHistoryRepository,
 	teamMemberRepo models.TeamMemberRepository,
 	templateSyncSvc *services.TemplateSyncService,
+	versionRepo models.ZoneVersionRepository,
 ) *ZoneHandler {
 	return &ZoneHandler{
 		zoneRepo:        zoneRepo,
@@ -38,6 +40,7 @@ func NewZoneHandler(
 		historyRepo:     historyRepo,
 		teamMemberRepo:  teamMemberRepo,
 		templateSyncSvc: templateSyncSvc,
+		versionRepo:     versionRepo,
 	}
 }
 
@@ -168,6 +171,7 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 	}
 
 	h.syncAfterZoneChange(teamID, mapID)
+	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"zone": models.ZoneWithDetails{
@@ -341,6 +345,7 @@ func (h *ZoneHandler) AddPolygon(c *gin.Context) {
 	}
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	c.JSON(http.StatusCreated, gin.H{"polygon": polygon})
 }
@@ -404,6 +409,9 @@ func (h *ZoneHandler) RemovePolygon(c *gin.Context) {
 	h.historyRepo.Log(zoneID, editorID, "remove_polygon", nil, nil)
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+	if !zoneDeleted {
+		h.saveZoneSnapshot(zone.ID, user.ID)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"polygon_deleted": true,
@@ -487,6 +495,7 @@ func (h *ZoneHandler) UpdatePolygonPoints(c *gin.Context) {
 	h.historyRepo.Log(zoneID, editorID, "update", json.RawMessage(oldData), json.RawMessage(newData))
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	polygon := getPolygonByID(polygons, polygonID)
 	if polygon != nil {
@@ -502,6 +511,38 @@ func (h *ZoneHandler) syncAfterZoneChange(teamID, mapID int) {
 	}
 	if err := h.templateSyncSvc.SyncOnZoneChange(teamID, mapID); err != nil {
 		log.Printf("warning: failed to sync template after zone change (team=%d, map=%d): %v", teamID, mapID, err)
+	}
+}
+
+func (h *ZoneHandler) saveZoneSnapshot(zoneID, editorID int) {
+	if h.versionRepo == nil {
+		return
+	}
+	polygons, err := h.zoneRepo.GetPolygons(zoneID)
+	if err != nil {
+		log.Printf("warning: failed to get polygons for snapshot (zone=%d): %v", zoneID, err)
+		return
+	}
+
+	zoneName := ""
+	zn, err := h.zoneRepo.GetName(zoneID)
+	if err == nil && zn != nil {
+		zoneName = zn.Name
+	}
+
+	snapshot := models.VersionSnapshot{
+		Name: zoneName,
+	}
+	for _, p := range polygons {
+		snapshot.Polygons = append(snapshot.Polygons, models.SnapshotPolygon{
+			Points:     p.Points,
+			OrderIndex: p.OrderIndex,
+		})
+	}
+
+	editorIDPtr := &editorID
+	if _, err := h.versionRepo.Save(zoneID, editorIDPtr, snapshot); err != nil {
+		log.Printf("warning: failed to save zone snapshot (zone=%d): %v", zoneID, err)
 	}
 }
 
@@ -604,6 +645,7 @@ func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 	h.historyRepo.Log(zoneID, editorID, "add_point", json.RawMessage(oldData), json.RawMessage(newData))
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	targetPolygon.Points = newPoints
 	c.JSON(http.StatusOK, gin.H{"polygon": targetPolygon})
@@ -698,6 +740,7 @@ func (h *ZoneHandler) RemovePolygonPoint(c *gin.Context) {
 	h.historyRepo.Log(zoneID, editorID, "remove_point", json.RawMessage(oldData), json.RawMessage(newData))
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	targetPolygon.Points = newPoints
 	c.JSON(http.StatusOK, gin.H{"polygon": targetPolygon})
@@ -774,6 +817,7 @@ func (h *ZoneHandler) SetZoneName(c *gin.Context) {
 	h.historyRepo.Log(zoneID, editorID, "rename", json.RawMessage(oldData), json.RawMessage(newData))
 
 	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+	h.saveZoneSnapshot(zone.ID, user.ID)
 
 	c.JSON(http.StatusOK, gin.H{"name": zn})
 }
@@ -862,6 +906,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 	}
 
 	results := make([]batchActionResult, 0, len(req.Actions))
+	modifiedZoneIDs := make(map[int]bool)
+	deletedZoneIDs := make(map[int]bool)
 	tempZoneMap := make(map[string]int)
 
 	for _, action := range req.Actions {
@@ -945,6 +991,29 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown_action_type", "message": "unknown action type: " + action.Type})
 			return
 		}
+
+		if action.Type == "remove_polygon" && action.ZoneID != nil {
+			lastResult := results[len(results)-1]
+			if lastResult.ZoneDeleted != nil && *lastResult.ZoneDeleted {
+				deletedZoneIDs[*action.ZoneID] = true
+			} else {
+				modifiedZoneIDs[*action.ZoneID] = true
+			}
+		} else if action.Type == "create_zone" && len(results) > 0 {
+			lastResult := results[len(results)-1]
+			if lastResult.ZoneID != nil {
+				modifiedZoneIDs[*lastResult.ZoneID] = true
+			}
+		} else if action.Type != "delete_zone" && action.ZoneID != nil {
+			modifiedZoneIDs[*action.ZoneID] = true
+		}
+	}
+
+	for zoneID := range modifiedZoneIDs {
+		if deletedZoneIDs[zoneID] {
+			continue
+		}
+		h.saveZoneSnapshot(zoneID, user.ID)
 	}
 
 	h.syncAfterZoneChange(teamID, mapID)

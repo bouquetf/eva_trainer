@@ -81,6 +81,7 @@ func setupTemplateTestDB(t *testing.T) *sql.DB {
 		"000003_add_display_name.up.sql",
 		"000004_add_discord_username.up.sql",
 		"000011_add_zone_polygon_constraints.up.sql",
+		"000013_add_zone_versions.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -139,6 +140,7 @@ func setupTemplateTest(t *testing.T) *templateTestFixtures {
 	lockRepo := models.NewEditLockRepository(db)
 	historyRepo := models.NewEditHistoryRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
+	versionRepo := models.NewZoneVersionRepository(db)
 	templateRepo := models.NewTemplateRepository(db)
 
 	captain, _, err := userRepo.FindOrCreateByDiscordID("template-test-captain-" + t.Name())
@@ -188,7 +190,7 @@ func setupTemplateTest(t *testing.T) *templateTestFixtures {
 	}
 
 	templateHandler := NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo)
-	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil)
+	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo)
 
 	return &templateTestFixtures{
 		db:              db,

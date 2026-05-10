@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import type { Zone, Point } from "../../lib/api/types";
+import { useNavigate, Link } from "react-router-dom";
+import type { Zone, Point, ZoneVersion, ZonePolygon } from "../../lib/api/types";
 import {
   listZones,
   batchActions,
@@ -10,11 +10,14 @@ import { acquireLock, releaseLock, refreshLock, releaseLockSync } from "../../ap
 import { getMapImageUrl, listTeamMaps } from "../../api/maps";
 import type { Map as MapInfo } from "../../api/maps";
 import { ApiError } from "../../api/client";
+import { restoreVersion } from "../../api/versions";
 import { Toolbar } from "./Toolbar";
 import { MapCanvas } from "./MapCanvas";
 import { ZoneList } from "./ZoneList";
 import { ContextMenu } from "./ContextMenu";
+import VersionBrowser from "../VersionBrowser";
 import ConfirmDialog from "../ConfirmDialog";
+import RestoreConfirmModal from "../RestoreConfirmModal";
 import {
   translateSelectedPolygons,
   moveZonePoint,
@@ -76,6 +79,11 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
   // (showNameDialog removed - polygon completion adds directly)
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [undoStack, setUndoStack] = useState<string[]>([]);
+  const [versionRefreshKey, setVersionRefreshKey] = useState(0);
+  const [browsingVersion, setBrowsingVersion] = useState<ZoneVersion | null>(null);
+  const [currentVersionSnapshot, setCurrentVersionSnapshot] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<ZoneVersion | null>(null);
+  const [restoring, setRestoring] = useState(false);
   const pendingZoneSwitch = useRef<PendingSwitch | null>(null);
 
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -263,7 +271,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
 
     for (const [id] of origPolys) {
       if (!editPolys.has(id) && id > 0) {
-        actions.push({ type: "remove_polygon", polygon_id: id });
+        actions.push({ type: "remove_polygon", zone_id: original.id, polygon_id: id });
       }
     }
 
@@ -276,7 +284,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
           const changed = orig.points.length !== poly.points.length ||
             orig.points.some((p, i) => p.x !== poly.points[i]?.x || p.y !== poly.points[i]?.y);
           if (changed) {
-            actions.push({ type: "update_points", polygon_id: id, points: poly.points });
+            actions.push({ type: "update_points", zone_id: original.id, polygon_id: id, points: poly.points });
           }
         }
       }
@@ -304,6 +312,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
       setIsDirty(false);
       setUndoStack([]);
       setZones((prev) => prev.map((z) => (z.id === editingZone.id ? { ...editingZone } : z)));
+      setVersionRefreshKey(k => k + 1);
       return true;
     } catch (err) {
       showError("Erreur lors de la sauvegarde.");
@@ -384,14 +393,27 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         },
       ];
       const result = await batchActions(teamId, mapId, actions);
-      const firstResult = result.results?.[0] as { zone_id?: number } | undefined;
+      const firstResult = result.results?.[0] as { zone_id?: number; polygons?: ZonePolygon[] } | undefined;
       if (firstResult?.zone_id) {
         const newId = firstResult.zone_id;
-        const saved = { ...editingZone, id: newId };
+        const serverPolys = firstResult.polygons;
+        const saved = {
+          ...editingZone,
+          id: newId,
+          polygons: serverPolys && serverPolys.length > 0
+            ? editingZone.polygons.map((local, i) => ({
+                ...local,
+                id: serverPolys[i]?.id ?? local.id,
+                zone_id: newId,
+              }))
+            : editingZone.polygons,
+        };
         setZones((prev) => prev.map((z) => (z.id === editingZone.id && z.id === 0 ? saved : z)));
         setEditingZone(saved);
         setOriginalSnapshot(JSON.stringify(saved));
         setIsDirty(false);
+        setSelectedZoneId(newId);
+        setVersionRefreshKey(k => k + 1);
         return true;
       }
       return false;
@@ -474,6 +496,84 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
     pendingZoneSwitch.current = null;
   };
 
+  const handleRestoreConfirm = async () => {
+    if (!restoreTarget || !editingZone) return;
+    if (!(await ensureLock())) {
+      setRestoreTarget(null);
+      return;
+    }
+    setRestoring(true);
+    try {
+      await restoreVersion(teamId, editingZone.id, restoreTarget.id);
+      setRestoreTarget(null);
+      setBrowsingVersion(null);
+      setCurrentVersionSnapshot(null);
+      const freshZones = await listZones(teamId, mapId);
+      setZones(freshZones.zones);
+      const updated = freshZones.zones.find(z => z.id === editingZone.id);
+      if (updated) {
+        setEditingZone(updated);
+        setOriginalSnapshot(JSON.stringify(updated));
+      }
+      setIsDirty(false);
+      setVersionRefreshKey(k => k + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 423) {
+          showError("Vous devez avoir un verrou d'édition actif pour restaurer.");
+        } else {
+          showError(String(err.body?.message ?? 'Erreur lors de la restauration.'));
+        }
+      } else {
+        showError("Erreur lors de la restauration.");
+      }
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleBrowseVersion = (version: ZoneVersion | null) => {
+    if (!editingZone) return
+    if (version && browsingVersion === null) {
+      setCurrentVersionSnapshot(JSON.stringify(editingZone))
+      const z: Zone = zoneFromVersion(editingZone, version)
+      setEditingZone(z)
+      setBrowsingVersion(version)
+      setZones((prev) => prev.map((zone) =>
+        zone.id === editingZone.id ? { ...zone, name: version.version_data.name } : zone
+      ))
+    } else if (version && browsingVersion !== null) {
+      const z: Zone = zoneFromVersion(editingZone, version)
+      setEditingZone(z)
+      setBrowsingVersion(version)
+      setZones((prev) => prev.map((zone) =>
+        zone.id === editingZone.id ? { ...zone, name: version.version_data.name } : zone
+      ))
+    } else if (version === null && browsingVersion !== null && currentVersionSnapshot) {
+      const restored = JSON.parse(currentVersionSnapshot) as Zone
+      setEditingZone(restored)
+      setBrowsingVersion(null)
+      setCurrentVersionSnapshot(null)
+      setZones((prev) => prev.map((zone) =>
+        zone.id === restored.id ? { ...zone, name: restored.name } : zone
+      ))
+    }
+  };
+
+  function zoneFromVersion(base: Zone, version: ZoneVersion): Zone {
+    return {
+      ...base,
+      name: version.version_data.name,
+      polygons: version.version_data.polygons.map((p, i) => ({
+        id: -(i + 1),
+        zone_id: base.id,
+        points: p.points,
+        order_index: p.order_index,
+        created_at: new Date().toISOString(),
+      })),
+    }
+  }
+
   function updateEditingPolygon(updater: (zone: Zone) => Zone | null) {
     pushUndo();
     setEditingZone((prev) => {
@@ -545,8 +645,18 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
     if (editingZone?.id === id) {
       pushUndo();
       setEditingZone((prev) => (prev ? { ...prev, name } : prev));
-      setIsDirty(true);
+    } else if (!editingZone) {
+      const zone = zones.find((z) => z.id === id);
+      if (zone) {
+        setOriginalSnapshot(JSON.stringify(zone));
+        setEditingZone({ ...zone, name });
+        setSelectedZoneId(id);
+        setSelectedPolygonIndexes(new Set(zone.polygons.map((_, i) => i)));
+        setTempPoints([]);
+        setUndoStack([]);
+      }
     }
+    setIsDirty(true);
   };
 
   const handlePolygonClick = (zoneId: number, polygonIndex: number, e: React.MouseEvent) => {
@@ -740,13 +850,14 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
             onMapRightClick={handleMapRightClick}
             onZoneRightClick={handleZoneRightClick}
             onMapDoubleClick={handleMapDoubleClick}
+
           />
         </div>
 
         <div className="side-panel">
-          <div style={{ marginBottom: "10px" }}>
+          <div style={{ marginBottom: "10px", display: "flex", gap: 5 }}>
             <select
-              style={{ width: "100%" }}
+              style={{ flex: 1 }}
               value={mapId}
               onChange={(e) => {
                 const targetMapId = Number(e.target.value);
@@ -764,13 +875,20 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
                 </option>
               ))}
             </select>
+            <Link
+              to={`/teams/${teamId}/maps/${mapId}/history`}
+              className="btn-secondary btn-small"
+              style={{ textDecoration: 'none', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}
+            >
+              Historique
+            </Link>
           </div>
           {editingZone && (
             <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
               <button
                 className="btn-primary btn-small"
                 onClick={editingZone.id === 0 ? handleSaveNewZone : handleSave}
-                disabled={!isDirty || isSaving}
+                disabled={!isDirty || isSaving || browsingVersion !== null}
                 style={{ flex: 1 }}
               >
                 {isSaving ? "Sauvegarde..." : "Sauvegarder"}
@@ -800,8 +918,56 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
             onCreateZone={handleCreateZone}
             onRenameZone={handleRenameZone}
           />
+          {editingZone && editingZone.id > 0 && (
+            <VersionBrowser
+              teamId={teamId}
+              zoneId={editingZone.id}
+              refreshKey={versionRefreshKey}
+              browsingVersionId={browsingVersion?.id}
+              onBrowse={handleBrowseVersion}
+            />
+          )}
         </div>
       </div>
+
+      {browsingVersion && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          background: '#1565c0',
+          color: '#fff',
+          textAlign: 'center',
+          padding: '8px 16px',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 12,
+          fontSize: 14,
+        }}>
+          <span>
+            Affichage de la version du{' '}
+            <strong>{new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(browsingVersion.created_at))}</strong>
+            {' '}(lecture seule)
+          </span>
+          <button
+            className="btn-small"
+            style={{ background: '#fff', color: '#1565c0', border: 'none', fontWeight: 'bold' }}
+            onClick={() => setRestoreTarget(browsingVersion)}
+          >
+            Revenir à cette version
+          </button>
+          <button
+            className="btn-small"
+            style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)' }}
+            onClick={() => handleBrowseVersion(null)}
+          >
+            Retour à l'édition
+          </button>
+        </div>
+      )}
 
       {contextMenu && (
         <ContextMenu
@@ -821,6 +987,15 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         onConfirm={handleDiscardConfirm}
         onCancel={handleDiscardCancel}
         altButton={{ label: "Sauvegarder", onClick: handleDiscardSave, className: "btn-primary" }}
+      />
+
+      <RestoreConfirmModal
+        open={restoreTarget !== null}
+        versionDate={restoreTarget ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(restoreTarget.created_at)) : ''}
+        authorName={restoreTarget?.editor_name || 'Utilisateur supprimé'}
+        onConfirm={handleRestoreConfirm}
+        onCancel={() => { setRestoreTarget(null); setRestoring(false) }}
+        loading={restoring}
       />
     </div>
   );

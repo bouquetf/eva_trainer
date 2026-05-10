@@ -61,4 +61,6 @@ var (
 
 	ErrTemplateNotFound      = errors.New("template not found")
 	ErrTemplateAlreadyExists = errors.New("template already exists for this map")
+
+	ErrVersionNotFound = errors.New("version not found")
 )

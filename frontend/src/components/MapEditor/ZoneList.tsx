@@ -53,6 +53,7 @@ export const ZoneList: React.FC<ZoneListProps> = ({
   };
 
   const handleDoubleClick = (zone: Zone) => {
+    if (zone.id !== editingZoneId) return;
     setRenamingZoneId(zone.id);
     setRenameValue(zone.name || `Zone #${zone.id}`);
   };

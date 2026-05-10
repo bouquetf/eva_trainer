@@ -160,8 +160,21 @@ type TemplateRepository interface {
 	Delete(templateID int) error
 }
 
+type ZoneVersionRepository interface {
+	Save(zoneID int, editorID *int, snapshot VersionSnapshot) (*ZoneVersion, error)
+	FindByMap(teamID, mapID int, page, limit int) ([]*ZoneVersion, int, error)
+	FindByZone(zoneID int, page, limit int) ([]*ZoneVersion, int, error)
+	FindByID(versionID int) (*ZoneVersion, error)
+	GetLatestForZone(zoneID int) (*ZoneVersion, error)
+	FindFirstOtherEditorVersion(zoneID, editorID int) (*int, error)
+	CountByZone(zoneID int) (int, error)
+	DeleteNewerThan(zoneID int, olderThan time.Time) error
+}
+
 type EditHistoryRepository interface {
 	Log(zoneID int, editorID *int, action string, oldData, newData json.RawMessage) (*EditHistory, error)
 	FindByZone(zoneID int) ([]*EditHistory, error)
 	FindByTeamAndMap(teamID, mapID int) ([]*EditHistory, error)
+	FindByTeamAndMapWithFilters(teamID, mapID int, page, limit int) ([]*EditHistory, int, error)
+	FindByZoneWithFilters(zoneID int, page, limit int) ([]*EditHistory, int, error)
 }
