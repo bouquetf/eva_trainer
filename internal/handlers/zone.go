@@ -9,16 +9,18 @@ import (
 
 	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
+	"eva_trainer/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
 
 type ZoneHandler struct {
-	zoneRepo       models.ZoneRepository
-	mapRepo        models.MapRepository
-	lockRepo       models.EditLockRepository
-	historyRepo    models.EditHistoryRepository
-	teamMemberRepo models.TeamMemberRepository
+	zoneRepo        models.ZoneRepository
+	mapRepo         models.MapRepository
+	lockRepo        models.EditLockRepository
+	historyRepo     models.EditHistoryRepository
+	teamMemberRepo  models.TeamMemberRepository
+	templateSyncSvc *services.TemplateSyncService
 }
 
 func NewZoneHandler(
@@ -27,13 +29,15 @@ func NewZoneHandler(
 	lockRepo models.EditLockRepository,
 	historyRepo models.EditHistoryRepository,
 	teamMemberRepo models.TeamMemberRepository,
+	templateSyncSvc *services.TemplateSyncService,
 ) *ZoneHandler {
 	return &ZoneHandler{
-		zoneRepo:       zoneRepo,
-		mapRepo:        mapRepo,
-		lockRepo:       lockRepo,
-		historyRepo:    historyRepo,
-		teamMemberRepo: teamMemberRepo,
+		zoneRepo:        zoneRepo,
+		mapRepo:         mapRepo,
+		lockRepo:        lockRepo,
+		historyRepo:     historyRepo,
+		teamMemberRepo:  teamMemberRepo,
+		templateSyncSvc: templateSyncSvc,
 	}
 }
 
@@ -163,6 +167,8 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 		zoneName = zn.Name
 	}
 
+	h.syncAfterZoneChange(teamID, mapID)
+
 	c.JSON(http.StatusCreated, gin.H{
 		"zone": models.ZoneWithDetails{
 			ID:        zone.ID,
@@ -260,6 +266,8 @@ func (h *ZoneHandler) DeleteZone(c *gin.Context) {
 		return
 	}
 
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+
 	c.JSON(http.StatusOK, gin.H{"message": "zone deleted"})
 }
 
@@ -332,6 +340,8 @@ func (h *ZoneHandler) AddPolygon(c *gin.Context) {
 		return
 	}
 
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+
 	c.JSON(http.StatusCreated, gin.H{"polygon": polygon})
 }
 
@@ -392,6 +402,8 @@ func (h *ZoneHandler) RemovePolygon(c *gin.Context) {
 	var editorID *int
 	editorID = &user.ID
 	h.historyRepo.Log(zoneID, editorID, "remove_polygon", nil, nil)
+
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"polygon_deleted": true,
@@ -474,12 +486,23 @@ func (h *ZoneHandler) UpdatePolygonPoints(c *gin.Context) {
 	editorID = &user.ID
 	h.historyRepo.Log(zoneID, editorID, "update", json.RawMessage(oldData), json.RawMessage(newData))
 
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+
 	polygon := getPolygonByID(polygons, polygonID)
 	if polygon != nil {
 		polygon.Points = req.Points
 	}
 
 	c.JSON(http.StatusOK, gin.H{"polygon": polygon})
+}
+
+func (h *ZoneHandler) syncAfterZoneChange(teamID, mapID int) {
+	if h.templateSyncSvc == nil {
+		return
+	}
+	if err := h.templateSyncSvc.SyncOnZoneChange(teamID, mapID); err != nil {
+		log.Printf("warning: failed to sync template after zone change (team=%d, map=%d): %v", teamID, mapID, err)
+	}
 }
 
 func getPolygonByID(polygons []models.ZonePolygon, id int) *models.ZonePolygon {
@@ -580,6 +603,8 @@ func (h *ZoneHandler) AddPolygonPoint(c *gin.Context) {
 	editorID = &user.ID
 	h.historyRepo.Log(zoneID, editorID, "add_point", json.RawMessage(oldData), json.RawMessage(newData))
 
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+
 	targetPolygon.Points = newPoints
 	c.JSON(http.StatusOK, gin.H{"polygon": targetPolygon})
 }
@@ -672,6 +697,8 @@ func (h *ZoneHandler) RemovePolygonPoint(c *gin.Context) {
 	editorID = &user.ID
 	h.historyRepo.Log(zoneID, editorID, "remove_point", json.RawMessage(oldData), json.RawMessage(newData))
 
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
+
 	targetPolygon.Points = newPoints
 	c.JSON(http.StatusOK, gin.H{"polygon": targetPolygon})
 }
@@ -745,6 +772,8 @@ func (h *ZoneHandler) SetZoneName(c *gin.Context) {
 	var editorID *int
 	editorID = &user.ID
 	h.historyRepo.Log(zoneID, editorID, "rename", json.RawMessage(oldData), json.RawMessage(newData))
+
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
 
 	c.JSON(http.StatusOK, gin.H{"name": zn})
 }
@@ -917,6 +946,8 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 			return
 		}
 	}
+
+	h.syncAfterZoneChange(teamID, mapID)
 
 	c.JSON(http.StatusOK, batchResponse{Results: results})
 }

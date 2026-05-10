@@ -235,10 +235,10 @@ admin.DELETE("/locks", lockHandler.ForceClearLocks)
 
 | Fichier | Action | Description |
 |---------|--------|-------------|
-| `internal/models/edit_lock.go` | Modifier | Ajouter `RemainingSeconds int` avec tag JSON, méthode de calcul |
+| `internal/models/edit_lock.go` | Vérifier | `RemainingSeconds` est un champ calculé dans le DTO handler, PAS dans le modèle |
 | `internal/models/repository.go` | Modifier | Ajouter `ForceClearAll() (int64, error)` à l'interface `EditLockRepository` |
 | `internal/models/edit_lock.go` | Modifier | Implémenter `ForceClearAll()` |
-| `internal/handlers/edit_lock.go` | Modifier | Ajouter `userRepo` au handler, enrichir réponses avec `editor_name` et `remaining_seconds`, ajouter les méthodes admin |
+| `internal/handlers/edit_lock.go` | Modifier | Ajouter `userRepo` au handler, créer DTO `LockResponse` avec `remaining_seconds` calculé, enrichir réponses avec `editor_name`, ajouter méthodes admin |
 | `internal/handlers/admin.go` | Modifier | (Optionnel) Si on préfère mettre les méthodes admin ici plutôt que dans edit_lock.go |
 | `api/routes.go` | Modifier | Mettre à jour constructeur `NewEditLockHandler`, ajouter routes admin lock, ajouter route `POST .../lock/release` |
 | `db/migrations/000005_seed_permissions.up.sql` | Vérifier | Déjà existant, juste vérifier que `zone:lock` est bien seedé |

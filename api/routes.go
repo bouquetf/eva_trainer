@@ -110,8 +110,12 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	lockRepo := models.NewEditLockRepository(db)
 	historyRepo := models.NewEditHistoryRepository(db)
 	mapHandler := handlers.NewMapHandler(mapRepo)
-	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo)
+	templateRepo := models.NewTemplateRepository(db)
+	templateSyncSvc := services.NewTemplateSyncService(templateRepo, zoneRepo)
+	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc)
 	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo)
+
+	templateHandler := handlers.NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo)
 
 	rg.GET("/myteams", middleware.RequireAuth(userRepo, jwtService), teamHandler.ListMyTeams)
 
@@ -177,6 +181,15 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 		teams.GET("/:id/maps/:mapId/lock",
 			middleware.RequireTeamRole(teamMemberRepo, "member", "editor", "cocaptain", "captain"),
 			lockHandler.GetLockStatus,
+		)
+
+		teams.POST("/:id/maps/:mapId/publish",
+			middleware.RequireTeamRole(teamMemberRepo, "cocaptain", "captain"),
+			templateHandler.PublishMap,
+		)
+		teams.GET("/:id/maps/:mapId/publish-status",
+			middleware.RequireTeamRole(teamMemberRepo, "editor", "cocaptain", "captain"),
+			templateHandler.GetPublishStatus,
 		)
 
 		teams.GET("/:id/zones/:zoneId",
@@ -293,6 +306,10 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 	lockRepoAdmin := models.NewEditLockRepository(db)
 	lockHandlerAdmin := handlers.NewEditLockHandler(lockRepoAdmin, userRepo)
 
+	templateRepoAdmin := models.NewTemplateRepository(db)
+	zoneRepoAdmin := models.NewZoneRepository(db)
+	templateHandlerAdmin := handlers.NewTemplateHandler(templateRepoAdmin, zoneRepoAdmin, teamMemberRepo)
+
 	admin := rg.Group("/admin")
 	admin.Use(middleware.RequireAuth(userRepo, jwtService))
 	admin.Use(middleware.RequireAdmin())
@@ -314,6 +331,8 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig) {
 
 		admin.POST("/locks/cleanup", lockHandlerAdmin.CleanupExpiredLocks)
 		admin.DELETE("/locks", lockHandlerAdmin.ForceClearLocks)
+
+		admin.DELETE("/templates/:templateId", templateHandlerAdmin.AdminDeleteTemplate)
 
 		splitRepo := models.NewSplitRepository(db)
 		splitHandler := handlers.NewSplitHandler(splitRepo)

@@ -715,6 +715,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         onRefreshLock={handleRefreshLock}
         onReacquireLock={handleReacquireLock}
         showReacquireButton={showReacquireButton}
+        teamId={teamId}
+        mapId={mapId}
       />
 
       <div className="main-content">

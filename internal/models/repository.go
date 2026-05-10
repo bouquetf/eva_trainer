@@ -152,6 +152,14 @@ type EditLockRepository interface {
 	ForceClearAll() (int64, error)
 }
 
+type TemplateRepository interface {
+	CreateFromMap(teamID, mapID int) (*Template, error)
+	FindByMapID(mapID int) (*Template, error)
+	FindAllPublic() ([]*TemplateWithZones, error)
+	UpdateFromMap(templateID, teamID, mapID int) error
+	Delete(templateID int) error
+}
+
 type EditHistoryRepository interface {
 	Log(zoneID int, editorID *int, action string, oldData, newData json.RawMessage) (*EditHistory, error)
 	FindByZone(zoneID int) ([]*EditHistory, error)

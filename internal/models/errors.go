@@ -58,4 +58,7 @@ var (
 	ErrLockNotFound           = errors.New("edit lock not found")
 	ErrLockAlreadyAcquired    = errors.New("edit lock already acquired by another editor")
 	ErrLockNotOwned           = errors.New("edit lock is owned by another editor")
+
+	ErrTemplateNotFound      = errors.New("template not found")
+	ErrTemplateAlreadyExists = errors.New("template already exists for this map")
 )

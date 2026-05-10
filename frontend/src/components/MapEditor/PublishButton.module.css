@@ -1,0 +1,46 @@
+.badgePublic {
+  background-color: #00e676;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badgePrivate {
+  background-color: #666;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.publishButton {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.2s;
+}
+
+.publishButton:hover {
+  background-color: #d32f2f;
+}
+
+.publishButton:disabled {
+  background-color: #999;
+  cursor: not-allowed;
+}

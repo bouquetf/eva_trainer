@@ -1,5 +1,6 @@
 import React from "react";
 import { LockIndicator } from "./LockIndicator";
+import { PublishButton } from "./PublishButton";
 
 interface ToolbarProps {
   canEdit: boolean;
@@ -10,6 +11,8 @@ interface ToolbarProps {
   onRefreshLock?: () => void;
   onReacquireLock?: () => void;
   showReacquireButton?: boolean;
+  teamId: number;
+  mapId: number;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -21,10 +24,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onRefreshLock,
   onReacquireLock,
   showReacquireButton,
+  teamId,
+  mapId,
 }) => {
   return (
     <div className="toolbar">
       <div style={{ display: "flex", gap: "5px", alignItems: "center", marginLeft: "auto" }}>
+        <PublishButton teamId={teamId} mapId={mapId} />
         <LockIndicator
           isLocked={isLocked}
           lockedByMe={lockedByMe}
