@@ -243,7 +243,7 @@ export default function Revision() {
           <div className="main-content">
             <div className="canvas-area">
               <div className="revision-canvas-wrapper">
-                <RevisionMap mapId={config.mapId} polygons={currentQuestion.polygons} />
+                <RevisionMap mapId={currentQuestion.map_id} polygons={currentQuestion.polygons} />
               </div>
               <div className="revision-input-area">
                 <input

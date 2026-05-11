@@ -424,3 +424,114 @@ func TestListRevisionZones_InvalidMapID(t *testing.T) {
 		t.Errorf("expected 404 for non-existent map, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestListRevisionZones_ObsoleteMapZones(t *testing.T) {
+	f := setupRevisionTest(t)
+
+	pts := []models.Point{{X: 1, Y: 2}, {X: 3, Y: 4}}
+
+	v1, err := f.mapRepo.Create("obsolete-test-"+t.Name(), nil)
+	if err != nil {
+		t.Fatalf("failed to create v1 map: %v", err)
+	}
+
+	createRevisionZone(t, f.zoneRepo, f.teamA.ID, v1.ID, "Zone V1", pts)
+
+	v2, err := f.mapRepo.Create("obsolete-test-"+t.Name(), nil)
+	if err != nil {
+		t.Fatalf("failed to create v2 map: %v", err)
+	}
+
+	createRevisionZone(t, f.zoneRepo, f.teamA.ID, v2.ID, "Zone V2", pts)
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.teamA.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", v2.ID)},
+	}
+	w := executeRevisionRequest(t, f.revisionHandler.ListRevisionZones, http.MethodGet,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/revision-zones", f.teamA.ID, v2.ID),
+		f.member, f.memberToken, params)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Zones []RevisionZone `json:"zones"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Zones) != 2 {
+		t.Fatalf("expected 2 zones (v1 + v2), got %d", len(resp.Zones))
+	}
+
+	for _, z := range resp.Zones {
+		if z.Name == "Zone V1" {
+			if z.MapID != v1.ID {
+				t.Errorf("v1 zone map_id: expected %d, got %d", v1.ID, z.MapID)
+			}
+		} else if z.Name == "Zone V2" {
+			if z.MapID != v2.ID {
+				t.Errorf("v2 zone map_id: expected %d, got %d", v2.ID, z.MapID)
+			}
+		} else {
+			t.Errorf("unexpected zone name: %s", z.Name)
+		}
+	}
+}
+
+func TestListRevisionZones_DeletedObsoleteMapExcluded(t *testing.T) {
+	f := setupRevisionTest(t)
+
+	pts := []models.Point{{X: 1, Y: 1}, {X: 2, Y: 2}}
+
+	v1, err := f.mapRepo.Create("deleted-test-"+t.Name(), nil)
+	if err != nil {
+		t.Fatalf("failed to create v1 map: %v", err)
+	}
+
+	createRevisionZone(t, f.zoneRepo, f.teamA.ID, v1.ID, "Zone V1", pts)
+
+	v2, err := f.mapRepo.Create("deleted-test-"+t.Name(), nil)
+	if err != nil {
+		t.Fatalf("failed to create v2 map: %v", err)
+	}
+
+	v2ZoneID := createRevisionZone(t, f.zoneRepo, f.teamA.ID, v2.ID, "Zone V2", pts)
+
+	if err := f.mapRepo.Delete(v1.ID); err != nil {
+		t.Fatalf("failed to delete v1 map: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.teamA.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", v2.ID)},
+	}
+	w := executeRevisionRequest(t, f.revisionHandler.ListRevisionZones, http.MethodGet,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/revision-zones", f.teamA.ID, v2.ID),
+		f.member, f.memberToken, params)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Zones []RevisionZone `json:"zones"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Zones) != 1 {
+		t.Fatalf("expected 1 zone (only v2), got %d", len(resp.Zones))
+	}
+
+	if resp.Zones[0].ID != v2ZoneID {
+		t.Errorf("expected v2 zone, got zone id %d", resp.Zones[0].ID)
+	}
+	if resp.Zones[0].MapID != v2.ID {
+		t.Errorf("expected map_id %d, got %d", v2.ID, resp.Zones[0].MapID)
+	}
+}

@@ -56,7 +56,7 @@ func (h *RevisionHandler) ListRevisionZones(c *gin.Context) {
 		return
 	}
 
-	_, err = h.mapRepo.FindByID(mapID)
+	originalMap, err := h.mapRepo.FindByID(mapID)
 	if err != nil {
 		if errors.Is(err, models.ErrMapNotFound) {
 			apierror.RespondWithError(c, apierror.NewAPIError("map_not_found", "map not found", http.StatusNotFound))
@@ -66,22 +66,34 @@ func (h *RevisionHandler) ListRevisionZones(c *gin.Context) {
 		return
 	}
 
-	teamZones, err := h.zoneRepo.FindWithDetailsByTeamAndMap(teamID, mapID)
+	allMaps, err := h.mapRepo.FindByName(originalMap.Name)
 	if err != nil {
-		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list zones", http.StatusInternalServerError))
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list map versions", http.StatusInternalServerError))
 		return
 	}
 
-	zones := make([]RevisionZone, 0, len(teamZones))
+	zones := make([]RevisionZone, 0)
 
-	for _, tz := range teamZones {
-		zones = append(zones, RevisionZone{
-			ID:       tz.ID,
-			Source:   "team",
-			MapID:    tz.MapID,
-			Polygons: tz.Polygons,
-			Name:     tz.Name,
-		})
+	for _, mv := range allMaps {
+		teamZones, err := h.zoneRepo.FindWithDetailsByTeamAndMap(teamID, mv.ID)
+		if err != nil {
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list zones", http.StatusInternalServerError))
+			return
+		}
+
+		for _, tz := range teamZones {
+			zones = append(zones, RevisionZone{
+				ID:       tz.ID,
+				Source:   "team",
+				MapID:    tz.MapID,
+				Polygons: tz.Polygons,
+				Name:     tz.Name,
+			})
+		}
+	}
+
+	if zones == nil {
+		zones = []RevisionZone{}
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"zones": zones})
