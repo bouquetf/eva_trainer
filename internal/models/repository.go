@@ -158,6 +158,7 @@ type TemplateRepository interface {
 	FindAllPublic() ([]*TemplateWithZones, error)
 	UpdateFromMap(templateID, teamID, mapID int) error
 	Delete(templateID int) error
+	DuplicateToTeam(teamID, templateID int) ([]*Zone, int, error)
 }
 
 type ZoneVersionRepository interface {

@@ -105,3 +105,49 @@ func (h *TemplateHandler) AdminDeleteTemplate(c *gin.Context) {
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "template deleted"})
 }
+
+func (h *TemplateHandler) ListPublicTemplates(c *gin.Context) {
+	templates, err := h.templateRepo.FindAllPublic()
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list public templates", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"templates": templates})
+}
+
+func (h *TemplateHandler) DuplicateTemplate(c *gin.Context) {
+	teamID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
+		return
+	}
+
+	templateID, err := strconv.Atoi(c.Param("templateId"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_template_id", "invalid template id", http.StatusBadRequest))
+		return
+	}
+
+	_, mapID, err := h.templateRepo.DuplicateToTeam(teamID, templateID)
+	if err != nil {
+		if errors.Is(err, models.ErrTemplateNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("template_not_found", "template not found", http.StatusNotFound))
+			return
+		}
+		if errors.Is(err, models.ErrTemplateNotPublic) {
+			apierror.RespondWithError(c, apierror.NewAPIError("template_not_public", "template is not public", http.StatusForbidden))
+			return
+		}
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to duplicate template", http.StatusInternalServerError))
+		return
+	}
+
+	detailedZones, err := h.zoneRepo.FindWithDetailsByTeamAndMap(teamID, mapID)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to retrieve zone details", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"zones": detailedZones})
+}

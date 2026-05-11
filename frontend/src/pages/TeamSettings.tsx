@@ -7,6 +7,7 @@ import { listTeamMaps } from '../api/maps'
 import { searchUsers, inviteByDisplayName, generateInviteLink, listPendingInvitations } from '../api/invitations'
 import type { UserSearchResult } from '../api/invitations'
 import { listPendingJoinRequests, acceptJoinRequest, declineJoinRequest } from '../api/joinRequests'
+import { listPublicTemplates, duplicateTemplate } from '../api/templates'
 import { useAuthStore } from '../store/auth'
 import ConfirmDialog from '../components/ConfirmDialog'
 import MemberList from '../components/MemberList'
@@ -37,6 +38,10 @@ function TeamSettings() {
   const [linkError, setLinkError] = useState<string | null>(null)
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importMapId, setImportMapId] = useState<number | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+
   const { data: teamData, isLoading: teamLoading, error: teamError } = useQuery({
     queryKey: ['team', teamId],
     queryFn: () => getTeam(teamId),
@@ -55,8 +60,32 @@ function TeamSettings() {
     enabled: !isNaN(teamId),
   })
 
+  const { data: publicTemplatesData, isLoading: publicTemplatesLoading } = useQuery({
+    queryKey: ['public-templates'],
+    queryFn: () => listPublicTemplates(),
+    enabled: showImportModal,
+  })
+  const publicTemplates = publicTemplatesData?.templates ?? []
+
+  const importMutation = useMutation({
+    mutationFn: (templateId: number) => duplicateTemplate(teamId, templateId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-maps', teamId] })
+      setImportError(null)
+      setTimeout(() => {
+        setShowImportModal(false)
+      }, 1200)
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { status?: number; body?: { message?: string } }
+      setImportError(apiErr?.body?.message ?? "Erreur lors de l'import du template.")
+    },
+  })
+
   const members = membersData?.members ?? teamData?.members ?? []
   const maps = mapsData?.maps ?? []
+  const availableTemplates = publicTemplates.filter(tw => tw.template.map_id === importMapId)
+  const importMapName = maps.find(m => m.id === importMapId)?.name ?? ''
   const team = teamData?.team
 
   const currentUser = useAuthStore.getState().user
@@ -327,12 +356,22 @@ function TeamSettings() {
                 <tr key={m.id}>
                   <td>{m.name}</td>
                   <td>
-                    <button
-                      className="btn-primary btn-small"
-                      onClick={() => navigate(`/teams/${teamId}/editor/${m.id}`)}
-                    >
-                      Éditeur
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn-primary btn-small"
+                        onClick={() => navigate(`/teams/${teamId}/editor/${m.id}`)}
+                      >
+                        Éditeur
+                      </button>
+                      {canEditTeam && (
+                        <button
+                          className="btn-secondary btn-small"
+                          onClick={() => { setImportMapId(m.id); setShowImportModal(true) }}
+                        >
+                          Importer
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -559,6 +598,63 @@ function TeamSettings() {
         onClose={() => setShowTransfer(false)}
         onTransferred={handleTransferred}
       />
+
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => { if (!importMutation.isPending) setShowImportModal(false) }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+            <h2>Importer un template</h2>
+            <p style={{ marginBottom: 16 }}>
+              Templates publics disponibles pour la carte <strong>{importMapName}</strong>&nbsp;:
+            </p>
+            {publicTemplatesLoading ? (
+              <div className="spinner" />
+            ) : availableTemplates.length === 0 ? (
+              <p style={{ color: '#888', fontSize: 14 }}>Aucun template public disponible pour cette carte.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {availableTemplates.map(tw => (
+                  <div
+                    key={tw.template.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '12px',
+                      background: 'var(--bg-color)',
+                      borderRadius: 8,
+                      border: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{tw.template.map_name || `Carte #${tw.template.map_id}`}</div>
+                      <div style={{ color: '#888', fontSize: 13 }}>
+                        {tw.template.original_team_name || `Équipe #${tw.template.original_team_id}`}
+                        {' · '}{tw.zones.length} zone{tw.zones.length > 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <button
+                      className="btn-primary btn-small"
+                      onClick={() => importMutation.mutate(tw.template.id)}
+                      disabled={importMutation.isPending}
+                    >
+                      {importMutation.isPending ? 'Import...' : 'Importer'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {importMutation.isSuccess && (
+              <div className="success-message" style={{ marginTop: 12 }}>Template importé avec succès !</div>
+            )}
+            {importError && <div className="error-message" style={{ marginTop: 12 }}>{importError}</div>}
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button className="btn-secondary" onClick={() => setShowImportModal(false)} disabled={importMutation.isPending}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

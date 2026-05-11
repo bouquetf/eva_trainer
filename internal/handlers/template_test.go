@@ -82,6 +82,7 @@ func setupTemplateTestDB(t *testing.T) *sql.DB {
 		"000004_add_discord_username.up.sql",
 		"000011_add_zone_polygon_constraints.up.sql",
 		"000013_add_zone_versions.up.sql",
+		"000015_add_template_is_public.up.sql",
 	}
 
 	for _, mf := range migrationFiles {

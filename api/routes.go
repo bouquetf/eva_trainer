@@ -59,13 +59,19 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, logger services.Logger, f
 
 	apiV1 := r.Group("/api/v1")
 
+	deps := newCoreDeps(cfg)
+
+	templateRepo := models.NewTemplateRepository(database.DB())
+	zoneRepo := models.NewZoneRepository(database.DB())
+	teamMemberRepo := models.NewTeamMemberRepository(database.DB())
+	templateHandler := handlers.NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo, logger)
+
 	setupAuthRoutes(apiV1, cfg, logger)
-	setupTeamRoutes(apiV1, cfg, logger)
+	setupTeamRoutes(apiV1, cfg, logger, templateHandler)
 	setupAdminRoutes(apiV1, cfg, logger)
 
 	apiV1.GET("/maps/:id/image", handlers.NewMapHandler(models.NewMapRepository(database.DB()), logger).ServeImage)
 
-	deps := newCoreDeps(cfg)
 	splitPublicRepo := models.NewSplitRepository(database.DB())
 	splitPublicHandler := handlers.NewSplitHandler(splitPublicRepo, logger)
 
@@ -76,6 +82,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, logger services.Logger, f
 		splitsPublic.GET("", splitPublicHandler.ListSplitsPublic)
 		splitsPublic.GET("/:id/maps", splitPublicHandler.GetSplitMapsPublic)
 	}
+
+	apiV1.GET("/templates/public",
+		middleware.RequireAuth(logger, deps.userRepo, deps.jwtService),
+		templateHandler.ListPublicTemplates,
+	)
 
 	if gin.Mode() == gin.ReleaseMode {
 		r.StaticFS("/assets", assetsFS)
@@ -88,7 +99,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, logger services.Logger, f
 	}
 }
 
-func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services.Logger) {
+func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services.Logger, templateHandler *handlers.TemplateHandler) {
 	db := database.DB()
 	userRepo := models.NewUserRepository(db)
 	teamRepo := models.NewTeamRepository(db)
@@ -116,8 +127,6 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc, versionRepo, logger)
 	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo, logger)
 	historyHandler := handlers.NewHistoryHandler(versionRepo, zoneRepo, lockRepo, teamMemberRepo, userRepo, historyRepo, logger)
-
-	templateHandler := handlers.NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo, logger)
 
 	rg.GET("/myteams", middleware.RequireAuth(logger, userRepo, jwtService), teamHandler.ListMyTeams)
 
@@ -192,6 +201,12 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 		teams.GET("/:id/maps/:mapId/publish-status",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			templateHandler.GetPublishStatus,
+		)
+
+		teams.POST("/:id/templates/:templateId/duplicate",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "template:duplicate"),
+			templateHandler.DuplicateTemplate,
 		)
 
 		teams.GET("/:id/zones/:zoneId",
