@@ -42,7 +42,8 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.teams-content:has(.editor-container) {
+.teams-content:has(.editor-container),
+.teams-content:has(.revision-container) {
   max-width: none;
   padding: 0;
 }

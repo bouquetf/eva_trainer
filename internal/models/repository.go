@@ -159,6 +159,7 @@ type TemplateRepository interface {
 	UpdateFromMap(templateID, teamID, mapID int) error
 	Delete(templateID int) error
 	DuplicateToTeam(teamID, templateID int) ([]*Zone, int, error)
+	FindTemplateZonesByMapID(mapID int) ([]TemplateZone, error)
 }
 
 type ZoneVersionRepository interface {

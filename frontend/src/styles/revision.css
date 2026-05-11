@@ -1,0 +1,254 @@
+.revision-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.revision-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background-color: var(--panel-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.revision-header h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.revision-select-screen {
+  padding: 24px;
+  max-width: 900px;
+  width: 100%;
+  align-self: center;
+  text-align: center;
+}
+
+.revision-map-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.revision-map-card {
+  background-color: var(--panel-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  text-align: center;
+}
+
+.revision-map-card:hover {
+  border-color: var(--primary-color);
+}
+
+.revision-map-card.selected {
+  border-color: var(--primary-color);
+  background-color: rgba(0, 230, 118, 0.08);
+}
+
+.revision-map-card h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.revision-map-card .meta {
+  font-size: 12px;
+  color: #888;
+}
+
+.revision-active-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.revision-active-screen .toolbar h1 {
+  margin: 0;
+  font-size: 18px;
+  flex: 1;
+  text-align: center;
+}
+
+.revision-active-screen .main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.revision-active-screen .canvas-area {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  background-color: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.revision-canvas-wrapper {
+  flex-shrink: 0;
+}
+
+.revision-input-area {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.revision-active-screen .side-panel {
+  width: 350px;
+  background-color: var(--panel-bg);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 15px;
+}
+
+.revision-input-area input {
+  flex: 1;
+  padding: 10px 12px;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-color);
+  font-size: 15px;
+  outline: none;
+}
+
+.revision-input-area input:focus {
+  border-color: var(--primary-color);
+}
+
+.revision-input-area input.feedback-correct {
+  background-color: rgba(0, 230, 118, 0.15);
+  border-color: var(--primary-color);
+}
+
+.revision-input-area input.feedback-incorrect {
+  background-color: rgba(255, 69, 58, 0.15);
+  border-color: #ff453a;
+}
+
+.revision-feedback {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.revision-feedback.correct {
+  color: var(--primary-color);
+}
+
+.revision-feedback.incorrect {
+  color: #ff453a;
+}
+
+.revision-feedback .correct-answer {
+  color: #ff453a;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.revision-finished-screen {
+  text-align: center;
+  padding: 40px 24px;
+  max-width: 900px;
+  width: 100%;
+  align-self: center;
+  flex: 1;
+}
+
+.revision-finished-screen h2 {
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+
+.revision-final-score {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin: 32px 0;
+}
+
+.revision-final-score .stat {
+  text-align: center;
+}
+
+.revision-final-score .stat-value {
+  font-size: 48px;
+  font-weight: 700;
+}
+
+.revision-final-score .stat-label {
+  font-size: 14px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.revision-final-score .stat-value.good {
+  color: var(--primary-color);
+}
+
+.revision-final-score .stat-value.bad {
+  color: #ff453a;
+}
+
+.revision-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.revision-config {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.revision-config label {
+  font-size: 14px;
+  color: #ccc;
+}
+
+.revision-config input {
+  width: 120px;
+  padding: 8px 12px;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-color);
+  font-size: 15px;
+  text-align: center;
+  outline: none;
+}
+
+.revision-config input:focus {
+  border-color: var(--primary-color);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 40px auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

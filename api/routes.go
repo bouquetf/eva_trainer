@@ -127,6 +127,7 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc, versionRepo, logger)
 	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo, logger)
 	historyHandler := handlers.NewHistoryHandler(versionRepo, zoneRepo, lockRepo, teamMemberRepo, userRepo, historyRepo, logger)
+	revisionHandler := handlers.NewRevisionHandler(zoneRepo, mapRepo, logger)
 
 	rg.GET("/myteams", middleware.RequireAuth(logger, userRepo, jwtService), teamHandler.ListMyTeams)
 
@@ -201,6 +202,10 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 		teams.GET("/:id/maps/:mapId/publish-status",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			templateHandler.GetPublishStatus,
+		)
+		teams.GET("/:id/maps/:mapId/revision-zones",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			revisionHandler.ListRevisionZones,
 		)
 
 		teams.POST("/:id/templates/:templateId/duplicate",

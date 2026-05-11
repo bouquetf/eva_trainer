@@ -493,3 +493,46 @@ func (r *templateRepo) getZoneName(zoneID int) (string, error) {
 	}
 	return name, nil
 }
+
+func (r *templateRepo) FindTemplateZonesByMapID(mapID int) ([]TemplateZone, error) {
+	var templateID int
+	err := r.db.QueryRow(
+		`SELECT id FROM templates WHERE map_id = $1 AND is_public = true`,
+		mapID,
+	).Scan(&templateID)
+	if err == sql.ErrNoRows {
+		return []TemplateZone{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find template for map %d: %w", mapID, err)
+	}
+
+	rows, err := r.db.Query(
+		`SELECT id, template_id, polygon_data, name, order_index
+		 FROM template_zones WHERE template_id = $1 ORDER BY order_index`,
+		templateID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query template zones: %w", err)
+	}
+	defer rows.Close()
+
+	var zones []TemplateZone
+	for rows.Next() {
+		var z TemplateZone
+		var polygonData []byte
+		if err := rows.Scan(&z.ID, &z.TemplateID, &polygonData, &z.Name, &z.OrderIndex); err != nil {
+			return nil, fmt.Errorf("failed to scan template zone: %w", err)
+		}
+		z.PolygonData = polygonData
+		zones = append(zones, z)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if zones == nil {
+		return []TemplateZone{}, nil
+	}
+	return zones, nil
+}

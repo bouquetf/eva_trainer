@@ -8,6 +8,7 @@ import { searchUsers, inviteByDisplayName, generateInviteLink, listPendingInvita
 import type { UserSearchResult } from '../api/invitations'
 import { listPendingJoinRequests, acceptJoinRequest, declineJoinRequest } from '../api/joinRequests'
 import { listPublicTemplates, duplicateTemplate } from '../api/templates'
+import { listSplits } from '../api/splits'
 import { useAuthStore } from '../store/auth'
 import ConfirmDialog from '../components/ConfirmDialog'
 import MemberList from '../components/MemberList'
@@ -39,6 +40,7 @@ function TeamSettings() {
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [showImportModal, setShowImportModal] = useState(false)
+  const [selectedSplitId, setSelectedSplitId] = useState<number | null>(null)
   const [importMapId, setImportMapId] = useState<number | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
 
@@ -84,6 +86,20 @@ function TeamSettings() {
 
   const members = membersData?.members ?? teamData?.members ?? []
   const maps = mapsData?.maps ?? []
+
+  const { data: splitsData } = useQuery({
+    queryKey: ['splits'],
+    queryFn: () => listSplits().catch(() => ({ splits: [] })),
+    staleTime: 60000,
+    retry: false,
+  })
+  const splits = splitsData?.splits ?? []
+  const filteredMaps = selectedSplitId
+    ? maps.filter((m) => {
+        const split = splits.find((s) => s.id === selectedSplitId)
+        return split ? split.map_names.includes(m.name) : true
+      })
+    : maps
   const availableTemplates = publicTemplates.filter(tw => tw.template.map_id === importMapId)
   const importMapName = maps.find(m => m.id === importMapId)?.name ?? ''
   const team = teamData?.team
@@ -339,9 +355,31 @@ function TeamSettings() {
 
       <div className="section">
         <h2 className="section-title">Cartes ({maps.length})</h2>
+        {splits.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <select
+              value={selectedSplitId ?? ''}
+              onChange={(e) => setSelectedSplitId(e.target.value ? Number(e.target.value) : null)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: 'var(--panel-bg)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 6,
+                color: 'var(--text-color)',
+                fontSize: 14,
+                minWidth: 200,
+              }}
+            >
+              <option value="">Tous les splits</option>
+              {splits.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {mapsLoading ? (
           <div className="spinner" />
-        ) : maps.length === 0 ? (
+        ) : filteredMaps.length === 0 ? (
           <p style={{ color: '#888', fontSize: 14 }}>Aucune carte disponible.</p>
         ) : (
           <table className="invitations-table">
@@ -352,7 +390,7 @@ function TeamSettings() {
               </tr>
             </thead>
             <tbody>
-              {maps.map(m => (
+              {filteredMaps.map(m => (
                 <tr key={m.id}>
                   <td>{m.name}</td>
                   <td>
@@ -362,6 +400,12 @@ function TeamSettings() {
                         onClick={() => navigate(`/teams/${teamId}/editor/${m.id}`)}
                       >
                         Éditeur
+                      </button>
+                      <button
+                        className="btn-secondary btn-small"
+                        onClick={() => navigate(`/teams/${teamId}/revision/${m.id}`)}
+                      >
+                        Révision
                       </button>
                       {canEditTeam && (
                         <button
