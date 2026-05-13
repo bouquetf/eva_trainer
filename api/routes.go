@@ -31,6 +31,10 @@ func newCoreDeps(cfg *config.AppConfig) coreDeps {
 }
 
 func serveFrontendFile(c *gin.Context, name string, fs http.FileSystem) {
+	if fs == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
 	f, err := fs.Open(name)
 	if err != nil {
 		c.Status(http.StatusNotFound)
@@ -88,15 +92,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, logger services.Logger, f
 		templateHandler.ListPublicTemplates,
 	)
 
-	if gin.Mode() == gin.ReleaseMode {
-		r.StaticFS("/assets", assetsFS)
-		r.GET("/", func(c *gin.Context) {
-			serveFrontendFile(c, "index.html", frontendFS)
-		})
-		r.NoRoute(func(c *gin.Context) {
-			serveFrontendFile(c, "index.html", frontendFS)
-		})
-	}
+	r.StaticFS("/assets", assetsFS)
+	r.GET("/", func(c *gin.Context) {
+		serveFrontendFile(c, "index.html", frontendFS)
+	})
+	r.NoRoute(func(c *gin.Context) {
+		serveFrontendFile(c, "index.html", frontendFS)
+	})
 }
 
 func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services.Logger, templateHandler *handlers.TemplateHandler) {

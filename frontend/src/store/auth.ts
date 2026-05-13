@@ -96,8 +96,6 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       const accessToken = params.get('access_token')
       const refreshToken = params.get('refresh_token')
       const expiresIn = params.get('expires_in')
-      const redirect = params.get('redirect') ?? '/'
-
       if (!accessToken || !refreshToken) {
         set({ error: 'Tokens manquants dans la réponse', isLoading: false })
         return
@@ -126,7 +124,6 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       fetchMe()
         .then((user) => {
           set({ user, isLoading: false })
-          window.location.href = redirect
         })
         .catch(() => {
           sessionStorage.removeItem(STORAGE_KEY_ACCESS)

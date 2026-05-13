@@ -81,7 +81,7 @@ func (r *teamRepo) Create(name string, captainID int) (*Team, error) {
 func (r *teamRepo) FindByID(id int) (*Team, error) {
 	team := &Team{}
 	err := r.db.QueryRow(
-		`SELECT id, name, captain_id, created_at, updated_at FROM teams WHERE id = $1`,
+		`SELECT id, name, COALESCE(captain_id, 0) as captain_id, created_at, updated_at FROM teams WHERE id = $1`,
 		id,
 	).Scan(&team.ID, &team.Name, &team.CaptainID, &team.CreatedAt, &team.UpdatedAt)
 
@@ -97,7 +97,7 @@ func (r *teamRepo) FindByID(id int) (*Team, error) {
 
 func (r *teamRepo) FindByUserID(userID int) ([]*Team, error) {
 	rows, err := r.db.Query(
-		`SELECT t.id, t.name, t.captain_id, t.created_at, t.updated_at
+		`SELECT t.id, t.name, COALESCE(t.captain_id, 0) as captain_id, t.created_at, t.updated_at
 		 FROM teams t
 		 JOIN team_members tm ON t.id = tm.team_id
 		 WHERE tm.user_id = $1
@@ -130,7 +130,7 @@ func (r *teamRepo) FindByUserID(userID int) ([]*Team, error) {
 }
 
 func (r *teamRepo) FindAll() ([]*Team, error) {
-	rows, err := r.db.Query(`SELECT id, name, captain_id, created_at, updated_at FROM teams ORDER BY name`)
+	rows, err := r.db.Query(`SELECT id, name, COALESCE(captain_id, 0) as captain_id, created_at, updated_at FROM teams ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (r *teamRepo) FindAllPaginated(q string, page, perPage int) ([]*Team, int, 
 		return nil, 0, err
 	}
 
-	dataQuery := `SELECT id, name, captain_id, created_at, updated_at ` + baseQuery + ` ORDER BY name`
+	dataQuery := `SELECT id, name, COALESCE(captain_id, 0) as captain_id, created_at, updated_at ` + baseQuery + ` ORDER BY name`
 	dataQuery += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
 	args = append(args, perPage, (page-1)*perPage)
 

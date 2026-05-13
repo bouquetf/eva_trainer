@@ -5,11 +5,6 @@ import (
 	"fmt"
 )
 
-type rolePermission struct {
-	role         string
-	permissionID int
-}
-
 func SeedRolePermissions(db *sql.DB) error {
 	permMap := make(map[string]int)
 	rows, err := db.Query(`SELECT id, feature FROM permissions`)
@@ -82,6 +77,7 @@ func SeedRolePermissions(db *sql.DB) error {
 		{role: "editor", feature: "zone:create"},
 		{role: "editor", feature: "zone:edit"},
 		{role: "editor", feature: "zone:delete"},
+		{role: "editor", feature: "zone:lock"},
 		{role: "editor", feature: "review:start"},
 		{role: "editor", feature: "template:duplicate"},
 

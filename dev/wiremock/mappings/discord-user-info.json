@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/users/@me"
+  },
+  "response": {
+    "status": 200,
+    "jsonBody": {
+      "id": "{{request.query.discord_id}}",
+      "username": "E2E Test User",
+      "discriminator": "0",
+      "avatar": null
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  }
+}

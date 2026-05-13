@@ -409,13 +409,17 @@ func (r *templateRepo) DuplicateToTeam(teamID, templateID int) ([]*Zone, int, er
 				return nil, 0, fmt.Errorf("failed to unmarshal polygon data: %w", err)
 			}
 			for i, poly := range polygons {
-				polyJSON, err := json.Marshal(poly)
+				pointsData, ok := poly["points"]
+				if !ok {
+					return nil, 0, fmt.Errorf("polygon data missing points field")
+				}
+				pointsJSON, err := json.Marshal(pointsData)
 				if err != nil {
-					return nil, 0, fmt.Errorf("failed to marshal polygon: %w", err)
+					return nil, 0, fmt.Errorf("failed to marshal polygon points: %w", err)
 				}
 				if _, err := tx.Exec(
 					`INSERT INTO zone_polygons (zone_id, polygon_data, order_index) VALUES ($1, $2::jsonb, $3)`,
-					zone.ID, polyJSON, i,
+					zone.ID, pointsJSON, i,
 				); err != nil {
 					return nil, 0, fmt.Errorf("failed to insert zone polygon: %w", err)
 				}

@@ -31,11 +31,31 @@ services:
       - DATABASE_URL=postgres://${DB_USER:-eva_user}:${DB_PASSWORD:-eva_pass}@db:5432/${DB_NAME:-eva_trainer}?sslmode=disable
       - GIN_MODE=debug
       - PORT=${PORT:-8080}
+      - JWT_SECRET=${JWT_SECRET:-test-secret-key-for-manual-validation-32chars}
+      - DISCORD_API_BASE_URL=http://discord-mock:8080
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     volumes:
       - .:/app
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - eva-network
+
+  discord-mock:
+    image: wiremock/wiremock:latest
+    profiles:
+      - e2e
+    ports:
+      - "8099:8080"
+    volumes:
+      - ./dev/wiremock:/home/wiremock
+    command: ["--global-response-templating", "--verbose"]
     networks:
       - eva-network
 

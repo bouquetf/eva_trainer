@@ -72,6 +72,7 @@ export default function Revision() {
         const zones = await fetchRevisionZones(teamId, parsedMapId)
         if (zones.length === 0) {
           setError('Aucune zone disponible pour la révision sur cette carte.')
+          setStep('select')
           setLoading(false)
           return
         }
@@ -265,6 +266,7 @@ export default function Revision() {
             </div>
 
             <div className="side-panel">
+              {currentQuestion && <span data-testid="current-zone" style={{ display: 'none' }}>{currentQuestion.name}</span>}
               <RevisionScore
                 correctCount={correctCount}
                 totalAnswered={totalAnswered}

@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/users/@me",
+    "headers": {
+      "X-Simulate-Error": { "equalTo": "503" }
+    }
+  },
+  "response": {
+    "status": 503,
+    "body": "Service Unavailable"
+  }
+}

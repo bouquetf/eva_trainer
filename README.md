@@ -80,11 +80,11 @@ Les variables sont définies dans `.env.example`. Voir la [documentation complè
 ## Commandes utiles
 
 ```bash
-go test ./...                           # Tests unitaires
-go test --tags=integration ./...        # Tests intégration
+go test ./...                           # Tests unitaires Go
+go test --tags=integration ./...        # Tests intégration Go
+cd frontend && npx vitest run           # Tests unitaires frontend
+cd frontend && npx playwright test      # Tests E2E (Playwright)
 bash scripts/test.sh                    # Tous les tests
-bash scripts/test-e2e.sh                # Tests E2E (Docker)
-cd frontend && npm run build            # Build frontend
 docker compose logs -f                  # Logs Docker
 ```
 
@@ -93,6 +93,7 @@ docker compose logs -f                  # Logs Docker
 - [Configuration](docs/configuration.md) — toutes les variables d'environnement
 - [Déploiement](docs/deployment.md) — guide de déploiement local et production
 - [Gestion des cartes](docs/map-management.md) — upload, cycle de vie, purge, API image
+- [Stratégie de tests](docs/testing-strategy.md) — tests unitaires, intégration, E2E, audit de couverture
 - [Spécification fonctionnelle](docs/specification/specification.md)
 - [Schéma de base de données](docs/specification/database_schema.md)
 - [Architecture technique](docs/architecture.md)

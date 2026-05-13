@@ -817,10 +817,12 @@ func (h *ZoneHandler) SetZoneName(c *gin.Context) {
 	newData, _ := json.Marshal(gin.H{"zone_id": zoneID, "name": req.Name})
 	var editorID *int
 	editorID = &user.ID
+
 	h.historyRepo.Log(zoneID, editorID, "rename", json.RawMessage(oldData), json.RawMessage(newData))
 
-	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
 	h.saveZoneSnapshot(zone.ID, user.ID)
+
+	h.syncAfterZoneChange(zone.TeamID, zone.MapID)
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"name": zn})
 }
@@ -916,7 +918,7 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 	for _, action := range req.Actions {
 		switch action.Type {
 		case "create_zone":
-			result, err := h.batchCreateZone(teamID, mapID, user.ID, action, tempZoneMap)
+			result, err := h.batchCreateZone(teamID, mapID, user.ID, action)
 			if err != nil {
 				h.logger.Warn("create_zone failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
 				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
@@ -1024,7 +1026,7 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 	apierror.RespondWithSuccess(c, http.StatusOK, batchResponse{Results: results})
 }
 
-func (h *ZoneHandler) batchCreateZone(teamID, mapID, editorID int, action batchAction, tempZoneMap map[string]int) (batchActionResult, error) {
+func (h *ZoneHandler) batchCreateZone(teamID, mapID, editorID int, action batchAction) (batchActionResult, error) {
 	zone, err := h.zoneRepo.Create(teamID, mapID)
 	if err != nil {
 		return batchActionResult{}, err

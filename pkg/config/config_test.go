@@ -82,7 +82,7 @@ func TestValidate(t *testing.T) {
 
 	cfg = &AppConfig{
 		JWT:     JWTConfig{Secret: "s"},
-		Discord: DiscordConfig{ClientID: "i", ClientSecret: "s"},
+		Discord: DiscordConfig{ClientID: "i", ClientSecret: "s", RedirectURL: "http://localhost:8080"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -97,6 +97,7 @@ func TestDefaults(t *testing.T) {
 	defer setEnv("JWT_SECRET", "test")()
 	defer setEnv("DISCORD_CLIENT_ID", "id")()
 	defer setEnv("DISCORD_CLIENT_SECRET", "secret")()
+	defer setEnv("DISCORD_REDIRECT_URL", "http://localhost:8080")()
 
 	cfg, err := Load()
 	if err != nil {
@@ -121,6 +122,7 @@ func TestLoad_WithSystemEnv(t *testing.T) {
 	defer setEnv("JWT_SECRET", "test")()
 	defer setEnv("DISCORD_CLIENT_ID", "id")()
 	defer setEnv("DISCORD_CLIENT_SECRET", "secret")()
+	defer setEnv("DISCORD_REDIRECT_URL", "http://localhost:8080")()
 
 	cfg, err := Load()
 	if err != nil {
@@ -136,6 +138,7 @@ func TestLoad_SystemEnvOverridesDotEnv(t *testing.T) {
 	defer setEnv("JWT_SECRET", "test")()
 	defer setEnv("DISCORD_CLIENT_ID", "id")()
 	defer setEnv("DISCORD_CLIENT_SECRET", "secret")()
+	defer setEnv("DISCORD_REDIRECT_URL", "http://localhost:8080")()
 
 	os.WriteFile(".env", []byte("PORT=3000"), 0644)
 	defer os.Remove(".env")
@@ -154,6 +157,7 @@ func TestLoad_DotEnvWithoutSystem(t *testing.T) {
 	defer setEnv("JWT_SECRET", "test")()
 	defer setEnv("DISCORD_CLIENT_ID", "id")()
 	defer setEnv("DISCORD_CLIENT_SECRET", "secret")()
+	defer setEnv("DISCORD_REDIRECT_URL", "http://localhost:8080")()
 
 	os.WriteFile(".env", []byte("PORT=3000"), 0644)
 	defer os.Remove(".env")
@@ -183,6 +187,7 @@ func TestLoad_DatabaseTimeout(t *testing.T) {
 	defer setEnv("JWT_SECRET", "test")()
 	defer setEnv("DISCORD_CLIENT_ID", "id")()
 	defer setEnv("DISCORD_CLIENT_SECRET", "secret")()
+	defer setEnv("DISCORD_REDIRECT_URL", "http://localhost:8080")()
 
 	cfg, err := Load()
 	if err != nil {
@@ -198,6 +203,7 @@ func TestLoad_CORSOrigins(t *testing.T) {
 	defer setEnv("JWT_SECRET", "test")()
 	defer setEnv("DISCORD_CLIENT_ID", "id")()
 	defer setEnv("DISCORD_CLIENT_SECRET", "secret")()
+	defer setEnv("DISCORD_REDIRECT_URL", "http://localhost:8080")()
 
 	cfg, err := Load()
 	if err != nil {

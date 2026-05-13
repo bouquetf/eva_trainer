@@ -145,6 +145,7 @@ func (h *TemplateHandler) DuplicateTemplate(c *gin.Context) {
 
 	detailedZones, err := h.zoneRepo.FindWithDetailsByTeamAndMap(teamID, mapID)
 	if err != nil {
+		h.logger.Error("failed to retrieve zone details", "teamID", teamID, "mapID", mapID, "error", err)
 		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to retrieve zone details", http.StatusInternalServerError))
 		return
 	}

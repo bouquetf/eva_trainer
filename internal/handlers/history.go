@@ -434,9 +434,9 @@ func (h *HistoryHandler) buildVersionResponseItems(versions []*models.ZoneVersio
 
 	items := make([]versionResponseItem, 0, len(versions))
 	for _, v := range versions {
-		zoneName := zoneNames[v.ZoneID]
+		zoneName := v.VersionData.Name
 		if zoneName == "" {
-			zoneName = v.VersionData.Name
+			zoneName = zoneNames[v.ZoneID]
 		}
 
 		editorName := ""
