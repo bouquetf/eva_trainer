@@ -46,18 +46,19 @@
 - Rollback complet (toutes les modifs depuis une date).
 - Lors d'un rollback par le capitaine, la carte est verrouillée (nécessaire pour toute modification).
 - Un éditeur peut voir l'historique de ses propres modifications et revenir à la version précédente dans l'historique, mais ne peut défaire que les modifications dont il est lui-même l'auteur.
-- Import/export : aucun format d'import/export des zones. Une fonction de duplication des zones publiques d'une carte est disponible pour qu'une équipe puisse modifier les zones (ex : changer un nom) à partir de cette base.
+- Import/export : l'administrateur peut exporter et importer les zones d'une carte ou de toutes les cartes d'une équipe au format JSON. Les zones sont liées à la carte par son nom eva. L'import ajoute les zones aux existantes sans écrasement.
 
 ### 3.2 Mode Révision
 - Sélection d'une carte unique (avec possibilité de cocher "cartes du split" pour filtrer par split), puis affichage aléatoire d'une zone sur la carte.
 - L'utilisateur saisit le nom correspondant dans un champ de texte.
 - Validation :
-  - Si le nom correspond (insensible à la casse et aux accents, aucune autre tolérance) : coche verte affichée 1 seconde, puis passage automatique à l'exercice suivant.
-  - Si le nom ne correspond pas : affichage du bon nom, l'utilisateur doit cliquer pour passer à l'exercice suivant.
+  - Si le nom correspond (insensible à la casse et aux accents, aucune autre tolérance) : coche verte affichée pendant le temps configuré (défaut : 3 secondes), puis passage automatique à l'exercice suivant.
+  - Si le nom ne correspond pas : affichage du bon nom pendant le temps configuré (défaut : 5 secondes), puis passage automatique à l'exercice suivant.
+  - L'utilisateur peut passer avant la fin du timer en cliquant, ou en appuyant sur Entrée ou Espace.
 - En cas d'actualisation (F5) pendant une révision en cours, la session actuelle est perdue.
 - Pas de possibilité de mettre en pause une révision en cours.
 - Note : nombre de bonnes réponses sur le nombre total de questions.
-- Nombre de questions configurable lors du lancement de la révision, par défaut fixé à 20. On doit pouvoir terminer une révision en cours, ce qui affiche le score actuel en fonction du nombre de questions réellement posées.
+- Nombre de questions configurable dans les paramètres utilisateur (persistant), par défaut fixé à 20. Dans la version actuelle, pas de configuration au lancement de la révision. On doit pouvoir terminer une révision en cours, ce qui affiche le score actuel en fonction du nombre de questions réellement posées.
 - Nombre de zones vs questions : le nombre de zones est propre à chaque carte. Le nombre de questions est paramétrable par l'utilisateur lors de la session de révision.
 - Sélection des zones : aléatoire, avec ajustement de la probabilité en fonction des erreurs sur la session actuelle :
   - Algorithme de poids simple : chaque zone a un poids initial de 1. En cas d'erreur, le poids augmente (+1). En cas de succès, il diminue (-0.5, minimum 1). La zone est choisie aléatoirement avec une probabilité proportionnelle au poids.
