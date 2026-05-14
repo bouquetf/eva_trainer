@@ -11,6 +11,7 @@ import AdminGuard from '../components/AdminGuard'
 import TeamsList from '../pages/TeamsList'
 import CreateTeam from '../pages/CreateTeam'
 import TeamSettings from '../pages/TeamSettings'
+import ZoneList from '../pages/ZoneList'
 import InviteAccept from '../pages/InviteAccept'
 import ProfileSettings from '../pages/ProfileSettings'
 import AdminDashboard from '../pages/AdminDashboard'
@@ -31,6 +32,7 @@ export function AppRoutes() {
         <Route path="/teams/:id/maps/:mapId/history" element={<History />} />
         <Route path="/teams/:id/revision" element={<Revision />} />
         <Route path="/teams/:id/revision/:mapId" element={<Revision />} />
+        <Route path="/teams/:id/zones/:mapId" element={<ZoneList />} />
       </Route>
       <Route path="/invite/:token" element={<InviteAccept />} />
       <Route path="*" element={<NotFound />} />

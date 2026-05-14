@@ -407,6 +407,12 @@ function TeamSettings() {
                       >
                         Révision
                       </button>
+                      <button
+                        className="btn-secondary btn-small"
+                        onClick={() => navigate(`/teams/${teamId}/zones/${m.id}`)}
+                      >
+                        Voir les zones
+                      </button>
                       {canEditTeam && (
                         <button
                           className="btn-secondary btn-small"

@@ -49,6 +49,7 @@ type PendingSwitch = {
 interface MapEditorProps {
   teamId: number;
   mapId: number;
+  readOnly?: boolean;
 }
 
 const LOCK_REFRESH_MS = 600000;
@@ -57,7 +58,7 @@ function showError(message: string) {
   alert(message);
 }
 
-export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
+export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = false }) => {
   const navigate = useNavigate();
   const [mapsList, setMapsList] = useState<MapInfo[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -213,6 +214,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
 
     init();
 
+    if (readOnly) return;
+
     const beforeUnloadHandler = () => {
       releaseLockSync(teamId, mapId);
     };
@@ -290,9 +293,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
       releaseLockSync(teamId, mapId);
       releaseLock(teamId, mapId).catch(() => {});
     };
-  }, [teamId, mapId, startCountdown]);
+  }, [teamId, mapId, startCountdown, readOnly]);
 
   useEffect(() => {
+    if (readOnly) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === "INPUT") return;
 
@@ -878,18 +882,32 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
 
   return (
     <div className="editor-container" onClick={closeContextMenu}>
-      <Toolbar
-        canEdit={canEdit}
-        isLocked={isLocked}
-        lockedByMe={lockedByMe}
-        editorName={editorName}
-        remainingSeconds={remainingSeconds}
-        onRefreshLock={handleRefreshLock}
-        onReacquireLock={handleReacquireLock}
-        showReacquireButton={showReacquireButton}
-        teamId={teamId}
-        mapId={mapId}
-      />
+      {readOnly ? (
+        <div className="toolbar" style={{ justifyContent: "space-between", padding: "8px 12px" }}>
+          <span style={{ fontWeight: "bold" }}>{mapsList.find(m => m.id === mapId)?.name || `Carte #${mapId}`}</span>
+          <span style={{ color: "#888", fontSize: "13px" }}>(lecture seule)</span>
+          <Link
+            to={`/teams/${teamId}`}
+            className="btn-secondary btn-small"
+            style={{ textDecoration: "none" }}
+          >
+            Retour
+          </Link>
+        </div>
+      ) : (
+        <Toolbar
+          canEdit={canEdit}
+          isLocked={isLocked}
+          lockedByMe={lockedByMe}
+          editorName={editorName}
+          remainingSeconds={remainingSeconds}
+          onRefreshLock={handleRefreshLock}
+          onReacquireLock={handleReacquireLock}
+          showReacquireButton={showReacquireButton}
+          teamId={teamId}
+          mapId={mapId}
+        />
+      )}
 
       <div className="main-content">
         <div className="canvas-area">
@@ -897,22 +915,21 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
             zones={editingZone ? [editingZone] : []}
             selectedZoneIds={selectionSet}
             selectedPolygonIndexes={selectedPolygonIndexes}
-            tempPoints={tempPoints}
+            tempPoints={readOnly ? [] : tempPoints}
             imageUrl={getMapImageUrl(mapId)}
             imageWidth={imageSize.width}
             imageHeight={imageSize.height}
-            onPolygonPointAdded={handlePolygonPointAdded}
-            onPolygonLastPointRemoved={handlePolygonLastPointRemoved}
-            onPolygonClick={handlePolygonClick}
-            onBackgroundClick={handleBackgroundClick}
-            onZoneDrag={handleZoneDrag}
-            onPointDrag={handlePointDrag}
-            onPointDelete={handlePointDelete}
-            onPointInsert={handlePointInsert}
-            onMapRightClick={handleMapRightClick}
-            onZoneRightClick={handleZoneRightClick}
-            onMapDoubleClick={handleMapDoubleClick}
-
+            onPolygonPointAdded={readOnly ? () => {} : handlePolygonPointAdded}
+            onPolygonLastPointRemoved={readOnly ? () => {} : handlePolygonLastPointRemoved}
+            onPolygonClick={readOnly ? () => {} : handlePolygonClick}
+            onBackgroundClick={readOnly ? () => {} : handleBackgroundClick}
+            onZoneDrag={readOnly ? (_ids: number[], _dx: number, _dy: number) => {} : handleZoneDrag}
+            onPointDrag={readOnly ? (_zoneId: number, _polyIdx: number, _ptIdx: number, _pt: Point) => {} : handlePointDrag}
+            onPointDelete={readOnly ? () => {} : handlePointDelete}
+            onPointInsert={readOnly ? () => {} : handlePointInsert}
+            onMapRightClick={readOnly ? () => {} : handleMapRightClick}
+            onZoneRightClick={readOnly ? () => {} : handleZoneRightClick}
+            onMapDoubleClick={readOnly ? () => {} : handleMapDoubleClick}
           />
         </div>
 
@@ -923,7 +940,9 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
               value={mapId}
               onChange={(e) => {
                 const targetMapId = Number(e.target.value);
-                if (isDirty) {
+                if (readOnly) {
+                  navigate(`/teams/${teamId}/zones/${targetMapId}`);
+                } else if (isDirty) {
                   pendingZoneSwitch.current = { action: "navigate", mapId: targetMapId };
                   setShowDiscardDialog(true);
                 } else {
@@ -938,15 +957,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
                 </option>
               ))}
             </select>
-            <Link
-              to={`/teams/${teamId}/maps/${mapId}/history`}
-              className="btn-secondary btn-small"
-              style={{ textDecoration: 'none', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}
-            >
-              Historique
-            </Link>
+            {!readOnly && (
+              <Link
+                to={`/teams/${teamId}/maps/${mapId}/history`}
+                className="btn-secondary btn-small"
+                style={{ textDecoration: 'none', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}
+              >
+                Historique
+              </Link>
+            )}
           </div>
-          {editingZone && (
+          {!readOnly && editingZone && (
             <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
               <button
                 className="btn-primary btn-small"
@@ -976,12 +997,20 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
           <ZoneList
             zones={zones}
             editingZoneId={selectedZoneId}
-            onSelectZone={handleSelectZone}
-            onDeleteZone={handleDeleteZone}
-            onCreateZone={handleCreateZone}
-            onRenameZone={handleRenameZone}
+            onSelectZone={readOnly ? (id: number) => {
+              const zone = zones.find((z) => z.id === id);
+              if (zone) {
+                setEditingZone(zone);
+                setSelectedZoneId(id);
+                setSelectedPolygonIndexes(new Set(zone.polygons.map((_, i) => i)));
+              }
+            } : handleSelectZone}
+            onDeleteZone={readOnly ? undefined : handleDeleteZone}
+            onCreateZone={readOnly ? undefined : handleCreateZone}
+            onRenameZone={readOnly ? undefined : handleRenameZone}
+            readOnly={readOnly}
           />
-          {editingZone && editingZone.id > 0 && (
+          {!readOnly && editingZone && editingZone.id > 0 && (
             <VersionBrowser
               teamId={teamId}
               zoneId={editingZone.id}
@@ -993,7 +1022,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         </div>
       </div>
 
-      {browsingVersion && (
+      {!readOnly && browsingVersion && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -1032,7 +1061,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         </div>
       )}
 
-      {contextMenu && (
+      {!readOnly && contextMenu && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
@@ -1041,25 +1070,29 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         />
       )}
 
-      <ConfirmDialog
-        open={showDiscardDialog}
-        title="Modifications non sauvegardées"
-        message="Vous avez des modifications non sauvegardées. Que souhaitez-vous faire ?"
-        confirmLabel="Annuler les modifications"
-        danger
-        onConfirm={handleDiscardConfirm}
-        onCancel={handleDiscardCancel}
-        altButton={{ label: "Sauvegarder", onClick: handleDiscardSave, className: "btn-primary" }}
-      />
+      {!readOnly && (
+        <ConfirmDialog
+          open={showDiscardDialog}
+          title="Modifications non sauvegardées"
+          message="Vous avez des modifications non sauvegardées. Que souhaitez-vous faire ?"
+          confirmLabel="Annuler les modifications"
+          danger
+          onConfirm={handleDiscardConfirm}
+          onCancel={handleDiscardCancel}
+          altButton={{ label: "Sauvegarder", onClick: handleDiscardSave, className: "btn-primary" }}
+        />
+      )}
 
-      <RestoreConfirmModal
-        open={restoreTarget !== null}
-        versionDate={restoreTarget ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(restoreTarget.created_at)) : ''}
-        authorName={restoreTarget?.editor_name || 'Utilisateur supprimé'}
-        onConfirm={handleRestoreConfirm}
-        onCancel={() => { setRestoreTarget(null); setRestoring(false) }}
-        loading={restoring}
-      />
+      {!readOnly && (
+        <RestoreConfirmModal
+          open={restoreTarget !== null}
+          versionDate={restoreTarget ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(restoreTarget.created_at)) : ''}
+          authorName={restoreTarget?.editor_name || 'Utilisateur supprimé'}
+          onConfirm={handleRestoreConfirm}
+          onCancel={() => { setRestoreTarget(null); setRestoring(false) }}
+          loading={restoring}
+        />
+      )}
     </div>
   );
 };

@@ -89,6 +89,41 @@ export async function createZoneWithLock(
   return res.body.zone;
 }
 
+export interface TestZone {
+  id: number;
+  name: string;
+}
+
+export async function seedZone(
+  teamId: number,
+  mapId: number,
+  name: string,
+  polygons?: { points: { x: number; y: number }[] }[],
+): Promise<TestZone> {
+  const zoneRows = await queryDB<{ id: number }[]>(
+    `INSERT INTO zones (team_id, map_id, created_at, updated_at)
+     VALUES ($1, $2, NOW(), NOW()) RETURNING id`,
+    [teamId, mapId],
+  );
+  const zoneId = zoneRows[0].id;
+
+  const defaultPolygons = polygons ?? [{ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }] }];
+  for (let i = 0; i < defaultPolygons.length; i++) {
+    await queryDB(
+      `INSERT INTO zone_polygons (zone_id, polygon_data, order_index)
+       VALUES ($1, $2::jsonb, $3)`,
+      [zoneId, JSON.stringify(defaultPolygons[i].points), i],
+    );
+  }
+
+  await queryDB(
+    `INSERT INTO zone_names (zone_id, name) VALUES ($1, $2)`,
+    [zoneId, name],
+  );
+
+  return { id: zoneId, name };
+}
+
 export async function cleanDatabase(): Promise<void> {
   const tables = [
     'zone_versions',
