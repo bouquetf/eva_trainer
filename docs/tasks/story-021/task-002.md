@@ -4,7 +4,7 @@
 Implémenter l'API backend d'import des zones : endpoint administrateur pour importer des zones depuis un fichier JSON, avec validation du format et création transactionnelle.
 
 ## Contexte
-- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021.md)
+- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021-done.md)
 - Dépend de : Tâche #001 (Export backend — réutilisation du format JSON et des structures)
 - Nécessaire pour : Tâche #003 (Frontend Admin UI), Tâche #004 (Documentation)
 - Ordre d'exécution : 2ème

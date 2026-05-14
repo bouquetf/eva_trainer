@@ -4,7 +4,7 @@
 Implémenter l'API backend d'export des zones : endpoints administrateur pour exporter une carte ou toutes les cartes d'une équipe au format JSON.
 
 ## Contexte
-- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021.md)
+- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021-done.md)
 - Dépend de : *aucune* (Story #009 et #005 déjà implémentées)
 - Nécessaire pour : Tâche #002 (Import API), Tâche #003 (Frontend Admin UI), Tâche #004 (Documentation)
 - Ordre d'exécution : 1ère

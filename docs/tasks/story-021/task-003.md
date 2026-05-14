@@ -4,7 +4,7 @@
 Ajouter l'interface utilisateur d'import/export de zones dans le tableau de bord administrateur : nouvelles API functions, nouvel onglet "Import/Export" dans AdminDashboard, téléchargement/upload de fichiers JSON.
 
 ## Contexte
-- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021.md)
+- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021-done.md)
 - Dépend de : Tâche #001 (Export API), Tâche #002 (Import API)
 - Nécessaire pour : Tâche #004 (Documentation)
 - Ordre d'exécution : 3ème

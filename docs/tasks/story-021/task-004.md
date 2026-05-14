@@ -4,7 +4,7 @@
 Créer la documentation utilisateur de l'import/export de zones et mettre à jour la spécification.
 
 ## Contexte
-- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021.md)
+- Story #021 : [Import/Export de zones (Admin)](../../stories/story-021-done.md)
 - Dépend de : Tâches #001, #002, #003 (documentation finale)
 - Ordre d'exécution : 4ème (dernière)
 - Note : le format d'import utilise TOUJOURS un tableau JSON, même pour une seule carte
