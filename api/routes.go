@@ -411,5 +411,7 @@ func setupAuthRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 	{
 		protected.GET("/auth/me", authHandler.Me)
 		protected.PUT("/auth/display-name", authHandler.UpdateDisplayName)
+		protected.GET("/auth/settings", authHandler.GetSettings)
+		protected.PUT("/auth/settings", authHandler.UpdateSettings)
 	}
 }

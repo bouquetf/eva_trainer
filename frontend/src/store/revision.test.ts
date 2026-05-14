@@ -18,6 +18,8 @@ function makeConfig(overrides?: Partial<RevisionConfig>): RevisionConfig {
     mapId: 1,
     mapName: 'Test Map',
     teamId: 1,
+    correctTimerSeconds: 3,
+    incorrectTimerSeconds: 5,
     ...overrides,
   }
 }
@@ -52,6 +54,17 @@ describe('startSession', () => {
     const { weights } = useRevisionStore.getState()
     expect(weights[1]).toBe(1)
     expect(weights[2]).toBe(1)
+  })
+
+  it('includes timer values in config', () => {
+    const zones = [makeZone(1, 'top')]
+    const config = makeConfig({ correctTimerSeconds: 2, incorrectTimerSeconds: 7 })
+
+    useRevisionStore.getState().startSession(config, zones)
+
+    const state = useRevisionStore.getState()
+    expect(state.config?.correctTimerSeconds).toBe(2)
+    expect(state.config?.incorrectTimerSeconds).toBe(7)
   })
 })
 

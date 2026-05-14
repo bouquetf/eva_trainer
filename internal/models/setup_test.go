@@ -25,6 +25,7 @@ var migrationFiles = []string{
 	"000011_add_zone_polygon_constraints.up.sql",
 	"000013_add_zone_versions.up.sql",
 	"000015_add_template_is_public.up.sql",
+	"000016_add_user_settings.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

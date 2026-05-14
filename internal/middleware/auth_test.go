@@ -67,6 +67,15 @@ func (m *mockUserRepo) SearchUsers(query string, limit int) ([]*models.User, err
 	return nil, nil
 }
 
+func (m *mockUserRepo) GetUserSettings(userID int) (*models.UserSettings, error) {
+	defaults := models.DefaultUserSettings()
+	return &defaults, nil
+}
+
+func (m *mockUserRepo) UpdateUserSettings(userID int, settings *models.UserSettings) error {
+	return nil
+}
+
 func setupTest(t *testing.T) (*services.JWTService, *mockUserRepo, *gin.Engine) {
 	t.Helper()
 

@@ -28,4 +28,6 @@ export interface RevisionConfig {
   mapId: number
   mapName: string
   teamId: number
+  correctTimerSeconds: number
+  incorrectTimerSeconds: number
 }

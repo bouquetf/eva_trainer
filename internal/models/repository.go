@@ -17,6 +17,8 @@ type UserRepository interface {
 	AdminCount() (int, error)
 	FindByDisplayNameOrDiscordUsername(query string) (*User, error)
 	SearchUsers(query string, limit int) ([]*User, error)
+	GetUserSettings(userID int) (*UserSettings, error)
+	UpdateUserSettings(userID int, settings *UserSettings) error
 }
 
 type RefreshTokenRepository interface {

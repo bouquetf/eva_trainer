@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { listTeamMaps } from '../api/maps'
 import { fetchRevisionZones } from '../api/revision'
+import { fetchSettings } from '../api/auth'
 import { useRevisionStore } from '../store/revision'
 import { RevisionMap } from '../components/RevisionMap'
 import { RevisionScore } from '../components/RevisionScore'
 import type { Map as TeamMap } from '../api/maps'
+import type { UserSettings } from '../api/auth'
 import '../styles/revision.css'
 
 type Step = 'select' | 'active' | 'finished'
@@ -18,10 +20,11 @@ export default function Revision() {
   const [step, setStep] = useState<Step>(mapId ? 'active' : 'select')
   const [maps, setMaps] = useState<TeamMap[]>([])
   const [selectedMapId, setSelectedMapId] = useState<number>(mapId ? Number(mapId) : 0)
-  const [totalQuestions, setTotalQuestions] = useState(20)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const autoStarted = useRef(false)
+  const [settings, setSettings] = useState<UserSettings | null>(null)
+  const settingsLoaded = useRef(false)
 
   const {
     currentQuestion,
@@ -61,7 +64,21 @@ export default function Revision() {
   }, [teamId])
 
   useEffect(() => {
-    if (!mapId || autoStarted.current || loading || error || maps.length === 0) return
+    if (settingsLoaded.current) return
+    settingsLoaded.current = true
+    fetchSettings()
+      .then(setSettings)
+      .catch(() => {
+        setSettings({
+          revision_correct_timer: 3,
+          revision_incorrect_timer: 5,
+          revision_question_count: 20,
+        })
+      })
+  }, [])
+
+  useEffect(() => {
+    if (!mapId || autoStarted.current || loading || error || maps.length === 0 || !settings) return
     autoStarted.current = true
 
     const start = async () => {
@@ -77,7 +94,14 @@ export default function Revision() {
           return
         }
         const mapName = maps.find((m) => m.id === parsedMapId)?.name ?? `Carte #${parsedMapId}`
-        startSession({ totalQuestions: 20, mapId: parsedMapId, mapName, teamId }, zones)
+        startSession({
+          totalQuestions: settings.revision_question_count,
+          mapId: parsedMapId,
+          mapName,
+          teamId,
+          correctTimerSeconds: settings.revision_correct_timer,
+          incorrectTimerSeconds: settings.revision_incorrect_timer,
+        }, zones)
       } catch {
         setError('Erreur lors du chargement des zones de révision.')
       } finally {
@@ -85,7 +109,7 @@ export default function Revision() {
       }
     }
     start()
-  }, [mapId, loading, error, maps, teamId, startSession])
+  }, [mapId, loading, error, maps, teamId, startSession, settings])
 
   const handleMapClick = (mapId: number) => {
     setSelectedMapId((prev) => prev === mapId ? 0 : mapId)
@@ -106,10 +130,14 @@ export default function Revision() {
 
       const mapName = maps.find((m) => m.id === selectedMapId)?.name ?? `Carte #${selectedMapId}`
 
-      startSession(
-        { totalQuestions, mapId: selectedMapId, mapName, teamId },
-        zones,
-      )
+      startSession({
+        totalQuestions: settings?.revision_question_count ?? 20,
+        mapId: selectedMapId,
+        mapName,
+        teamId,
+        correctTimerSeconds: settings?.revision_correct_timer ?? 3,
+        incorrectTimerSeconds: settings?.revision_incorrect_timer ?? 5,
+      }, zones)
       setStep('active')
     } catch {
       setError('Erreur lors du chargement des zones de révision.')
@@ -122,21 +150,41 @@ export default function Revision() {
   const [showFeedback, setShowFeedback] = useState(false)
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const handleSkipFeedback = () => {
+    if (!showFeedback) return
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
+    setShowFeedback(false)
+    nextQuestion()
+  }
+
   const handleSubmitAnswer = () => {
     if (!userAnswer.trim() || isAnswerSubmitted) return
     submitAnswer(userAnswer)
     setShowFeedback(true)
 
+    const wasCorrect = useRevisionStore.getState().isAnswerCorrect
+
     if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
+    const delay = (wasCorrect
+      ? (config?.correctTimerSeconds ?? 3)
+      : (config?.incorrectTimerSeconds ?? 5)) * 1000
     feedbackTimer.current = setTimeout(() => {
       setShowFeedback(false)
       nextQuestion()
-    }, 1000)
+    }, delay)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      handleSubmitAnswer()
+      if (!isAnswerSubmitted) {
+        handleSubmitAnswer()
+      } else if (showFeedback) {
+        handleSkipFeedback()
+      }
+    }
+    if (e.key === ' ' && showFeedback) {
+      e.preventDefault()
+      handleSkipFeedback()
     }
   }
 
@@ -152,7 +200,6 @@ export default function Revision() {
     } else {
       setStep('select')
       setSelectedMapId(0)
-      setTotalQuestions(20)
     }
   }
 
@@ -160,6 +207,15 @@ export default function Revision() {
     setShowFeedback(false)
     inputRef.current?.focus()
   }, [currentQuestion])
+
+  useEffect(() => {
+    if (!showFeedback) return
+    const handler = () => handleSkipFeedback()
+    document.addEventListener('mousedown', handler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+    }
+  }, [showFeedback])
 
   useEffect(() => {
     return () => {
@@ -212,14 +268,6 @@ export default function Revision() {
 
               {selectedMapId > 0 && (
                 <div className="revision-config">
-                  <label htmlFor="totalQuestions">Nombre de questions</label>
-                  <input
-                    id="totalQuestions"
-                    type="number"
-                    min={1}
-                    value={totalQuestions}
-                    onChange={(e) => setTotalQuestions(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                  />
                   <button className="btn-primary" onClick={handleStartRevision}>
                     Lancer la révision
                   </button>

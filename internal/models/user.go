@@ -2,19 +2,52 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 )
 
+type UserSettings struct {
+	RevisionCorrectTimer   int `json:"revision_correct_timer"`
+	RevisionIncorrectTimer int `json:"revision_incorrect_timer"`
+	RevisionQuestionCount  int `json:"revision_question_count"`
+}
+
+func DefaultUserSettings() UserSettings {
+	return UserSettings{
+		RevisionCorrectTimer:   3,
+		RevisionIncorrectTimer: 5,
+		RevisionQuestionCount:  20,
+	}
+}
+
+func MergeUserSettings(overrides *UserSettings) UserSettings {
+	if overrides == nil {
+		return DefaultUserSettings()
+	}
+	result := DefaultUserSettings()
+	if overrides.RevisionCorrectTimer > 0 {
+		result.RevisionCorrectTimer = overrides.RevisionCorrectTimer
+	}
+	if overrides.RevisionIncorrectTimer > 0 {
+		result.RevisionIncorrectTimer = overrides.RevisionIncorrectTimer
+	}
+	if overrides.RevisionQuestionCount > 0 {
+		result.RevisionQuestionCount = overrides.RevisionQuestionCount
+	}
+	return result
+}
+
 type User struct {
-	ID              int       `json:"id"`
-	DiscordID       string    `json:"discord_id"`
-	DiscordUsername string    `json:"discord_username"`
-	DisplayName     string    `json:"display_name"`
-	IsAdmin         bool      `json:"is_admin"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              int          `json:"id"`
+	DiscordID       string       `json:"discord_id"`
+	DiscordUsername string       `json:"discord_username"`
+	DisplayName     string       `json:"display_name"`
+	IsAdmin         bool         `json:"is_admin"`
+	Settings        UserSettings `json:"settings"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
 type userRepo struct {
@@ -245,4 +278,53 @@ func (r *userRepo) SearchUsers(query string, limit int) ([]*User, error) {
 		users = append(users, &u)
 	}
 	return users, rows.Err()
+}
+
+func (r *userRepo) GetUserSettings(userID int) (*UserSettings, error) {
+	var rawSettings sql.NullString
+	err := r.db.QueryRow(`SELECT settings FROM users WHERE id = $1`, userID).Scan(&rawSettings)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user settings: %w", err)
+	}
+
+	if !rawSettings.Valid || rawSettings.String == "" {
+		defaults := DefaultUserSettings()
+		return &defaults, nil
+	}
+
+	var settings UserSettings
+	if err := json.Unmarshal([]byte(rawSettings.String), &settings); err != nil {
+		return nil, fmt.Errorf("failed to parse user settings: %w", err)
+	}
+
+	merged := MergeUserSettings(&settings)
+	return &merged, nil
+}
+
+func (r *userRepo) UpdateUserSettings(userID int, settings *UserSettings) error {
+	jsonBytes, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("failed to marshal user settings: %w", err)
+	}
+
+	result, err := r.db.Exec(
+		`UPDATE users SET settings = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+		string(jsonBytes), userID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update user settings: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrUserNotFound
+	}
+
+	return nil
 }

@@ -42,3 +42,19 @@ export async function updateDisplayName(displayName: string): Promise<{ display_
   const api = getApiClient()
   return api.put<{ display_name: string }>('/api/v1/auth/display-name', { display_name: displayName })
 }
+
+export interface UserSettings {
+  revision_correct_timer: number
+  revision_incorrect_timer: number
+  revision_question_count: number
+}
+
+export async function fetchSettings(): Promise<UserSettings> {
+  const api = getApiClient()
+  return api.get<UserSettings>('/api/v1/auth/settings')
+}
+
+export async function updateSettings(settings: Partial<UserSettings>): Promise<UserSettings> {
+  const api = getApiClient()
+  return api.put<UserSettings>('/api/v1/auth/settings', settings)
+}

@@ -12,9 +12,9 @@ Feedbacks du 2025-05-14 :
 
 ### Paramètres globaux (persistants par utilisateur)
 - [ ] Nouvelle section "Révision" dans les paramètres utilisateur
-- [ ] Champ "Temps d'affichage après bonne réponse" (défaut : 3 secondes)
-- [ ] Champ "Temps d'affichage après mauvaise réponse" (défaut : 5 secondes)
-- [ ] Champ "Nombre de questions par révision" (défaut : 20)
+- [ ] Champ "Temps d'affichage après bonne réponse" (défaut : 3 secondes, pas de limite technique)
+- [ ] Champ "Temps d'affichage après mauvaise réponse" (défaut : 5 secondes, pas de limite technique)
+- [ ] Champ "Nombre de questions par révision" (défaut : 20, pas de limite maximale)
 - [ ] Les trois champs sont persistants d'une session à l'autre
 - [ ] Dans la version actuelle, pas de configuration du nombre de questions au lancement de la révision (uniquement via les paramètres)
 

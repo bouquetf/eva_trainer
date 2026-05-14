@@ -38,6 +38,7 @@ var migrationFiles = []string{
 	"000002_add_refresh_tokens.up.sql",
 	"000003_add_display_name.up.sql",
 	"000004_add_discord_username.up.sql",
+	"000016_add_user_settings.up.sql",
 }
 
 func setupTestDB(t *testing.T) *sql.DB {
@@ -302,6 +303,297 @@ func TestRefresh_WithRevokedToken_Returns401(t *testing.T) {
 	}
 	if resp["error"] != "refresh_token_revoked" {
 		t.Errorf("expected error 'refresh_token_revoked', got '%s'", resp["error"])
+	}
+}
+
+func TestGetSettings_NoSettings_ReturnsDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _, jwtService := setupAuthHandler(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("settings-defaults")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/settings", nil)
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
+	if !c.IsAborted() {
+		c.Next()
+		handler.GetSettings(c)
+	}
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if v := resp["revision_correct_timer"]; v != float64(3) {
+		t.Errorf("expected correct_timer 3, got %v", v)
+	}
+	if v := resp["revision_incorrect_timer"]; v != float64(5) {
+		t.Errorf("expected incorrect_timer 5, got %v", v)
+	}
+	if v := resp["revision_question_count"]; v != float64(20) {
+		t.Errorf("expected question_count 20, got %v", v)
+	}
+}
+
+func TestGetSettings_WithoutToken_Returns401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _, jwtService := setupAuthHandler(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/settings", nil)
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
+	if !c.IsAborted() {
+		c.Next()
+		handler.GetSettings(c)
+	}
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestGetSettings_WithPartialSettings_ReturnsMerged(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _, jwtService := setupAuthHandler(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("settings-partial")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	// Stocker des settings où seuls certains champs sont > 0
+	// GetUserSettings fusionne avec les défauts (champs à 0 → defaults)
+	if err := userRepo.UpdateUserSettings(user.ID, &models.UserSettings{RevisionCorrectTimer: 2}); err != nil {
+		t.Fatalf("failed to set partial settings: %v", err)
+	}
+
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/settings", nil)
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
+	if !c.IsAborted() {
+		c.Next()
+		handler.GetSettings(c)
+	}
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if v := resp["revision_correct_timer"]; v != float64(2) {
+		t.Errorf("expected correct_timer 2, got %v", v)
+	}
+	if v := resp["revision_incorrect_timer"]; v != float64(5) {
+		t.Errorf("expected incorrect_timer 5 (default), got %v", v)
+	}
+}
+
+func TestUpdateSettings_StoresAndPersists(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _, jwtService := setupAuthHandler(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("settings-store")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	body := `{"revision_correct_timer": 4, "revision_incorrect_timer": 6, "revision_question_count": 15}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/auth/settings", strings.NewReader(body))
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
+	if !c.IsAborted() {
+		c.Next()
+		handler.UpdateSettings(c)
+	}
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Vérifier la persistance via GET
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/settings", nil)
+	c2.Request.Header.Set("Authorization", "Bearer "+token)
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c2)
+	if !c2.IsAborted() {
+		c2.Next()
+		handler.GetSettings(c2)
+	}
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 from GET, got %d", w2.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w2.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if v := resp["revision_correct_timer"]; v != float64(4) {
+		t.Errorf("expected correct_timer 4, got %v", v)
+	}
+	if v := resp["revision_incorrect_timer"]; v != float64(6) {
+		t.Errorf("expected incorrect_timer 6, got %v", v)
+	}
+	if v := resp["revision_question_count"]; v != float64(15) {
+		t.Errorf("expected question_count 15, got %v", v)
+	}
+}
+
+func TestUpdateSettings_PartialUpdate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _, jwtService := setupAuthHandler(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("settings-partial-update")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	// Pré-remplir avec des valeurs connues
+	initial := `{"revision_correct_timer": 10, "revision_incorrect_timer": 20, "revision_question_count": 30}`
+	w0 := httptest.NewRecorder()
+	c0, _ := gin.CreateTestContext(w0)
+	c0.Request = httptest.NewRequest(http.MethodPut, "/api/v1/auth/settings", strings.NewReader(initial))
+	c0.Request.Header.Set("Authorization", "Bearer "+token)
+	c0.Request.Header.Set("Content-Type", "application/json")
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c0)
+	if !c0.IsAborted() {
+		c0.Next()
+		handler.UpdateSettings(c0)
+	}
+	if w0.Code != http.StatusOK {
+		t.Fatalf("failed to set initial settings: %d", w0.Code)
+	}
+
+	// Mise à jour partielle : seulement correct_timer
+	partial := `{"revision_correct_timer": 2}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/auth/settings", strings.NewReader(partial))
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
+	if !c.IsAborted() {
+		c.Next()
+		handler.UpdateSettings(c)
+	}
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if v := resp["revision_correct_timer"]; v != float64(2) {
+		t.Errorf("expected correct_timer 2, got %v", v)
+	}
+	if v := resp["revision_incorrect_timer"]; v != float64(20) {
+		t.Errorf("expected incorrect_timer 20 (unchanged), got %v", v)
+	}
+	if v := resp["revision_question_count"]; v != float64(30) {
+		t.Errorf("expected question_count 30 (unchanged), got %v", v)
+	}
+}
+
+func TestUpdateSettings_InvalidValues_Returns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _, jwtService := setupAuthHandler(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("settings-invalid")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"timer correct = 0", `{"revision_correct_timer": 0}`},
+		{"question_count = 0", `{"revision_question_count": 0}`},
+		{"body vide", `{}`},
+		{"body invalide", `not-json`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/auth/settings", strings.NewReader(tt.body))
+			c.Request.Header.Set("Authorization", "Bearer "+token)
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			middleware.RequireAuth(nil, userRepo, jwtService)(c)
+			if !c.IsAborted() {
+				c.Next()
+				handler.UpdateSettings(c)
+			}
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+			}
+		})
 	}
 }
 

@@ -118,12 +118,37 @@ Ce document définit l'ordre recommandé pour l'implémentation des user stories
 | #016 | Revision Mode with Weighted Probability | #015 (Revision) | Playwright |
 
 **Notes :**
-- Dernière story fonctionnelle
 - Tests de charge recommandés pour valider l'algorithme de poids
 
 ---
 
-## Phase 7 : Finalisation des tests (Sprint 7)
+## Phase 7 : Feedback-driven refinements (Sprint 7-8)
+*Améliorations issues des feedbacks utilisateur du 2025-05-14*
+
+### Parallélisation possible : 3 groupes
+
+| Story | Titre | Dépendances | Tests E2E |
+|-------|-------|-------------|------------|
+| #018 | Map Locking Refinements | #010 (Locking) | Playwright |
+| #019 | Revision Settings and Configurable Timers | #015 (Revision) | Playwright |
+| #020 | Read-Only Zone List View | #009 (Zones) | Playwright |
+| #021 | Admin Import/Export of Zones | #009, #005 | Playwright |
+| #022 | Remove Homepage, Redirect to /teams | #003 (Teams) | Playwright |
+| #023 | Editor Help Popup | #009 (Zones) | Playwright |
+| #024 | Role-Based Editor Button Visibility | #004, #009 | Playwright |
+
+**Groupes parallélisables :**
+- **Groupe A** (UI éditeur) : #018, #020, #023, #024 — dépendent de #009/#010, indépendants entre eux
+- **Groupe B** (Données) : #021 — dépend de #009, #005
+- **Groupe C** (Parcours) : #022 — dépend de #003, peut être fait à tout moment après
+
+**Notes :**
+- #019 est bloquée par #015 (Revision), peut démarrer en parallèle du Groupe A si #015 est terminée
+- Ces stories peuvent être implémentées en parallèle de #016 et #017
+
+---
+
+## Phase 8 : Finalisation des tests (Sprint 9)
 *Couverture de tests à 100%*
 
 | Story | Titre | Dépendances | Tests E2E |
@@ -192,6 +217,17 @@ graph TD
     #015 -.-> #017
     #016 -.-> #017
     
+    %% Feedback-driven refinements (#018-#024)
+    #010 --> #018[Story #018<br/>Map Locking Refinements]
+    #015 --> #019[Story #019<br/>Revision Settings]
+    #009 --> #020[Story #020<br/>Read-Only Zone List]
+    #009 --> #021[Story #021<br/>Admin Import/Export]
+    #005 --> #021
+    #003 --> #022[Story #022<br/>Redirect to /teams]
+    #009 --> #023[Story #023<br/>Editor Help Popup]
+    #004 --> #024[Story #024<br/>Role-Based Button Visibility]
+    #009 --> #024
+    
     style #000 fill:#90EE90
     style #001 fill:#90EE90
     style #002 fill:#90EE90
@@ -200,7 +236,7 @@ graph TD
 
 ---
 
-## Planning recommandé (8 Sprints : 0 à 7)
+## Planning recommandé (10 Sprints : 0 à 9)
 
 | Sprint | Stories | Équipe recommandée | Jalons |
 |--------|---------|-------------------|--------|
@@ -211,15 +247,17 @@ graph TD
 | S4 | #010, #011, #012, #013 | 4 devs | Lock, Publish, History |
 | S5 | #014, #015 | 2 devs | Templates, Revision |
 | S6 | #016 | 1 dev | Weighted Revision |
-| S7 | #017 + Tests | 2 devs | 100% Coverage |
+| S7 | #018, #019, #020 | 2-3 devs | Lock refinements, Revision settings, Zone list |
+| S8 | #021, #022, #023, #024 | 2-3 devs | Import/Export, Navigation, Help, Roles UI |
+| S9 | #017 + Tests | 2 devs | 100% Coverage |
 
-**Total : 16 semaines (environ 4 mois)**
+**Total : 20 semaines (environ 5 mois)**
 
 ### Diagramme de Gantt (Mermaid)
 
 ```mermaid
 gantt
-    title Planning d'implémentation - 8 Sprints
+    title Planning d'implémentation - 10 Sprints
     dateFormat  D
     axisFormat  Semaine %d
     
@@ -254,8 +292,19 @@ gantt
     section Phase 6 - Révision avancée
     #016 Weighted Probability              :s6, after s5b, 10d
     
-    section Phase 7 - Tests
-    #017 Test Automation                   :s7, after s6, 10d
+    section Phase 7 - Feedback Refinements
+    #018 Lock Refinements                  :s7a, after s4a, 10d
+    #019 Revision Settings                 :s7b, after s5b, 10d
+    #020 Read-Only Zone List               :s7c, after s3d, 10d
+    
+    section Phase 7b - Feedback Refinements (suite)
+    #021 Import/Export                     :s8a, after s3d, 10d
+    #022 Redirect to /teams                :s8b, after s2a, 10d
+    #023 Editor Help Popup                 :s8c, after s3d, 10d
+    #024 Role-Based Button                 :s8d, after s2b, 10d
+    
+    section Phase 8 - Tests
+    #017 Test Automation                   :s9, after s6, 10d
 ```
 
 ### Parallélisation maximale
@@ -276,12 +325,27 @@ graph LR
         H[#013 Error Handling]
     end
     
+    subgraph "Sprint 7-8 - Feedback Refinements (max 4 équipes)"
+        I[#018 Lock]
+        J[#019 Revision Settings]
+        K[#020 Zone List]
+        L[#021 Import/Export]
+        M[#022 Redirect]
+        N[#023 Help Popup]
+        O[#024 Roles UI]
+    end
+    
     A --> E
     B --> F
     C --> H
     D --> F
     D --> G
     D --> E
+    D --> K
+    D --> L
+    D --> N
+    E --> I
+    F --> J
     
     style A fill:#FFD700
     style B fill:#FFD700
@@ -291,6 +355,13 @@ graph LR
     style F fill:#87CEEB
     style G fill:#87CEEB
     style H fill:#87CEEB
+    style I fill:#98FB98
+    style J fill:#98FB98
+    style K fill:#98FB98
+    style L fill:#98FB98
+    style M fill:#98FB98
+    style N fill:#98FB98
+    style O fill:#98FB98
 ```
 
 ---
@@ -308,3 +379,7 @@ graph LR
 4. **Base de données** : Le schéma (`docs/specification/database_schema.md`) doit être validé avant le Sprint 2.
 
 5. **Framework E2E** : Playwright doit être configuré dès le Sprint 0 (Story #000) pour être utilisé dès la Story #002.
+
+6. **Feedbacks utilisateur (#018-#024)** : Ces stories proviennent des retours du 2025-05-14. Elles peuvent être implémentées dès que leurs dépendances sont résolues, sans attendre les phases suivantes.
+
+7. **Stories #018-#024 non-bloquantes** : Aucune de ces stories ne bloque les stories du plan initial (#000-#017). Elles sont des améliorations indépendantes qui peuvent être priorisées selon la charge.

@@ -82,7 +82,7 @@ describe('Revision page - map selection', () => {
 
     await userEvent.click(screen.getByText('Map A'))
 
-    expect(screen.getByText('Nombre de questions')).toBeTruthy()
+    expect(screen.getByText('Lancer la révision')).toBeTruthy()
   })
 })
 
@@ -90,6 +90,7 @@ describe('Revision page - active revision', () => {
   it('starts revision from selection screen', async () => {
     mockFetch
       .mockResolvedValueOnce(okResponse({ maps: [{ id: 1, name: 'Map A', added_at: '', is_obsolete: false, obsolete_of: null }] }))
+      .mockResolvedValueOnce(okResponse({ revision_correct_timer: 3, revision_incorrect_timer: 5, revision_question_count: 20 }))
       .mockResolvedValueOnce(okResponse({
         zones: [
           { id: 1, source: 'team', map_id: 1, polygons: [], name: 'top' },
@@ -114,6 +115,7 @@ describe('Revision page - finished screen', () => {
   it('navigates to finish after manual finishSession', async () => {
     mockFetch
       .mockResolvedValueOnce(okResponse({ maps: [{ id: 1, name: 'Map A', added_at: '', is_obsolete: false, obsolete_of: null }] }))
+      .mockResolvedValueOnce(okResponse({ revision_correct_timer: 3, revision_incorrect_timer: 5, revision_question_count: 20 }))
       .mockResolvedValueOnce(okResponse({
         zones: [
           { id: 1, source: 'team', map_id: 1, polygons: [], name: 'top' },

@@ -14,9 +14,26 @@ Feedback du 2025-05-14 : "Import/Export de zones"
 - [ ] Les zones sont exportées avec le lien vers la carte identifiée par son nom eva
 - [ ] L'export est accessible aux administrateurs uniquement
 - [ ] Le JSON contient : polygones, noms de zones, relation carte (nom eva), métadonnées d'équipe
+- [ ] Format JSON d'export :
+
+```json
+{
+  "map_name": "Atlantis",
+  "team": "...",
+  "export_date": "...",
+  "zones": [
+    {
+      "name": "top",
+      "polygons": [
+        { "points": [0, 0, 100, 0, 100, 100, 0, 100] }
+      ]
+    }
+  ]
+}
+```
 
 ### Import
-- [ ] Import d'une carte et de ses zones depuis un fichier JSON
+- [ ] Import d'une carte et de ses zones depuis un fichier JSON au même format que l'export
 - [ ] Import de toutes les cartes d'une équipe depuis un fichier JSON
 - [ ] Validation du fichier importé (structure, types de données, intégrité des références)
 - [ ] Si la carte (nom eva) existe déjà : les zones importées sont ajoutées aux existantes

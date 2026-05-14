@@ -235,6 +235,88 @@ func (h *AuthHandler) UpdateDisplayName(c *gin.Context) {
 	})
 }
 
+func (h *AuthHandler) GetSettings(c *gin.Context) {
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		return
+	}
+
+	settings, err := h.userRepo.GetUserSettings(user.ID)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError(
+			"internal_error", "failed to load settings", http.StatusInternalServerError,
+		))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
+		"revision_correct_timer":   settings.RevisionCorrectTimer,
+		"revision_incorrect_timer": settings.RevisionIncorrectTimer,
+		"revision_question_count":  settings.RevisionQuestionCount,
+	})
+}
+
+func (h *AuthHandler) UpdateSettings(c *gin.Context) {
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		return
+	}
+
+	var req struct {
+		RevisionCorrectTimer   *int `json:"revision_correct_timer"`
+		RevisionIncorrectTimer *int `json:"revision_incorrect_timer"`
+		RevisionQuestionCount  *int `json:"revision_question_count"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError(
+			"invalid_settings", "invalid settings format", http.StatusBadRequest,
+		))
+		return
+	}
+
+	if (req.RevisionCorrectTimer != nil && *req.RevisionCorrectTimer < 1) ||
+		(req.RevisionIncorrectTimer != nil && *req.RevisionIncorrectTimer < 1) ||
+		(req.RevisionQuestionCount != nil && *req.RevisionQuestionCount < 1) {
+		apierror.RespondWithError(c, apierror.NewAPIError(
+			"invalid_settings", "values must be >= 1", http.StatusBadRequest,
+		))
+		return
+	}
+
+	current, err := h.userRepo.GetUserSettings(user.ID)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError(
+			"internal_error", "failed to load settings", http.StatusInternalServerError,
+		))
+		return
+	}
+
+	merged := *current
+	if req.RevisionCorrectTimer != nil {
+		merged.RevisionCorrectTimer = *req.RevisionCorrectTimer
+	}
+	if req.RevisionIncorrectTimer != nil {
+		merged.RevisionIncorrectTimer = *req.RevisionIncorrectTimer
+	}
+	if req.RevisionQuestionCount != nil {
+		merged.RevisionQuestionCount = *req.RevisionQuestionCount
+	}
+
+	if err := h.userRepo.UpdateUserSettings(user.ID, &merged); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError(
+			"internal_error", "failed to save settings", http.StatusInternalServerError,
+		))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
+		"revision_correct_timer":   merged.RevisionCorrectTimer,
+		"revision_incorrect_timer": merged.RevisionIncorrectTimer,
+		"revision_question_count":  merged.RevisionQuestionCount,
+	})
+}
+
 func hashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])

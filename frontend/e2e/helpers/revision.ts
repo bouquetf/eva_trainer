@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Page, expect } from '@playwright/test';
 import type { RevisionZone } from '../../src/lib/revision/types';
 
 export async function answerAndVerify(
@@ -7,7 +7,9 @@ export async function answerAndVerify(
   expectedCorrect: boolean,
 ): Promise<void> {
   const input = page.locator('input[placeholder="Nom de la zone..."]');
+  const finishedPage = page.locator('.revision-finished-screen');
   await input.waitFor({ state: 'visible', timeout: 10000 });
+  await expect(input).toBeEnabled({ timeout: 10000 });
   await input.fill(answer);
 
   await page.getByRole('button', { name: /valider/i }).click();
@@ -18,7 +20,10 @@ export async function answerAndVerify(
     await page.locator('.revision-feedback.incorrect').waitFor({ state: 'visible', timeout: 5000 });
   }
 
-  await page.waitForTimeout(1200);
+  await expect(async () => {
+    if (await finishedPage.isVisible().catch(() => false)) return
+    await expect(input).toBeEnabled({ timeout: 1000 })
+  }).toPass({ timeout: 10000 })
 }
 
 export async function answerCorrectly(page: Page, answer?: string): Promise<void> {

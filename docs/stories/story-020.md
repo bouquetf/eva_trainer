@@ -7,12 +7,13 @@ En tant qu'utilisateur, je veux un écran affichant la liste des zones d'une car
 Feedback du 2025-05-14 : "Avoir un écran avec la liste des zones pour pouvoir lire"
 
 ## Critères d'acceptation
-- [ ] Nouvel écran accessible depuis la page d'une carte : affiche la même vue que l'éditeur (carte + zones)
-- [ ] Toutes les fonctionnalités d'édition sont désactivées (pas de dessin, pas de modification, pas de suppression)
+- [ ] Mode "lecture seule" activable dans le composant éditeur existant (même rendu carte + zones, mais fonctionnalités d'édition désactivées)
+- [ ] Toutes les fonctionnalités d'édition sont désactivées dans ce mode : pas de dessin, pas de modification, pas de suppression de polygones
 - [ ] Les zones sont affichées avec leurs noms sur la carte (comme dans l'éditeur)
 - [ ] Aucune modification possible depuis cet écran (lecture seule)
 - [ ] Les zones privées et publiques de l'équipe sont visibles
 - [ ] L'écran est accessible à tous les membres de l'équipe (pas besoin du rôle Éditeur)
+- [ ] Le filtrage par split ne s'applique pas à cette vue : toutes les zones de la carte pour l'équipe sont affichées
 
 ## Tests automatisés
 - Test unitaire : Récupération de la liste des zones en lecture seule
