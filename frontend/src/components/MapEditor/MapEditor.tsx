@@ -6,8 +6,9 @@ import {
   batchActions,
   type BatchAction,
 } from "../../api/zones";
-import { acquireLock, releaseLock, refreshLock, releaseLockSync } from "../../api/locks";
+import { acquireLock, releaseLock, refreshLock, getLockStatus, releaseLockSync } from "../../api/locks";
 import { getMapImageUrl, listTeamMaps } from "../../api/maps";
+import { useAuthStore } from "../../store/auth";
 import type { Map as MapInfo } from "../../api/maps";
 import { ApiError } from "../../api/client";
 import { restoreVersion } from "../../api/versions";
@@ -89,6 +90,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+
+  const getEditorId = () => useAuthStore.getState().user?.id;
 
   const startCountdown = useCallback((expiresAt: string) => {
     if (countdownRef.current) clearInterval(countdownRef.current);
@@ -215,9 +218,67 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
     };
     window.addEventListener("beforeunload", beforeUnloadHandler);
 
+    const pageHideHandler = () => {
+      releaseLockSync(teamId, mapId);
+    };
+    window.addEventListener("pagehide", pageHideHandler);
+
+    const visibilityHandler = () => {
+      if (document.visibilityState === "hidden") {
+        if (lockRefreshRef.current) {
+          clearInterval(lockRefreshRef.current);
+          lockRefreshRef.current = null;
+        }
+      } else if (document.visibilityState === "visible") {
+        getLockStatus(teamId, mapId).then((status) => {
+          if (!mountedRef.current) return;
+          if (status.locked && status.lock) {
+            if (status.lock.editor_id === getEditorId()) {
+              setCanEdit(true);
+              setLockedByMe(true);
+              setIsLocked(true);
+              setShowReacquireButton(false);
+              setEditorName(status.lock.editor_name);
+              if (status.lock.expires_at) startCountdown(status.lock.expires_at);
+              if (!lockRefreshRef.current) {
+                lockRefreshRef.current = setInterval(async () => {
+                  try {
+                    const refreshed = await refreshLock(teamId, mapId);
+                    if (refreshed.lock?.expires_at && mountedRef.current) {
+                      startCountdown(refreshed.lock.expires_at);
+                    }
+                  } catch {
+                    if (mountedRef.current) {
+                      setCanEdit(false);
+                      setLockedByMe(false);
+                      setShowReacquireButton(true);
+                    }
+                  }
+                }, LOCK_REFRESH_MS);
+              }
+            } else {
+              setCanEdit(false);
+              setLockedByMe(false);
+              setIsLocked(true);
+              setEditorName(status.lock.editor_name ?? `éditeur #${status.lock.editor_id}`);
+              showError(`Le verrou d'édition a été repris par ${status.lock.editor_name ?? `éditeur #${status.lock.editor_id}`}.`);
+            }
+          } else {
+            setCanEdit(false);
+            setLockedByMe(false);
+            setIsLocked(false);
+            setShowReacquireButton(true);
+          }
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
+
     return () => {
       mountedRef.current = false;
       window.removeEventListener("beforeunload", beforeUnloadHandler);
+      window.removeEventListener("pagehide", pageHideHandler);
+      document.removeEventListener("visibilitychange", visibilityHandler);
       if (lockRefreshRef.current) {
         clearInterval(lockRefreshRef.current);
         lockRefreshRef.current = null;
@@ -226,6 +287,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
         clearInterval(countdownRef.current);
         countdownRef.current = null;
       }
+      releaseLockSync(teamId, mapId);
       releaseLock(teamId, mapId).catch(() => {});
     };
   }, [teamId, mapId, startCountdown]);
@@ -865,6 +927,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId }) => {
                   pendingZoneSwitch.current = { action: "navigate", mapId: targetMapId };
                   setShowDiscardDialog(true);
                 } else {
+                  releaseLockSync(teamId, mapId);
                   navigate(`/teams/${teamId}/editor/${targetMapId}`);
                 }
               }}

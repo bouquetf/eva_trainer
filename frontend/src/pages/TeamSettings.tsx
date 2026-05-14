@@ -30,7 +30,7 @@ function TeamSettings() {
   const [showTransfer, setShowTransfer] = useState(false)
 
   const [inviteDisplayName, setInviteDisplayName] = useState('')
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
+  const [_selectedUserId, setSelectedUserId] = useState<number | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
   const [showSuggestions, setShowSuggestions] = useState(false)

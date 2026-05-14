@@ -1,10 +1,4 @@
-import type { Point, Zone, ZoneStyle } from "../api/types";
-
-const DEFAULT_STYLE: ZoneStyle = {
-  fill: "rgba(0, 255, 150, 0.25)",
-  stroke: "#00e676",
-  strokeWidth: 4,
-};
+import type { Point, Zone } from "../api/types";
 
 export function createTempId(): string {
   return `zone-${Math.random().toString(36).substr(2, 9)}`;
@@ -17,7 +11,6 @@ export function createZone(
   points: Point[],
 ): Zone {
   const now = new Date().toISOString();
-  const id = createTempId();
   return {
     id: 0,
     team_id: teamId,
@@ -113,7 +106,7 @@ export function replaceTempId(zones: Zone[], tempId: string, realId: number): Zo
       return {
         ...z,
         id: realId,
-        polygons: z.polygons.map((p, i) => ({
+        polygons: z.polygons.map((p, _i) => ({
           ...p,
           zone_id: realId,
         })),

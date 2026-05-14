@@ -81,6 +81,14 @@ func (h *EditLockHandler) AcquireLock(c *gin.Context) {
 	lock, err := h.lockRepo.Acquire(teamID, mapID, user.ID)
 	if err != nil {
 		if errors.Is(err, models.ErrLockAlreadyAcquired) {
+			existingLock, getErr := h.lockRepo.Get(teamID, mapID)
+			if getErr == nil && existingLock != nil && existingLock.ExpiresAt.After(time.Now()) {
+				editorName := h.getUserDisplayName(existingLock.EditorID)
+				apiErr := apierror.NewAPIError("lock_already_acquired", "Cette carte est en cours d'édition par un autre éditeur.", http.StatusConflict)
+				apiErr.WithExtra("editor_name", editorName).WithExtra("editor_id", existingLock.EditorID)
+				apierror.RespondWithError(c, apiErr)
+				return
+			}
 			apierror.RespondWithError(c, apierror.NewAPIError("lock_already_acquired", "edit lock already acquired by another editor", http.StatusConflict))
 			return
 		}

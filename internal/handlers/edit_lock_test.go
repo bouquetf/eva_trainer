@@ -72,6 +72,14 @@ func TestEditLockHandler_AcquireAndRejectSecond(t *testing.T) {
 	if errResp["error"] != "lock_already_acquired" {
 		t.Errorf("expected error 'lock_already_acquired', got '%v'", errResp["error"])
 	}
+	if editorName, ok := errResp["editor_name"]; !ok || editorName == "" {
+		t.Errorf("expected editor_name in 409 response, got '%v'", editorName)
+	}
+	if editorID, ok := errResp["editor_id"]; !ok || editorID == nil {
+		t.Errorf("expected editor_id in 409 response, got '%v'", editorID)
+	} else if editorID.(float64) != float64(f.user.ID) {
+		t.Errorf("expected editor_id %d, got %v", f.user.ID, editorID)
+	}
 
 	// Step 3: Editor A creates a zone (should succeed because lock is held)
 	zoneParams := gin.Params{

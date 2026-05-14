@@ -22,10 +22,19 @@ const (
 )
 
 type APIError struct {
-	Code     ErrorCode `json:"error"`
-	Message  string    `json:"message"`
-	HTTPCode int       `json:"-"`
-	Err      error     `json:"-"`
+	Code     ErrorCode      `json:"error"`
+	Message  string         `json:"message"`
+	HTTPCode int            `json:"-"`
+	Err      error          `json:"-"`
+	Extra    map[string]any `json:"-"`
+}
+
+func (e *APIError) WithExtra(key string, value any) *APIError {
+	if e.Extra == nil {
+		e.Extra = make(map[string]any)
+	}
+	e.Extra[key] = value
+	return e
 }
 
 func NewAPIError(code ErrorCode, message string, httpCode int) *APIError {
@@ -60,7 +69,14 @@ func RespondWithError(c *gin.Context, apiErr *APIError) {
 	if apiErr == nil {
 		return
 	}
-	c.JSON(apiErr.HTTPCode, apiErr)
+	resp := gin.H{
+		"error":   apiErr.Code,
+		"message": apiErr.Message,
+	}
+	for k, v := range apiErr.Extra {
+		resp[k] = v
+	}
+	c.JSON(apiErr.HTTPCode, resp)
 	c.Abort()
 }
 

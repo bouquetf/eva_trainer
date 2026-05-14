@@ -18,6 +18,9 @@ export class MockMapsApi implements MapsApi {
       name: "Atlantis Map",
       added_at: new Date().toISOString(),
       is_obsolete: false,
+      imageUrl: "",
+      width: 0,
+      height: 0,
     };
   }
 

@@ -43,8 +43,8 @@ export interface SetNamePayload {
 export type BatchAction =
   | { type: 'create_zone'; temp_id: string; polygons: { points: Point[] }[]; name?: string }
   | { type: 'add_polygon'; zone_id: number; points: Point[] }
-  | { type: 'remove_polygon'; polygon_id: number }
-  | { type: 'update_points'; polygon_id: number; points: Point[] }
+  | { type: 'remove_polygon'; zone_id: number; polygon_id: number }
+  | { type: 'update_points'; zone_id: number; polygon_id: number; points: Point[] }
   | { type: 'add_point'; polygon_id: number; point: Point; index_after: number }
   | { type: 'remove_point'; polygon_id: number; point_index: number; zone_id: number }
   | { type: 'rename'; zone_id: number; name: string }

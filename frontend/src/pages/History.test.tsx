@@ -117,8 +117,8 @@ describe('History', () => {
     await waitFor(() => {
       expect(screen.getByText(/2 résultats/)).toBeInTheDocument()
     })
-    expect(screen.getByText(/User 1/)).toBeInTheDocument()
-    expect(screen.getByText(/User 2/)).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'User 1' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'User 2' })).toBeInTheDocument()
   })
 
   it('handles error state', async () => {
