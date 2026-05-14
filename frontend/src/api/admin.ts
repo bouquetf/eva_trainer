@@ -1,4 +1,5 @@
-import { getApiClient } from './client'
+import { getApiClient, ApiError } from './client'
+import { useAuthStore } from '../store/auth'
 import type { User } from './auth'
 
 export interface PermissionWithRoles {
@@ -86,4 +87,85 @@ export async function addUserToTeam(userId: number, teamId: number, role: string
 export async function removeUserFromTeam(userId: number, teamId: number): Promise<void> {
   const api = getApiClient()
   return api.del(`/api/v1/admin/users/${userId}/teams/${teamId}`)
+}
+
+// --- Import / Export ---
+
+export interface ExportPolygon {
+  points: { x: number; y: number }[]
+}
+
+export interface ExportZone {
+  name: string
+  polygons: ExportPolygon[]
+}
+
+export interface ExportMapData {
+  map_name: string
+  team: string
+  export_date: string
+  zones: ExportZone[]
+}
+
+export interface ImportPolygon {
+  points: { x: number; y: number }[]
+}
+
+export interface ImportZone {
+  name: string
+  polygons: ImportPolygon[]
+}
+
+export interface ImportMapPayload {
+  map_name: string
+  zones: ImportZone[]
+}
+
+export interface ImportMapError {
+  map_name: string
+  error: string
+}
+
+export interface ImportResponse {
+  imported_count: number
+  maps_processed: number
+  errors?: ImportMapError[]
+}
+
+const ADMIN_BASE = '/api/v1/admin'
+
+function getBaseURL(): string {
+  return import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().accessToken
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export async function exportTeamMap(teamId: number, mapId: number): Promise<Blob> {
+  const res = await fetch(`${getBaseURL()}${ADMIN_BASE}/teams/${teamId}/export/${mapId}`, {
+    headers: getAuthHeaders(),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, body)
+  }
+  return res.blob()
+}
+
+export async function exportAllTeamMaps(teamId: number): Promise<Blob> {
+  const res = await fetch(`${getBaseURL()}${ADMIN_BASE}/teams/${teamId}/export`, {
+    headers: getAuthHeaders(),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, body)
+  }
+  return res.blob()
+}
+
+export async function importTeamZones(teamId: number, data: ImportMapPayload[]): Promise<ImportResponse> {
+  const api = getApiClient()
+  return api.post<ImportResponse>(`${ADMIN_BASE}/teams/${teamId}/import`, data)
 }

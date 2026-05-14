@@ -65,17 +65,6 @@ func scanZone(scanner interface {
 	return z, nil
 }
 
-func scanZoneWithDetails(scanner interface {
-	Scan(dest ...interface{}) error
-}) (*ZoneWithDetails, error) {
-	z := &ZoneWithDetails{}
-	err := scanner.Scan(&z.ID, &z.TeamID, &z.MapID, &z.CreatedAt, &z.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return z, nil
-}
-
 func scanPolygonData(data []byte) ([]Point, error) {
 	if data == nil {
 		return []Point{}, nil
@@ -181,6 +170,107 @@ func (r *zoneRepo) FindWithDetailsByTeamAndMap(teamID, mapID int) ([]*ZoneWithDe
 	}
 
 	return result, nil
+}
+
+func (r *zoneRepo) FindWithDetailsByTeam(teamID int) (map[int][]*ZoneWithDetails, error) {
+	rows, err := r.db.Query(
+		`SELECT DISTINCT map_id FROM zones WHERE team_id = $1 ORDER BY map_id`,
+		teamID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query distinct map_ids: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int][]*ZoneWithDetails)
+	for rows.Next() {
+		var mapID int
+		if err := rows.Scan(&mapID); err != nil {
+			return nil, fmt.Errorf("failed to scan map_id: %w", err)
+		}
+		zones, err := r.FindWithDetailsByTeamAndMap(teamID, mapID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get zones for map %d: %w", mapID, err)
+		}
+		result[mapID] = zones
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (r *zoneRepo) ImportZones(teamID, mapID int, zones []ImportZoneData) ([]*Zone, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var createdZones []*Zone
+	for _, z := range zones {
+		for _, p := range z.Polygons {
+			if len(p.Points) < 3 {
+				return nil, ErrPolygonHasTooFewPoints
+			}
+		}
+
+		var count int
+		err := tx.QueryRow(
+			`SELECT COUNT(*)
+			 FROM zone_names zn
+			 JOIN zones z ON z.id = zn.zone_id
+			 WHERE z.team_id = $1 AND z.map_id = $2 AND zn.name = $3`,
+			teamID, mapID, z.Name,
+		).Scan(&count)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check name uniqueness: %w", err)
+		}
+		if count > 0 {
+			return nil, ErrZoneNameTaken
+		}
+
+		zone := &Zone{}
+		err = tx.QueryRow(
+			`INSERT INTO zones (team_id, map_id) VALUES ($1, $2)
+			 RETURNING id, team_id, map_id, created_at, updated_at`,
+			teamID, mapID,
+		).Scan(&zone.ID, &zone.TeamID, &zone.MapID, &zone.CreatedAt, &zone.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create zone: %w", err)
+		}
+
+		for i, p := range z.Polygons {
+			data, err := marshalPoints(p.Points)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal polygon points: %w", err)
+			}
+			_, err = tx.Exec(
+				`INSERT INTO zone_polygons (zone_id, polygon_data, order_index) VALUES ($1, $2, $3)`,
+				zone.ID, data, i,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to add polygon: %w", err)
+			}
+		}
+
+		_, err = tx.Exec(
+			`INSERT INTO zone_names (zone_id, name) VALUES ($1, $2)
+			 ON CONFLICT (zone_id) DO UPDATE SET name = $2`,
+			zone.ID, z.Name,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set zone name: %w", err)
+		}
+
+		createdZones = append(createdZones, zone)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return createdZones, nil
 }
 
 func (r *zoneRepo) Delete(zoneID int) error {

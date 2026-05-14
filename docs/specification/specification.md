@@ -46,7 +46,7 @@
 - Rollback complet (toutes les modifs depuis une date).
 - Lors d'un rollback par le capitaine, la carte est verrouillée (nécessaire pour toute modification).
 - Un éditeur peut voir l'historique de ses propres modifications et revenir à la version précédente dans l'historique, mais ne peut défaire que les modifications dont il est lui-même l'auteur.
-- Import/export : l'administrateur peut exporter et importer les zones d'une carte ou de toutes les cartes d'une équipe au format JSON. Les zones sont liées à la carte par son nom eva. L'import ajoute les zones aux existantes sans écrasement.
+- Import/export : l'administrateur peut exporter et importer les zones d'une carte ou de toutes les cartes d'une équipe au format JSON. Les zones sont liées à la carte par son nom eva. L'import ajoute les zones aux existantes sans écrasement. Voir [docs/import-export.md](../import-export.md) pour les détails d'utilisation.
 
 ### 3.2 Mode Révision
 - Sélection d'une carte unique (avec possibilité de cocher "cartes du split" pour filtrer par split), puis affichage aléatoire d'une zone sur la carte.

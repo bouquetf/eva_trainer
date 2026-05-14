@@ -124,11 +124,22 @@ type RolePermissionRepository interface {
 	RoleHasPermission(role string, permissionID int) (bool, error)
 }
 
+type ImportPolygonData struct {
+	Points []Point `json:"points"`
+}
+
+type ImportZoneData struct {
+	Name     string              `json:"name"`
+	Polygons []ImportPolygonData `json:"polygons"`
+}
+
 type ZoneRepository interface {
 	Create(teamID, mapID int) (*Zone, error)
 	FindByID(zoneID int) (*Zone, error)
 	FindByTeamAndMap(teamID, mapID int) ([]*Zone, error)
 	FindWithDetailsByTeamAndMap(teamID, mapID int) ([]*ZoneWithDetails, error)
+	FindWithDetailsByTeam(teamID int) (map[int][]*ZoneWithDetails, error)
+	ImportZones(teamID, mapID int, zones []ImportZoneData) ([]*Zone, error)
 	Delete(zoneID int) error
 
 	AddPolygon(zoneID int, points []Point, orderIndex int) (*ZonePolygon, error)

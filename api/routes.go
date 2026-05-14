@@ -391,6 +391,15 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger service
 		admin.POST("/map-catalog", mapCatalogHandler.Create)
 		admin.PUT("/map-catalog/:id", mapCatalogHandler.Update)
 		admin.DELETE("/map-catalog/:id", mapCatalogHandler.Delete)
+
+		zoneRepoExport := models.NewZoneRepository(db)
+		mapRepoExport := models.NewMapRepository(db)
+		teamRepoExport := models.NewTeamRepository(db)
+		importExportHandler := handlers.NewImportExportHandler(zoneRepoExport, mapRepoExport, teamRepoExport, logger)
+
+		admin.GET("/teams/:id/export", importExportHandler.ExportTeamMaps)
+		admin.GET("/teams/:id/export/:mapId", importExportHandler.ExportTeamMap)
+		admin.POST("/teams/:id/import", importExportHandler.ImportTeamZones)
 	}
 }
 

@@ -11,7 +11,11 @@ import {
   updateUserRole,
   addUserToTeam,
   removeUserFromTeam,
+  exportTeamMap,
+  exportAllTeamMaps,
+  importTeamZones,
 } from '../api/admin'
+import type { ImportMapPayload } from '../api/admin'
 import type { Team } from '../api/admin'
 import { uploadMap, listAdminMaps, purgeObsoleteMaps, getMapImageUrl } from '../api/maps'
 import {
@@ -33,7 +37,7 @@ import type { MapCatalogEntry } from '../api/map-catalog'
 import { useAuthStore } from '../store/auth'
 import '../styles/admin.css'
 
-type Tab = 'users' | 'permissions' | 'maps' | 'splits' | 'catalog'
+type Tab = 'users' | 'permissions' | 'maps' | 'splits' | 'catalog' | 'import-export'
 
 const VALID_ROLES = ['member', 'editor', 'cocaptain', 'captain']
 
@@ -63,6 +67,11 @@ function AdminDashboard() {
 
   const [newCatalogName, setNewCatalogName] = useState('')
   const [editingCatalogEntry, setEditingCatalogEntry] = useState<MapCatalogEntry | null>(null)
+
+  const [exportTeamId, setExportTeamId] = useState<number>(0)
+  const [exportMapId, setExportMapId] = useState<number>(0)
+  const [importTeamId, setImportTeamId] = useState<number>(0)
+  const [importFile, setImportFile] = useState<File | null>(null)
 
   const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -270,6 +279,24 @@ function AdminDashboard() {
     },
   })
 
+  const importMutation = useMutation({
+    mutationFn: ({ teamId, data }: { teamId: number; data: ImportMapPayload[] }) =>
+      importTeamZones(teamId, data),
+    onSuccess: (result) => {
+      let msg = `${result.imported_count} zone(s) importée(s) sur ${result.maps_processed} carte(s)`
+      if (result.errors && result.errors.length > 0) {
+        msg += ` (${result.errors.length} erreur(s))`
+      }
+      setSuccess(msg)
+      setError(null)
+      setImportFile(null)
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Erreur lors de l'import")
+    },
+  })
+
   const deleteCatalogMutation = useMutation({
     mutationFn: (id: number) => deleteCatalogEntry(id),
     onSuccess: () => {
@@ -344,6 +371,9 @@ function AdminDashboard() {
         </button>
         <button className={tab === 'catalog' ? 'active' : ''} onClick={() => { setTab('catalog'); setError(null); setSuccess(null) }}>
           Catalogue ({catalogEntries.length})
+        </button>
+        <button className={tab === 'import-export' ? 'active' : ''} onClick={() => { setTab('import-export'); setError(null); setSuccess(null) }}>
+          Import/Export
         </button>
       </div>
 
@@ -1075,6 +1105,153 @@ function AdminDashboard() {
             </table>
           )}
         </div>
+      )}
+
+      {tab === 'import-export' && (
+        <>
+          <div className="section">
+            <h2 className="section-title">Exporter les zones</h2>
+            <div className="map-upload-form">
+              <div className="map-form-row" style={{ gap: 12, alignItems: 'flex-end' }}>
+                <div className="map-form-group">
+                  <label htmlFor="export-team">Équipe</label>
+                  <select
+                    id="export-team"
+                    value={exportTeamId}
+                    onChange={(e) => setExportTeamId(Number(e.target.value))}
+                  >
+                    <option value={0}>Choisir une équipe</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="map-form-group">
+                  <label htmlFor="export-map">Carte</label>
+                  <select
+                    id="export-map"
+                    value={exportMapId}
+                    onChange={(e) => setExportMapId(Number(e.target.value))}
+                  >
+                    <option value={0}>Toutes les cartes</option>
+                    {maps.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="btn-primary"
+                  onClick={async () => {
+                    setError(null)
+                    setSuccess(null)
+                    if (!exportTeamId) { setError('Veuillez sélectionner une équipe'); return }
+                    try {
+                      const blob = exportMapId
+                        ? await exportTeamMap(exportTeamId, exportMapId)
+                        : await exportAllTeamMaps(exportTeamId)
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      const teamName = teams.find(t => t.id === exportTeamId)?.name ?? `team-${exportTeamId}`
+                      a.download = exportMapId
+                        ? `${teamName}-${maps.find(m => m.id === exportMapId)?.name ?? `map-${exportMapId}`}.json`
+                        : `${teamName}-all-zones.json`
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                      setSuccess('Export téléchargé')
+                    } catch (e) {
+                      const apiErr = e as { body?: { message?: string } }
+                      setError(apiErr?.body?.message ?? "Erreur lors de l'export")
+                    }
+                  }}
+                  disabled={!exportTeamId}
+                >
+                  Exporter
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="section">
+            <h2 className="section-title">Importer des zones</h2>
+            <div className="map-upload-form">
+              <div className="map-form-row" style={{ gap: 12, alignItems: 'flex-end' }}>
+                <div className="map-form-group">
+                  <label htmlFor="import-team">Équipe</label>
+                  <select
+                    id="import-team"
+                    value={importTeamId}
+                    onChange={(e) => setImportTeamId(Number(e.target.value))}
+                  >
+                    <option value={0}>Choisir une équipe</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="map-form-group">
+                  <label htmlFor="import-file">Fichier JSON</label>
+                  <input
+                    id="import-file"
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+                <button
+                  className="btn-primary"
+                  onClick={() => {
+                    setError(null)
+                    setSuccess(null)
+                    if (!importTeamId) { setError('Veuillez sélectionner une équipe'); return }
+                    if (!importFile) { setError('Veuillez sélectionner un fichier'); return }
+
+                    const reader = new FileReader()
+                    reader.onload = (e) => {
+                      try {
+                        const data = JSON.parse(e.target?.result as string)
+                        if (!Array.isArray(data)) {
+                          setError('Le fichier doit contenir un tableau JSON')
+                          return
+                        }
+                        importMutation.mutate({ teamId: importTeamId, data })
+                      } catch {
+                        setError('Fichier JSON invalide')
+                      }
+                    }
+                    reader.readAsText(importFile)
+                  }}
+                  disabled={!importTeamId || !importFile || importMutation.isPending}
+                >
+                  {importMutation.isPending ? 'Import en cours...' : 'Importer'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {importMutation.data && importMutation.data.errors && importMutation.data.errors.length > 0 && (
+            <div className="section">
+              <h2 className="section-title">Erreurs d'import</h2>
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Carte</th>
+                    <th>Erreur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importMutation.data.errors.map((e, i) => (
+                    <tr key={i}>
+                      <td>{e.map_name}</td>
+                      <td>{e.error}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {showPurgeModal && (

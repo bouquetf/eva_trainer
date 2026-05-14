@@ -61,9 +61,22 @@ function mockApiClient() {
   return new MockApiClient()
 }
 
-vi.mock('./client', () => ({
-  getApiClient: () => mockApiClient(),
-}))
+vi.mock('./client', () => {
+  class MockApiError extends Error {
+    status: number
+    body: Record<string, unknown>
+    constructor(status: number, body: Record<string, unknown>) {
+      super(String(body.message ?? body.error ?? 'API Error'))
+      this.status = status
+      this.body = body
+    }
+  }
+  return {
+    __initClient: vi.fn(),
+    getApiClient: () => mockApiClient(),
+    ApiError: MockApiError,
+  }
+})
 
 function okResponse(body: unknown) {
   return { ok: true, status: 200, json: () => Promise.resolve(body) }
