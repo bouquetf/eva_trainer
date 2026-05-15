@@ -19,6 +19,7 @@ import { ContextMenu } from "./ContextMenu";
 import VersionBrowser from "../VersionBrowser";
 import ConfirmDialog from "../ConfirmDialog";
 import RestoreConfirmModal from "../RestoreConfirmModal";
+import { EditorHelpPopup } from "./EditorHelpPopup";
 import {
   translateSelectedPolygons,
   moveZonePoint,
@@ -86,6 +87,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const [currentVersionSnapshot, setCurrentVersionSnapshot] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<ZoneVersion | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const pendingZoneSwitch = useRef<PendingSwitch | null>(null);
 
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -294,6 +296,23 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       releaseLock(teamId, mapId).catch(() => {});
     };
   }, [teamId, mapId, startCountdown, readOnly]);
+
+  useEffect(() => {
+    const handleHelpKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F1") {
+        e.preventDefault();
+        setShowHelp((prev) => !prev);
+        return;
+      }
+      if (e.key === "?" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setShowHelp((prev) => !prev);
+        return;
+      }
+    };
+    window.addEventListener("keydown", handleHelpKeyDown);
+    return () => window.removeEventListener("keydown", handleHelpKeyDown);
+  }, []);
 
   useEffect(() => {
     if (readOnly) return;
@@ -906,6 +925,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
           showReacquireButton={showReacquireButton}
           teamId={teamId}
           mapId={mapId}
+          onHelpClick={() => setShowHelp(true)}
         />
       )}
 
@@ -1093,6 +1113,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
           loading={restoring}
         />
       )}
+
+      <EditorHelpPopup open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 };

@@ -53,25 +53,11 @@ go test ./internal/services/ ./internal/middleware/ ./pkg/...
 go test -tags=integration ./internal/models/ ./internal/handlers/
 ```
 
-## E2E Status (dernière passe : 67/81 — 82.7%)
+## E2E Status (88/88 — 100%)
 
-### Race condition auth SPA
-- **Root cause** : SPA `init()` appelle `fetchMe()` asynchrone. Si `loginAsUser()` naviguait vers `/` avant `goto(target)`, la navigation avortait la requête in-flight. **Corrigé** : `loginAsUser()` ne fait plus que `page.evaluate()` pour remplir `sessionStorage`.
-- **Reste** : `login.spec.ts 1.2` (callback), `logout.spec.ts 2.1/2.2` — même pattern (callback `handleCallback()` utilise `window.location.href` pendant `fetchMe()`).
-
-### Templates API 401
-- `auto-update 9.1/9.2`, `duplication 10.1/10.2` : `GET /api/v1/templates/public` retourne 401. L'endpoint nécessite `RequireAuth` mais les tests appellent l'API via `apiGet()` sans JWT. Ils devraient utiliser `apiGet()` avec le token du user connecté.
-
-### Sélecteurs CSS révision
-- `score 3.1` : `.revision-feedback.correct` introuvable → vérifier les classes CSS réelles du composant.
-- `session 1.2` : `.revision-map-card` trouve 67 éléments (toutes les cartes, pas seulement celles du split) → sélecteur trop large.
-- `session 1.3` : `.revision-map-card` introuvable après reload → le composant a peut-être une classe différente.
-
-### Versions 11.2/11.3
-- Les noms de versions sont `["V3", "V3", "V3"]` au lieu de `["V1", ...]` → doublon de clé unique `teams.name` (race condition parallèle entre tests qui créent des teams avec le même timestamp). `seedTeam` utilise `Date.now()` pour le nom.
-
-### Upload selectOption
-- `upload 1.3` : `#map-name` est un `<select>` et non un `<input>` → utiliser `page.selectOption('#map-name', value)`.
+### Notes de build
+- Le Go binary embarque `frontend/dist` via `//go:embed`. Après toute modification de composants frontend, reconstruire avant les tests E2E : `cd frontend && npm run build && npm run test:e2e`.
+- Les tests E2E utilisent Docker Compose (`docker compose up -d` dans le project root). Le global setup le fait automatiquement.
 
 ### Fixes appliqués cette session
 1. `frontend/e2e/helpers/db.ts` : `seedTeam()` — ajout de `captain_id` dans l'INSERT (était NULL → 500).
@@ -84,8 +70,8 @@ go test -tags=integration ./internal/models/ ./internal/handlers/
 8. `db/seed/permissions.go` : ajout de `zone:lock` au rôle editor.
 9. `frontend/e2e/helpers/db.ts` : nouveau helper `createZoneWithLock`.
 10. `frontend/e2e/auth/login.spec.ts` : mock de l'endpoint Discord login.
-11. `frontend/e2e/auth/refresh-token.spec.ts` : `expect.poll()` au lieu de `expect().toBe(true)`.<｜end▁of▁thinking｜>
-
-<｜｜DSML｜｜tool_calls>
-<｜｜DSML｜｜invoke name="todowrite">
-<｜｜DSML｜｜parameter name="todos" string="false">[{"priority":"high","content":"Fix deletion 7.1: /supprimer/ strict mode (2 matches) → exact match","status":"completed"},{"priority":"high","content":"Fix rename 6.1: getByText(newName) strict mode → .first()","status":"completed"},{"priority":"high","content":"Fix roles 8.1: getByText('Éditeur') strict mode (61 matches) → specific selector","status":"completed"},{"priority":"high","content":"Fix roles 8.2: getByText('Cocapitaine') strict mode → .first()","status":"completed"},{"priority":"high","content":"Fix roles 8.4: .role-badge-admin strict mode → .first() + memberActionBtns selector","status":"completed"},{"priority":"high","content":"Fix invitations 10.1: autocomplete overlap on Inviter button → select from autocomplete","status":"completed"},{"priority":"high","content":"Fix invitations 10.3: /lien.*expiré|invalide/ strict mode → .first()","status":"completed"},{"priority":"medium","content":"Fix invitations 10.4, 10.5: selector issues","status":"completed"},{"priority":"medium","content":"Fix roles 8.3: rewrite to test two-cocaptain constraint properly","status":"completed"},{"priority":"high","content":"Fix seedTeam: add captain_id to INSERT (NULL → 500 error)","status":"completed"},{"priority":"high","content":"Fix Go team queries: COALESCE(captain_id, 0) for stale teams","status":"completed"},{"priority":"high","content":"Run full test suite to check overall pass rate","status":"completed"}]
+11. `frontend/e2e/auth/refresh-token.spec.ts` : `expect.poll()` au lieu de `expect().toBe(true)`.
+12. `frontend/src/components/MapEditor/EditorHelpPopup.tsx` + `.module.css` : nouveau composant popup d'aide.
+13. `frontend/src/components/MapEditor/Toolbar.tsx` + `.module.css` : ajout bouton "?" + prop `onHelpClick`.
+14. `frontend/src/components/MapEditor/MapEditor.tsx` : intégration popup d'aide, raccourcis F1/Ctrl+?/Cmd+?.
+15. `frontend/e2e/editor/help-popup.spec.ts` : 3 tests E2E pour la popup d'aide.
