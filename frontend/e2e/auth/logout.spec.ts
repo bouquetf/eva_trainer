@@ -5,7 +5,7 @@ test.describe('Feature: Déconnexion', () => {
   test('2.1: Déconnexion volontaire', async ({ page, regularUser }) => {
     await page.goto('/login');
     await loginAsUser(page, regularUser);
-    await page.goto('/');
+    await page.goto('/teams');
 
     const logoutBtn = page.getByRole('button', { name: /déconnexion/i });
     await expect(logoutBtn).toBeVisible();
@@ -20,7 +20,7 @@ test.describe('Feature: Déconnexion', () => {
   test('2.2: Accès après déconnexion', async ({ page, regularUser }) => {
     await page.goto('/login');
     await loginAsUser(page, regularUser);
-    await page.goto('/');
+    await page.goto('/teams');
 
     await page.getByRole('button', { name: /déconnexion/i }).click();
     await page.waitForURL('/');

@@ -13,7 +13,7 @@ function Callback() {
 
   useEffect(() => {
     if (!isLoading && !error) {
-      const redirect = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('redirect') ?? '/'
+      const redirect = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('redirect') ?? '/teams'
       navigate(redirect, { replace: true })
     }
   }, [isLoading, error, navigate])

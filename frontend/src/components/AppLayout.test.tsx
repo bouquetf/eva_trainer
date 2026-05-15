@@ -4,8 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 import AppLayout from './AppLayout'
 
 function createMockAuthStore(overrides: { user?: any }) {
-  const state = { user: overrides.user ?? null }
-  return (selector: (s: typeof state) => any) => selector(state)
+  const state = { user: overrides.user ?? null, logout: vi.fn() }
+  return (selector?: (s: typeof state) => any) => (selector ? selector(state) : state)
 }
 
 vi.mock('../store/auth', () => ({
@@ -32,9 +32,9 @@ describe('AppLayout', () => {
         <AppLayout />
       </MemoryRouter>,
     )
-    expect(screen.getByText('Accueil')).toBeInTheDocument()
     expect(screen.getByText('Mes équipes')).toBeInTheDocument()
-    expect(screen.getByText('Créer une équipe')).toBeInTheDocument()
+    expect(screen.getByText('Paramètres')).toBeInTheDocument()
+    expect(screen.getByText('Déconnexion')).toBeInTheDocument()
   })
 
   it('shows admin link when user is admin', () => {

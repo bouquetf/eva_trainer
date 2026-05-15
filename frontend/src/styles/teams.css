@@ -41,6 +41,25 @@
   border-top: 1px solid var(--border-color);
 }
 
+.sidebar-logout {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  display: block;
+  font-size: inherit;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+  border-radius: 6px;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.sidebar-logout:hover {
+  color: #e74c3c;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
 .teams-content {
   flex: 1;
   padding: 24px;

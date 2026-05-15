@@ -1,5 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
-import Home from '../pages/Home'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from '../pages/Login'
 import Callback from '../pages/Callback'
 import Editor from '../pages/Editor'
@@ -22,7 +21,7 @@ export function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/callback" element={<Callback />} />
       <Route element={<AppLayout />}>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Navigate to="/teams" replace />} />
         <Route path="/settings" element={<ProfileSettings />} />
         <Route path="/teams" element={<TeamsList />} />
         <Route path="/teams/create" element={<CreateTeam />} />

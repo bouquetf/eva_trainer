@@ -24,7 +24,7 @@ export interface RefreshResponse {
 
 export function getLoginUrl(): string {
   const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
-  const redirect = window.location.pathname !== '/login' ? window.location.pathname : '/'
+  const redirect = window.location.pathname !== '/login' ? window.location.pathname : '/teams'
   return `${baseURL}/api/v1/auth/discord/login?redirect=${encodeURIComponent(redirect)}`
 }
 

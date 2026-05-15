@@ -59,7 +59,7 @@ describe('Callback', () => {
     expect(container.querySelector('.spinner')).toBeInTheDocument()
   })
 
-  it('navigates to home on success', async () => {
+  it('navigates to teams on success', async () => {
     mockUseAuthStore.mockImplementation(createMockStore())
     render(
       <MemoryRouter>
@@ -67,7 +67,7 @@ describe('Callback', () => {
       </MemoryRouter>,
     )
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
+      expect(mockNavigate).toHaveBeenCalledWith('/teams', { replace: true })
     })
   })
 

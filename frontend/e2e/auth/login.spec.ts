@@ -25,8 +25,8 @@ test.describe('Feature: Connexion Discord', () => {
 
     await page.goto(`/callback#access_token=${token}&refresh_token=e2e-refresh-token`);
 
-    await page.waitForURL('/');
-    await expect(page.getByText(regularUser.discordId)).toBeVisible();
+    await page.waitForURL('/teams');
+    expect(page.url()).toContain('/teams');
   });
 
   test('1.3: Connexion avec Discord indisponible', async ({ page }) => {

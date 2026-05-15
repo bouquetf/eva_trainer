@@ -18,7 +18,7 @@ function Login() {
   const [isRedirecting, setIsRedirecting] = useState(false)
 
   const errorParam = searchParams.get('error')
-  const redirectTo = searchParams.get('redirect') ?? '/'
+  const redirectTo = searchParams.get('redirect') ?? '/teams'
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
