@@ -55,14 +55,16 @@ vi.mock('../api/client', () => {
   return { getApiClient: () => new MockApiClient() }
 })
 
-// Mock the auth store so user is available
-vi.mock('../store/auth', () => ({
-  useAuthStore: {
-    getState: () => ({
-      user: { id: 1, discord_id: 'test', discord_username: '', display_name: '', is_admin: false, created_at: '2024-01-01T00:00:00Z' },
-    }),
-  },
-}))
+// Mock the auth store so user is available (supports both hook selector and .getState())
+vi.mock('../store/auth', () => {
+  const mockUser = { id: 1, discord_id: 'test', discord_username: '', display_name: '', is_admin: false, created_at: '2024-01-01T00:00:00Z' }
+  const state = { user: mockUser }
+  const useAuthStore = vi.fn((selector?: (s: typeof state) => unknown) =>
+    selector ? selector(state) : state,
+  )
+  useAuthStore.getState = () => state
+  return { useAuthStore }
+})
 
 function createQueryWrapper() {
   const queryClient = new QueryClient({

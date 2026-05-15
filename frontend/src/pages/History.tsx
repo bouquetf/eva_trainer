@@ -3,9 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import { listTeamMaps } from '../api/maps'
 import { listMapVersions, restoreVersion } from '../api/versions'
 import { listMembers } from '../api/roles'
-import { getTeam } from '../api/teams'
 import { listZones } from '../api/zones'
-import { useAuthStore } from '../store/auth'
+import { useTeamRole } from '../hooks/useTeamRole'
 import { ApiError } from '../api/client'
 import RestoreConfirmModal from '../components/RestoreConfirmModal'
 import type { ZoneVersion, VersionPage } from '../lib/api/types'
@@ -23,8 +22,9 @@ function History() {
   const [mapName, setMapName] = useState('')
   const [zones, setZones] = useState<{ id: number; name: string }[]>([])
   const [members, setMembers] = useState<TeamMemberWithUser[]>([])
-  const [currentUserRole, setCurrentUserRole] = useState<string>('member')
-  const [isCaptainOrCocaptain, setIsCaptainOrCocaptain] = useState(false)
+
+  const { role: currentUserRole, canEdit } = useTeamRole(teamId)
+  const isCaptainOrCocaptain = currentUserRole === 'captain' || currentUserRole === 'cocaptain'
 
   const [versions, setVersions] = useState<ZoneVersion[]>([])
   const [total, setTotal] = useState(0)
@@ -40,21 +40,10 @@ function History() {
   const [restoring, setRestoring] = useState(false)
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
-  const currentUser = useAuthStore.getState().user
-
   useEffect(() => {
     if (isNaN(teamId) || isNaN(parsedMapId)) return
 
     const init = async () => {
-      try {
-        const teamData = await getTeam(teamId)
-        const member = teamData.members.find(m => m.user_id === currentUser?.id)
-        if (member) {
-          setCurrentUserRole(member.role)
-          setIsCaptainOrCocaptain(member.role === 'captain' || member.role === 'cocaptain')
-        }
-      } catch { /* ignore */ }
-
       try {
         const mapsData = await listTeamMaps(teamId)
         const map = mapsData.maps.find(m => m.id === parsedMapId)
@@ -66,7 +55,7 @@ function History() {
         setZones(zonesData.zones.map(z => ({ id: z.id, name: z.name || `Zone #${z.id}` })))
       } catch { /* ignore */ }
 
-      if (currentUserRole === 'captain' || currentUserRole === 'cocaptain') {
+      if (isCaptainOrCocaptain) {
         try {
           const membersData = await listMembers(teamId)
           setMembers(membersData.members)
@@ -74,7 +63,7 @@ function History() {
       }
     }
     init()
-  }, [teamId, parsedMapId, currentUser?.id, currentUserRole])
+  }, [teamId, parsedMapId, isCaptainOrCocaptain])
 
   useEffect(() => {
     loadVersions()
@@ -137,9 +126,11 @@ function History() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ margin: 0 }}>Historique des versions - {mapName || `Carte #${parsedMapId}`}</h1>
-        <Link to={`/teams/${teamId}/editor/${parsedMapId}`} className="btn-secondary" style={{ textDecoration: 'none' }}>
-          Retour à l'éditeur
-        </Link>
+        {canEdit && (
+          <Link to={`/teams/${teamId}/editor/${parsedMapId}`} className="btn-secondary" style={{ textDecoration: 'none' }}>
+            Retour à l'éditeur
+          </Link>
+        )}
       </div>
 
       {notification && (
@@ -216,19 +207,25 @@ function History() {
                   <tr key={v.id}>
                     <td>{formatDate(v.created_at)}</td>
                     <td>
-                      <Link to={`/teams/${teamId}/editor/${parsedMapId}`} style={{ color: '#90caf9' }}>
-                        {v.zone_name || `Zone #${v.zone_id}`}
-                      </Link>
+                      {canEdit ? (
+                        <Link to={`/teams/${teamId}/editor/${parsedMapId}`} style={{ color: '#90caf9' }}>
+                          {v.zone_name || `Zone #${v.zone_id}`}
+                        </Link>
+                      ) : (
+                        <span>{v.zone_name || `Zone #${v.zone_id}`}</span>
+                      )}
                     </td>
                     <td>{v.editor_name || 'Utilisateur supprimé'}</td>
                     <td>{v.version_data.polygons.length}</td>
                     <td>
-                      <button
-                        className="btn-primary btn-small"
-                        onClick={() => setRestoreTarget(v)}
-                      >
-                        Restaurer
-                      </button>
+                      {canEdit && (
+                        <button
+                          className="btn-primary btn-small"
+                          onClick={() => setRestoreTarget(v)}
+                        >
+                          Restaurer
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

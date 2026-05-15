@@ -10,6 +10,7 @@ import { listPendingJoinRequests, acceptJoinRequest, declineJoinRequest } from '
 import { listPublicTemplates, duplicateTemplate } from '../api/templates'
 import { listSplits } from '../api/splits'
 import { useAuthStore } from '../store/auth'
+import { useTeamRole } from '../hooks/useTeamRole'
 import ConfirmDialog from '../components/ConfirmDialog'
 import MemberList from '../components/MemberList'
 import TransferCaptaincyDialog from '../components/TransferCaptaincyDialog'
@@ -103,21 +104,9 @@ function TeamSettings() {
   const availableTemplates = publicTemplates.filter(tw => tw.template.map_id === importMapId)
   const importMapName = maps.find(m => m.id === importMapId)?.name ?? ''
   const team = teamData?.team
+  const currentUser = useAuthStore((s) => s.user)
 
-  const currentUser = useAuthStore.getState().user
-
-  let currentUserRole: string = 'member'
-  if (currentUser && team && team.captain_id === currentUser.id) {
-    currentUserRole = 'captain'
-  } else if (currentUser) {
-    const member = members.find(m => m.user_id === currentUser.id)
-    if (member) {
-      currentUserRole = member.role
-    }
-  }
-
-  const isCaptain = currentUserRole === 'captain'
-  const isCocaptain = currentUserRole === 'cocaptain'
+  const { role: currentUserRole, canEdit: canEditMap, isCaptain, isCocaptain } = useTeamRole(teamId)
   const canEditTeam = isCaptain || isCocaptain
   const canDeleteTeam = isCaptain
   const canManageRoles = isCaptain || isCocaptain
@@ -345,7 +334,7 @@ function TeamSettings() {
             teamId={teamId}
             members={members}
             currentUserId={currentUser?.id ?? 0}
-            currentUserRole={currentUserRole}
+            currentUserRole={currentUserRole ?? ''}
             onRoleChanged={() => {
               queryClient.invalidateQueries({ queryKey: ['team-members', teamId] })
             }}
@@ -395,12 +384,14 @@ function TeamSettings() {
                   <td>{m.name}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        className="btn-primary btn-small"
-                        onClick={() => navigate(`/teams/${teamId}/editor/${m.id}`)}
-                      >
-                        Éditeur
-                      </button>
+                      {canEditMap && (
+                        <button
+                          className="btn-primary btn-small"
+                          onClick={() => navigate(`/teams/${teamId}/editor/${m.id}`)}
+                        >
+                          Éditeur
+                        </button>
+                      )}
                       <button
                         className="btn-secondary btn-small"
                         onClick={() => navigate(`/teams/${teamId}/revision/${m.id}`)}

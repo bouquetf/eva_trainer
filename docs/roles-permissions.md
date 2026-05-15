@@ -44,6 +44,16 @@ Le système de rôles d'équipe permet de gérer finement les permissions des me
 - Les deux membres doivent être dans l'équipe
 - Le nouveau capitaine ne peut pas être un admin global
 
+## Visibilité de l'éditeur dans l'interface
+
+- Le bouton "Éditeur" est visible pour les rôles **editor**, **cocaptain**, **captain** uniquement
+- Les membres (role **member**) ne voient pas le bouton
+- L'accès direct à l'URL `/teams/:id/editor/:mapId` redirige les membres vers la page d'équipe
+- Le bouton "Restaurer" dans l'historique est également masqué pour les membres
+- Les liens "Retour à l'éditeur" dans l'historique sont masqués pour les membres
+
+La vérification est effectuée côté frontend via le hook `useTeamRole(teamId)` et côté backend par le middleware `RequireTeamRole`.
+
 ## Système de permissions
 
 Chaque fonctionnalité de l'application est identifiée en base de données (table `permissions`). Chaque rôle a des permissions associées (table `role_permissions`). La vérification se fait à chaque appel API via middleware.

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import History from './History'
 
 vi.mock('../api/versions', () => ({
@@ -25,9 +26,15 @@ vi.mock('../api/teams', () => ({
   getTeam: vi.fn(),
 }))
 
-vi.mock('../store/auth', () => ({
-  useAuthStore: Object.assign(vi.fn(), { getState: vi.fn() }),
-}))
+vi.mock('../store/auth', () => {
+  const mockUser = { id: 1, discord_id: 'test', discord_username: '', display_name: '', is_admin: false, created_at: '2024-01-01T00:00:00Z' }
+  const state = { user: mockUser }
+  const useAuthStore = vi.fn((selector?: (s: typeof state) => unknown) =>
+    selector ? selector(state) : state,
+  )
+  useAuthStore.getState = () => state
+  return { useAuthStore }
+})
 
 vi.mock('../components/RestoreConfirmModal', () => ({
   default: ({ open, versionDate, authorName, onConfirm, onCancel, loading }: any) =>
@@ -48,7 +55,6 @@ import { listTeamMaps } from '../api/maps'
 import { listZones } from '../api/zones'
 import { listMembers } from '../api/roles'
 import { getTeam } from '../api/teams'
-import { useAuthStore } from '../store/auth'
 
 const mockVersions = [
   {
@@ -69,14 +75,25 @@ const mockVersions = [
   },
 ]
 
-describe('History', () => {
-  const mockGetState = useAuthStore.getState as unknown as ReturnType<typeof vi.fn>
+function createQueryWrapper() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/teams/1/history/1']}>
+        <Routes>
+          <Route path="/teams/:id/history/:mapId" element={children} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+}
 
+describe('History', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetState.mockReturnValue({ user: { id: 1 } })
     ;(getTeam as any).mockResolvedValue({
-      members: [{ user_id: 1, role: 'captain' }],
+      team: { id: 1, name: 'Test Team', captain_id: 1 },
+      members: [{ user_id: 1, role: 'captain', display_name: 'User 1', joined_at: '2024-01-01T00:00:00Z' }],
     })
     ;(listTeamMaps as any).mockResolvedValue({
       maps: [{ id: 1, name: 'Test Map' }],
@@ -93,13 +110,7 @@ describe('History', () => {
   })
 
   function renderHistory() {
-    return render(
-      <MemoryRouter initialEntries={['/teams/1/history/1']}>
-        <Routes>
-          <Route path="/teams/:id/history/:mapId" element={<History />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    return render(<History />, { wrapper: createQueryWrapper() })
   }
 
   it('shows loading state initially', () => {
