@@ -28,6 +28,18 @@ function pointsToSvgPath(points: { x: number; y: number }[]): string {
   return 'M ' + points.map(p => `${p.x} ${p.y}`).join(' L ') + ' Z'
 }
 
+export function calcAdaptiveScale(
+  containerWidth: number,
+  containerHeight: number,
+  imageWidth: number,
+  imageHeight: number
+): number {
+  if (containerWidth <= 0 || containerHeight <= 0 || imageWidth <= 0 || imageHeight <= 0) {
+    return 1
+  }
+  return Math.min(containerWidth / imageWidth, containerHeight / imageHeight)
+}
+
 interface RevisionMapProps {
   mapId: number
   polygons: ZonePolygon[]
@@ -47,15 +59,20 @@ export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
   }, [image])
 
   useEffect(() => {
+    const container = containerRef.current
+    if (!container || !image) return
+
     const updateScale = () => {
-      if (!containerRef.current || !image) return
-      const containerWidth = containerRef.current.clientWidth
-      const s = Math.min(1, containerWidth / dimensions.width)
+      const { clientWidth: cw, clientHeight: ch } = container
+      if (cw === 0 || ch === 0 || dimensions.width === 0 || dimensions.height === 0) return
+      const s = Math.min(cw / dimensions.width, ch / dimensions.height)
       setScale(s)
     }
+
     updateScale()
-    window.addEventListener('resize', updateScale)
-    return () => window.removeEventListener('resize', updateScale)
+    const observer = new ResizeObserver(updateScale)
+    observer.observe(container)
+    return () => observer.disconnect()
   }, [image, dimensions])
 
   if (!image) {
@@ -63,7 +80,7 @@ export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
   }
 
   return (
-    <div ref={containerRef} style={{ width: '100%', overflow: 'hidden' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
       <Stage
         width={dimensions.width * scale}
         height={dimensions.height * scale}

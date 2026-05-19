@@ -46,6 +46,7 @@ button:disabled {
 .teams-content:has(.revision-container) {
   max-width: none;
   padding: 0;
+  overflow: hidden;
 }
 
 .editor-container {

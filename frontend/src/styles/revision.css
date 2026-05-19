@@ -83,8 +83,8 @@
 
 .revision-active-screen .canvas-area {
   flex: 1;
-  overflow: auto;
-  padding: 24px;
+  overflow: hidden;
+  padding: 1cm;
   background-color: #0a0a0a;
   display: flex;
   flex-direction: column;
@@ -93,7 +93,12 @@
 }
 
 .revision-canvas-wrapper {
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
 }
 
 .revision-input-area {
