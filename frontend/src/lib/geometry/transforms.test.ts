@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Point, Zone, ZonePolygon } from '../api/types';
 import {
+  PASTE_OFFSET,
   getPolygonCentroid,
   getZoneCentroid,
   getZoneBoundingBox,
@@ -12,13 +13,16 @@ import {
   addZonePointAt,
   mirrorZoneHorizontally,
   mirrorZoneVertically,
+  mirrorSelectedPolygonsH,
+  mirrorSelectedPolygonsV,
+  duplicatePolygonsWithOffset,
 } from './transforms';
 
 const mockPoint = (x: number, y: number): Point => ({ x, y });
 
-const mockPolygon = (points: Point[], orderIndex = 0): ZonePolygon => ({
-  id: 1,
-  zone_id: 1,
+const mockPolygon = (points: Point[], orderIndex = 0, id = 1, zoneId = 1): ZonePolygon => ({
+  id,
+  zone_id: zoneId,
   points,
   order_index: orderIndex,
   created_at: '2024-01-01T00:00:00Z',
@@ -232,6 +236,106 @@ describe('transforms', () => {
       expect(result.polygons[0].points[0]).toEqual({ x: 20, y: 0 });
       expect(result.polygons[0].points[1]).toEqual({ x: 10, y: 10 });
       expect(result.polygons[0].points[2]).toEqual({ x: 0, y: 20 });
+    });
+  });
+
+  describe('mirrorSelectedPolygonsH', () => {
+    it('should mirror only selected polygons horizontally', () => {
+      const poly1 = mockPolygon([mockPoint(0, 0), mockPoint(0, 10), mockPoint(10, 10)], 0);
+      const poly2 = mockPolygon([mockPoint(100, 100), mockPoint(100, 110), mockPoint(110, 110)], 1);
+      const zone = mockZone([poly1, poly2]);
+      const result = mirrorSelectedPolygonsH(zone, new Set([0]));
+      expect(result.polygons[0].points[0]).toEqual({ x: 0, y: 14 });
+      expect(result.polygons[0].points[1]).toEqual({ x: 0, y: 4 });
+      expect(result.polygons[1].points[0]).toEqual({ x: 100, y: 100 });
+    });
+
+    it('should return zone unchanged when selected set is empty', () => {
+      const poly = mockPolygon([mockPoint(0, 0), mockPoint(0, 10), mockPoint(10, 10)]);
+      const zone = mockZone([poly]);
+      const result = mirrorSelectedPolygonsH(zone, new Set());
+      expect(result.polygons[0].points).toEqual(zone.polygons[0].points);
+    });
+  });
+
+  describe('mirrorSelectedPolygonsV', () => {
+    it('should mirror only selected polygons vertically', () => {
+      const poly1 = mockPolygon([mockPoint(0, 0), mockPoint(10, 0), mockPoint(10, 10)], 0);
+      const poly2 = mockPolygon([mockPoint(100, 100), mockPoint(110, 100), mockPoint(110, 110)], 1);
+      const zone = mockZone([poly1, poly2]);
+      const result = mirrorSelectedPolygonsV(zone, new Set([0]));
+      expect(result.polygons[0].points[0]).toEqual({ x: 14, y: 0 });
+      expect(result.polygons[0].points[1]).toEqual({ x: 4, y: 0 });
+      expect(result.polygons[1].points[0]).toEqual({ x: 100, y: 100 });
+    });
+
+    it('should return zone unchanged when selected set is empty', () => {
+      const poly = mockPolygon([mockPoint(0, 0), mockPoint(10, 0), mockPoint(10, 10)]);
+      const zone = mockZone([poly]);
+      const result = mirrorSelectedPolygonsV(zone, new Set());
+      expect(result.polygons[0].points).toEqual(zone.polygons[0].points);
+    });
+  });
+
+  describe('duplicatePolygonsWithOffset', () => {
+    it('should duplicate a single selected polygon with default offset', () => {
+      const poly = mockPolygon([mockPoint(0, 0), mockPoint(10, 0), mockPoint(10, 10)]);
+      const zone = mockZone([poly]);
+      const result = duplicatePolygonsWithOffset(zone, new Set([0]));
+      expect(result).toHaveLength(1);
+      expect(result[0].points[0]).toEqual({ x: 0 + PASTE_OFFSET, y: 0 + PASTE_OFFSET });
+      expect(result[0].points[1]).toEqual({ x: 10 + PASTE_OFFSET, y: 0 + PASTE_OFFSET });
+      expect(result[0].points[2]).toEqual({ x: 10 + PASTE_OFFSET, y: 10 + PASTE_OFFSET });
+      expect(result[0].id).toBe(0);
+      expect(result[0].zone_id).toBe(zone.polygons[0].zone_id);
+    });
+
+    it('should duplicate multiple selected polygons', () => {
+      const poly1 = mockPolygon([mockPoint(0, 0)], 0);
+      const poly2 = mockPolygon([mockPoint(10, 10)], 1);
+      const poly3 = mockPolygon([mockPoint(20, 20)], 2);
+      const zone = mockZone([poly1, poly2, poly3]);
+      const result = duplicatePolygonsWithOffset(zone, new Set([0, 2]));
+      expect(result).toHaveLength(2);
+      expect(result[0].points[0]).toEqual({ x: PASTE_OFFSET, y: PASTE_OFFSET });
+      expect(result[1].points[0]).toEqual({ x: 20 + PASTE_OFFSET, y: 20 + PASTE_OFFSET });
+    });
+
+    it('should return empty array when no polygons selected', () => {
+      const poly = mockPolygon([mockPoint(0, 0)]);
+      const zone = mockZone([poly]);
+      const result = duplicatePolygonsWithOffset(zone, new Set());
+      expect(result).toEqual([]);
+    });
+
+    it('should use custom offset when provided', () => {
+      const poly = mockPolygon([mockPoint(10, 20)]);
+      const zone = mockZone([poly]);
+      const result = duplicatePolygonsWithOffset(zone, new Set([0]), 50, 30);
+      expect(result[0].points[0]).toEqual({ x: 60, y: 50 });
+    });
+
+    it('should not mutate the original zone', () => {
+      const poly = mockPolygon([mockPoint(0, 0)]);
+      const zone = mockZone([poly]);
+      const originalX = zone.polygons[0].points[0].x;
+      const result = duplicatePolygonsWithOffset(zone, new Set([0]));
+      result[0].points[0].x = 999;
+      expect(zone.polygons[0].points[0].x).toBe(originalX);
+    });
+
+    it('should set id to 0 on duplicated polygons', () => {
+      const poly = mockPolygon([mockPoint(0, 0)], 0, 42, 5);
+      const zone = mockZone([poly]);
+      const result = duplicatePolygonsWithOffset(zone, new Set([0]));
+      expect(result[0].id).toBe(0);
+    });
+
+    it('should keep zone_id from original zone', () => {
+      const poly = mockPolygon([mockPoint(0, 0)], 0, 1, 15);
+      const zone = mockZone([poly]);
+      const result = duplicatePolygonsWithOffset(zone, new Set([0]));
+      expect(result[0].zone_id).toBe(15);
     });
   });
 });

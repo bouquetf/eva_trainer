@@ -11,6 +11,8 @@ const SHORTCUTS: ShortcutEntry[] = [
   { command: "Sauvegarder la zone", shortcut: "Ctrl+S / Cmd+S", context: "Zone en cours d'édition" },
   { command: "Annuler (undo)", shortcut: "Ctrl+Z / Cmd+Z", context: "Maximum 50 états" },
   { command: "Supprimer polygone(s) sélectionné(s)", shortcut: "Delete / Suppr", context: "Au moins 1 polygone sélectionné" },
+  { command: "Copier la/les forme(s) sélectionnée(s)", shortcut: "Ctrl+C / Cmd+C", context: "Au moins 1 polygone sélectionné" },
+  { command: "Coller la/les forme(s) copiée(s)", shortcut: "Ctrl+V / Cmd+V", context: "Clipboard non vide" },
   { command: "Confirmer le nom de la zone", shortcut: "Entrée", context: "Champ de saisie du nom" },
   { command: "Valider le renommage", shortcut: "Entrée", context: "Renommage d'une zone" },
   { command: "Annuler le renommage", shortcut: "Échap", context: "Champ de renommage" },

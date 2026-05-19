@@ -21,13 +21,14 @@ import ConfirmDialog from "../ConfirmDialog";
 import RestoreConfirmModal from "../RestoreConfirmModal";
 import { EditorHelpPopup } from "./EditorHelpPopup";
 import {
+  PASTE_OFFSET,
   translateSelectedPolygons,
   moveZonePoint,
   removeZonePoint,
   removePolygonsByIndex,
   addZonePointAt,
-  mirrorZoneHorizontally,
-  mirrorZoneVertically,
+  mirrorSelectedPolygonsH,
+  mirrorSelectedPolygonsV,
 } from "../../lib/geometry/transforms";
 
 interface ContextMenuState {
@@ -88,6 +89,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const [restoreTarget, setRestoreTarget] = useState<ZoneVersion | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [clipboardPolygons, setClipboardPolygons] = useState<ZonePolygon[]>([]);
+  const [clipboardSourceZoneId, setClipboardSourceZoneId] = useState<number | null>(null);
   const pendingZoneSwitch = useRef<PendingSwitch | null>(null);
 
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -330,6 +333,20 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
         handleUndo();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        if (!editingZone || selectedPolygonIndexes.size === 0) return;
+        e.preventDefault();
+        handleCopy();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        if (!editingZone || clipboardPolygons.length === 0) return;
+        e.preventDefault();
+        handlePaste();
         return;
       }
 
@@ -744,6 +761,87 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     setIsDirty(true);
   };
 
+  const handleCopy = useCallback(() => {
+    if (!editingZone || selectedPolygonIndexes.size === 0) return;
+    const copied = Array.from(selectedPolygonIndexes)
+      .sort((a, b) => a - b)
+      .map((i) => editingZone.polygons[i])
+      .filter(Boolean)
+      .map((poly) => ({
+        ...poly,
+        id: 0,
+        points: poly.points.map((p) => ({ ...p })),
+        created_at: new Date().toISOString(),
+      }));
+    setClipboardPolygons(copied);
+    setClipboardSourceZoneId(editingZone.id);
+  }, [editingZone, selectedPolygonIndexes]);
+
+  const handlePaste = useCallback(() => {
+    if (!editingZone || clipboardPolygons.length === 0 || clipboardSourceZoneId === null) return;
+
+    if (editingZone.id === clipboardSourceZoneId) {
+      updateEditingPolygon((z) => {
+        const maxOrder = z.polygons.reduce((m, p) => Math.max(m, p.order_index), -1);
+        const newPolys = clipboardPolygons.map((poly, i) => {
+          const offset = (i + 1) * PASTE_OFFSET;
+          return {
+            ...poly,
+            zone_id: z.id,
+            order_index: maxOrder + 1 + i,
+            points: poly.points.map((p) => ({
+              x: Math.round(p.x + offset),
+              y: Math.round(p.y + offset),
+            })),
+          };
+        });
+        const updated = {
+          ...z,
+          polygons: [...z.polygons, ...newPolys],
+          updated_at: new Date().toISOString(),
+        };
+        setZones((prev) => prev.map((zone) => (zone.id === updated.id ? updated : zone)));
+        return updated;
+      });
+      setSelectedPolygonIndexes(
+        new Set(clipboardPolygons.map((_, i) => editingZone.polygons.length + i)),
+      );
+    } else {
+      const sourceZone = zones.find((z) => z.id === clipboardSourceZoneId);
+      if (!sourceZone) return;
+
+      const maxOrder = sourceZone.polygons.reduce((m, p) => Math.max(m, p.order_index), -1);
+      const newPolys = clipboardPolygons.map((poly, i) => {
+        const offset = (i + 1) * PASTE_OFFSET;
+        return {
+          ...poly,
+          zone_id: sourceZone.id,
+          order_index: maxOrder + 1 + i,
+          points: poly.points.map((p) => ({
+            x: Math.round(p.x + offset),
+            y: Math.round(p.y + offset),
+          })),
+        };
+      });
+      const updatedZone: Zone = {
+        ...sourceZone,
+        polygons: [...sourceZone.polygons, ...newPolys],
+        updated_at: new Date().toISOString(),
+      };
+
+      setEditingZone(updatedZone);
+      setOriginalSnapshot(JSON.stringify(sourceZone));
+      setZones((prev) => prev.map((z) => (z.id === updatedZone.id ? updatedZone : z)));
+      setIsDirty(true);
+      setSelectedZoneId(updatedZone.id);
+      setSelectedPolygonIndexes(
+        new Set(newPolys.map((_, i) => sourceZone.polygons.length + i)),
+      );
+      setTempPoints([]);
+      setUndoStack([]);
+    }
+  }, [editingZone, clipboardPolygons, clipboardSourceZoneId, zones, updateEditingPolygon]);
+
   const handlePolygonClick = (zoneId: number, polygonIndex: number, e: React.MouseEvent) => {
     if (zoneId !== editingZone?.id) {
       handleSelectZone(zoneId);
@@ -767,12 +865,14 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
 
   const handleFlipH = async () => {
     if (!(await ensureLock()) || !editingZone) return;
-    updateEditingPolygon((z) => mirrorZoneHorizontally(z));
+    if (selectedPolygonIndexes.size === 0) return;
+    updateEditingPolygon((z) => mirrorSelectedPolygonsH(z, selectedPolygonIndexes));
   };
 
   const handleFlipV = async () => {
     if (!(await ensureLock()) || !editingZone) return;
-    updateEditingPolygon((z) => mirrorZoneVertically(z));
+    if (selectedPolygonIndexes.size === 0) return;
+    updateEditingPolygon((z) => mirrorSelectedPolygonsV(z, selectedPolygonIndexes));
   };
 
   const handlePolygonCompleted = async () => {
@@ -843,22 +943,46 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         },
       });
 
+      if (clipboardPolygons.length > 0) {
+        items.push({
+          label: "Coller",
+          action: () => handlePaste(),
+        });
+      }
+
       if (items.length > 0) {
         setContextMenu({ x: clientX, y: clientY, items });
       }
     },
-    [tempPoints],
+    [tempPoints, clipboardPolygons, handlePaste],
   );
 
   const handleZoneRightClick = useCallback(
     (_zoneId: number, clientX: number, clientY: number) => {
-      const items = [
+      const items: { label: string; action: () => void; disabled?: boolean }[] = [];
+
+      if (selectedPolygonIndexes.size > 0) {
+        items.push({
+          label: "Copier",
+          action: () => handleCopy(),
+        });
+      }
+
+      if (clipboardPolygons.length > 0) {
+        items.push({
+          label: "Coller",
+          action: () => handlePaste(),
+        });
+      }
+
+      items.push(
         { label: "Flip H", action: () => handleFlipH() },
         { label: "Flip V", action: () => handleFlipV() },
-      ];
+      );
+
       setContextMenu({ x: clientX, y: clientY, items });
     },
-    [],
+    [selectedPolygonIndexes, clipboardPolygons, handleCopy, handlePaste, handleFlipH, handleFlipV],
   );
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);

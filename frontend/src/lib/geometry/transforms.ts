@@ -1,4 +1,4 @@
-import type { Point, Zone } from "../api/types";
+import type { Point, Zone, ZonePolygon } from "../api/types";
 
 export function getPolygonCentroid(points: Point[]): Point {
   if (points.length === 0) return { x: 0, y: 0 };
@@ -165,6 +165,29 @@ export function addZonePointAt(
   };
 }
 
+export const PASTE_OFFSET = 30;
+
+export function duplicatePolygonsWithOffset(
+  zone: Zone,
+  selectedIndexes: Set<number>,
+  offsetX: number = PASTE_OFFSET,
+  offsetY: number = PASTE_OFFSET,
+): ZonePolygon[] {
+  return Array.from(selectedIndexes)
+    .sort((a, b) => a - b)
+    .map((i) => zone.polygons[i])
+    .filter(Boolean)
+    .map((poly) => ({
+      ...poly,
+      id: 0,
+      points: poly.points.map((p) => ({
+        x: Math.round(p.x + offsetX),
+        y: Math.round(p.y + offsetY),
+      })),
+      created_at: new Date().toISOString(),
+    }));
+}
+
 export function mirrorZoneHorizontally(zone: Zone): Zone {
   const box = getZoneBoundingBox(zone);
   return {
@@ -191,6 +214,65 @@ export function mirrorZoneVertically(zone: Zone): Zone {
         y: p.y,
       })),
     })),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function centroidOfSelected(zone: Zone, selectedIndexes: Set<number>): { centerX: number; centerY: number } {
+  let sumX = 0;
+  let sumY = 0;
+  let total = 0;
+  for (const i of selectedIndexes) {
+    const poly = zone.polygons[i];
+    if (!poly) continue;
+    for (const p of poly.points) {
+      sumX += p.x;
+      sumY += p.y;
+      total++;
+    }
+  }
+  return {
+    centerX: total > 0 ? Math.round(sumX / total) : 0,
+    centerY: total > 0 ? Math.round(sumY / total) : 0,
+  };
+}
+
+export function mirrorSelectedPolygonsH(zone: Zone, selectedIndexes: Set<number>): Zone {
+  if (selectedIndexes.size === 0) return zone;
+  const { centerY } = centroidOfSelected(zone, selectedIndexes);
+  return {
+    ...zone,
+    polygons: zone.polygons.map((poly, i) =>
+      selectedIndexes.has(i)
+        ? {
+            ...poly,
+            points: poly.points.map((p) => ({
+              x: p.x,
+              y: Math.round(2 * centerY - p.y),
+            })),
+          }
+        : poly,
+    ),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mirrorSelectedPolygonsV(zone: Zone, selectedIndexes: Set<number>): Zone {
+  if (selectedIndexes.size === 0) return zone;
+  const { centerX } = centroidOfSelected(zone, selectedIndexes);
+  return {
+    ...zone,
+    polygons: zone.polygons.map((poly, i) =>
+      selectedIndexes.has(i)
+        ? {
+            ...poly,
+            points: poly.points.map((p) => ({
+              x: Math.round(2 * centerX - p.x),
+              y: p.y,
+            })),
+          }
+        : poly,
+    ),
     updated_at: new Date().toISOString(),
   };
 }

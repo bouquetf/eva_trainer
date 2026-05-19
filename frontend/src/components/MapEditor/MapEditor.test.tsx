@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor, act } from '@testing-library/react'
+import { render, waitFor, act, screen } from '@testing-library/react'
 import { MapEditor } from './MapEditor'
-import { releaseLock, releaseLockSync, getLockStatus } from '../../api/locks'
+import { acquireLock, releaseLock, releaseLockSync, getLockStatus } from '../../api/locks'
 import { listZones } from '../../api/zones'
 import { listTeamMaps } from '../../api/maps'
 import { useAuthStore } from '../../store/auth'
@@ -187,5 +187,127 @@ describe('MapEditor lock integration', () => {
     await vi.waitFor(() => {
       expect(getLockStatus).toHaveBeenCalledWith(1, 1)
     }, { timeout: 5000 })
+  })
+})
+
+describe('MapEditor copy/paste', () => {
+  beforeEach(() => {
+    class MockImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      naturalWidth = 2000;
+      naturalHeight = 1500;
+      set src(_val: string) {
+        Promise.resolve().then(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal('Image', MockImage);
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  })
+
+  it('should handle Ctrl+C and Ctrl+V keyboard shortcuts without error', { timeout: 20000 }, async () => {
+    const zone = {
+      id: 1,
+      team_id: 1,
+      map_id: 1,
+      polygons: [{
+        id: 1,
+        zone_id: 1,
+        points: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 30, y: 50 }],
+        order_index: 0,
+        created_at: '2024-01-01T00:00:00Z',
+      }],
+      name: 'Test Zone',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+
+    vi.mocked(listZones).mockResolvedValue({ zones: [zone] })
+    vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
+    vi.mocked(acquireLock).mockResolvedValue({
+      lock: { id: 1, team_id: 1, map_id: 1, editor_id: 1, editor_name: 'Test', locked_at: '', expires_at: new Date(Date.now() + 600000).toISOString() },
+    })
+
+    render(
+      <BrowserRouter>
+        <MapEditor teamId={1} mapId={1} />
+      </BrowserRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Zone')).toBeInTheDocument()
+    }, { timeout: 15000 })
+
+    // Click zone to start editing (selects polygon)
+    await act(async () => {
+      screen.getByText('Test Zone').click()
+    })
+
+    // Dispatch Ctrl+C
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'c',
+        ctrlKey: true,
+        bubbles: true,
+      }))
+    })
+
+    // Dispatch Ctrl+V
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'v',
+        ctrlKey: true,
+        bubbles: true,
+      }))
+    })
+
+    // No crash = handlers work. Verify zone name still visible.
+    expect(screen.getByText('Test Zone')).toBeInTheDocument()
+  })
+
+  it('should do nothing on Ctrl+C when no polygon is selected', { timeout: 20000 }, async () => {
+    const zone = {
+      id: 1,
+      team_id: 1,
+      map_id: 1,
+      polygons: [],
+      name: 'Empty Zone',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+
+    vi.mocked(listZones).mockResolvedValue({ zones: [zone] })
+    vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
+
+    render(
+      <BrowserRouter>
+        <MapEditor teamId={1} mapId={1} />
+      </BrowserRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Empty Zone')).toBeInTheDocument()
+    }, { timeout: 10000 })
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'c',
+        ctrlKey: true,
+        bubbles: true,
+      }))
+    })
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'v',
+        ctrlKey: true,
+        bubbles: true,
+      }))
+    })
+
+    expect(screen.getByText('Empty Zone')).toBeInTheDocument()
   })
 })
