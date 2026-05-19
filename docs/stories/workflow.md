@@ -228,6 +228,13 @@ graph TD
     #004 --> #024[Story #024<br/>Role-Based Button Visibility]
     #009 --> #024
     
+    %% Feedback 2026-05-17 (#025-#028)
+    #015 --> #025[Story #025<br/>Responsive Review Map]
+    #009 --> #027[Story #027<br/>Copy/Paste Shapes]
+    #023 --> #027
+    #004 --> #028[Story #028<br/>Admin Impersonation]
+    #024 --> #028
+    
     style #000 fill:#90EE90
     style #001 fill:#90EE90
     style #002 fill:#90EE90
@@ -236,7 +243,27 @@ graph TD
 
 ---
 
-## Planning recommandé (10 Sprints : 0 à 9)
+## Phase 9 : Feedback-driven refinements (Sprint 9)
+*Améliorations issues des feedbacks utilisateur du 2026-05-17*
+
+### Parallélisation possible : 4 groupes
+
+| Story | Titre | Dépendances | Tests E2E |
+|-------|-------|-------------|------------|
+| #025 | Responsive Review Map | #015 (Revision) | Playwright |
+| #026 | App Title "Eva-Trainer" | Aucune | Playwright |
+| #027 | Copy/Paste Shapes in Editor | #009, #023 | Playwright |
+| #028 | Admin Impersonation Mode | #004, #024 | Playwright |
+
+**Groupes parallélisables :**
+- **Groupe A** (Révision) : #025 — dépend de #015
+- **Groupe B** (Configuration) : #026 — aucune dépendance, peut être fait à tout moment
+- **Groupe C** (Éditeur) : #027 — dépend de #009/#023
+- **Groupe D** (Admin) : #028 — dépend de #004/#024
+
+---
+
+## Planning recommandé (11 Sprints : 0 à 10)
 
 | Sprint | Stories | Équipe recommandée | Jalons |
 |--------|---------|-------------------|--------|
@@ -249,9 +276,10 @@ graph TD
 | S6 | #016 | 1 dev | Weighted Revision |
 | S7 | #018, #019, #020 | 2-3 devs | Lock refinements, Revision settings, Zone list |
 | S8 | #021, #022, #023, #024 | 2-3 devs | Import/Export, Navigation, Help, Roles UI |
-| S9 | #017 + Tests | 2 devs | 100% Coverage |
+| S9 | #025, #026, #027, #028 | 2-3 devs | Responsive review, App title, Copy/paste, Impersonation |
+| S10 | #017 + Tests | 2 devs | 100% Coverage |
 
-**Total : 20 semaines (environ 5 mois)**
+**Total : 22 semaines (environ 5.5 mois)**
 
 ### Diagramme de Gantt (Mermaid)
 
@@ -303,8 +331,14 @@ gantt
     #023 Editor Help Popup                 :s8c, after s3d, 10d
     #024 Role-Based Button                 :s8d, after s2b, 10d
     
+    section Phase 9 - Feedback 2026-05-17
+    #025 Responsive Review Map             :s9a, after s5b, 10d
+    #026 App Title Eva-Trainer             :s9b, after s0, 5d
+    #027 Copy/Paste Shapes                 :s9c, after s3d, 10d
+    #028 Admin Impersonation               :s9d, after s2b, 10d
+    
     section Phase 8 - Tests
-    #017 Test Automation                   :s9, after s6, 10d
+    #017 Test Automation                   :s10, after s6, 10d
 ```
 
 ### Parallélisation maximale
@@ -382,4 +416,6 @@ graph LR
 
 6. **Feedbacks utilisateur (#018-#024)** : Ces stories proviennent des retours du 2025-05-14. Elles peuvent être implémentées dès que leurs dépendances sont résolues, sans attendre les phases suivantes.
 
-7. **Stories #018-#024 non-bloquantes** : Aucune de ces stories ne bloque les stories du plan initial (#000-#017). Elles sont des améliorations indépendantes qui peuvent être priorisées selon la charge.
+7. **Feedbacks utilisateur (#025-#028)** : Ces stories proviennent des retours du 2026-05-17. #026 (App Title) n'a aucune dépendance et peut être fait à tout moment. #025 et #027 dépendent de fonctionnalités existantes.
+
+8. **Stories #018-#028 non-bloquantes** : Aucune de ces stories ne bloque les stories du plan initial (#000-#017). Elles sont des améliorations indépendantes qui peuvent être priorisées selon la charge.
