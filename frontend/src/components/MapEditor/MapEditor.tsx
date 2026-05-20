@@ -15,7 +15,7 @@ import { restoreVersion } from "../../api/versions";
 import { Toolbar } from "./Toolbar";
 import { MapCanvas } from "./MapCanvas";
 import { ZoneList } from "./ZoneList";
-import { ContextMenu } from "./ContextMenu";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import VersionBrowser from "../VersionBrowser";
 import ConfirmDialog from "../ConfirmDialog";
 import RestoreConfirmModal from "../RestoreConfirmModal";
@@ -34,7 +34,7 @@ import {
 interface ContextMenuState {
   x: number;
   y: number;
-  items: { label: string; action: () => void; disabled?: boolean }[];
+  items: ContextMenuItem[];
 }
 
 type PendingSwitch = {
@@ -379,14 +379,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
 
     for (const [id, poly] of editPolys) {
       if (id === 0) {
-        actions.push({ type: "add_polygon", zone_id: original.id, points: poly.points });
+        actions.push({ type: "add_polygon", zone_id: original.id, points: poly.points, floor: poly.floor });
       } else {
         const orig = origPolys.get(id);
         if (orig) {
-          const changed = orig.points.length !== poly.points.length ||
+          const pointsChanged = orig.points.length !== poly.points.length ||
             orig.points.some((p, i) => p.x !== poly.points[i]?.x || p.y !== poly.points[i]?.y);
-          if (changed) {
+          if (pointsChanged) {
             actions.push({ type: "update_points", zone_id: original.id, polygon_id: id, points: poly.points });
+          }
+          if (orig.floor !== poly.floor) {
+            actions.push({ type: "set_floor", zone_id: original.id, polygon_id: id, floor: poly.floor ?? null });
           }
         }
       }
@@ -490,7 +493,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         {
           type: "create_zone",
           temp_id: "new",
-          polygons: editingZone.polygons.map(p => ({ points: p.points })),
+          polygons: editingZone.polygons.map(p => ({ points: p.points, floor: p.floor })),
           name: editingZone.name,
         },
       ];
@@ -761,6 +764,29 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     setIsDirty(true);
   };
 
+  const handleSetFloor = useCallback(
+    (floor: 'haut' | 'bas' | null) => {
+      if (!editingZone || selectedPolygonIndexes.size === 0) return;
+
+      const selectedIndices = Array.from(selectedPolygonIndexes);
+
+      pushUndo();
+      const updatedPolygons = editingZone.polygons.map((p, i) =>
+        selectedIndices.includes(i) ? { ...p, floor: floor ?? undefined } : p,
+      );
+      const updatedZone = { ...editingZone, polygons: updatedPolygons };
+
+      setEditingZone(updatedZone);
+      setZones((prev) =>
+        prev.map((z) =>
+          z.id === editingZone.id ? updatedZone : z,
+        ),
+      );
+      setIsDirty(true);
+    },
+    [editingZone, selectedPolygonIndexes],
+  );
+
   const handleCopy = useCallback(() => {
     if (!editingZone || selectedPolygonIndexes.size === 0) return;
     const copied = Array.from(selectedPolygonIndexes)
@@ -840,7 +866,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       setTempPoints([]);
       setUndoStack([]);
     }
-  }, [editingZone, clipboardPolygons, clipboardSourceZoneId, zones, updateEditingPolygon]);
+  }, [editingZone, clipboardPolygons, clipboardSourceZoneId, zones]);
 
   const handlePolygonClick = (zoneId: number, polygonIndex: number, e: React.MouseEvent) => {
     if (zoneId !== editingZone?.id) {
@@ -954,12 +980,12 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         setContextMenu({ x: clientX, y: clientY, items });
       }
     },
-    [tempPoints, clipboardPolygons, handlePaste],
+    [handlePaste, tempPoints.length, clipboardPolygons.length],
   );
 
   const handleZoneRightClick = useCallback(
     (_zoneId: number, clientX: number, clientY: number) => {
-      const items: { label: string; action: () => void; disabled?: boolean }[] = [];
+      const items: ContextMenuItem[] = [];
 
       if (selectedPolygonIndexes.size > 0) {
         items.push({
@@ -975,6 +1001,28 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         });
       }
 
+      if (selectedPolygonIndexes.size > 0 && editingZone) {
+        const hasFloor = Array.from(selectedPolygonIndexes).some(
+          (i) => editingZone.polygons[i]?.floor != null,
+        );
+
+        const floorChildren: ContextMenuItem[] = [
+          { label: "Haut", action: () => handleSetFloor("haut") },
+          { label: "Bas", action: () => handleSetFloor("bas") },
+        ];
+        if (hasFloor) {
+          floorChildren.push({
+            label: "Effacer",
+            action: () => handleSetFloor(null),
+          });
+        }
+
+        items.push({
+          label: "Étage",
+          children: floorChildren,
+        });
+      }
+
       items.push(
         { label: "Flip H", action: () => handleFlipH() },
         { label: "Flip V", action: () => handleFlipV() },
@@ -982,7 +1030,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
 
       setContextMenu({ x: clientX, y: clientY, items });
     },
-    [selectedPolygonIndexes, clipboardPolygons, handleCopy, handlePaste, handleFlipH, handleFlipV],
+    [selectedPolygonIndexes, editingZone, handleCopy, handlePaste, handleSetFloor, clipboardPolygons.length],
   );
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);

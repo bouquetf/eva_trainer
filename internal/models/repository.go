@@ -142,11 +142,12 @@ type ZoneRepository interface {
 	ImportZones(teamID, mapID int, zones []ImportZoneData) ([]*Zone, error)
 	Delete(zoneID int) error
 
-	AddPolygon(zoneID int, points []Point, orderIndex int) (*ZonePolygon, error)
+	AddPolygon(zoneID int, points []Point, orderIndex int, floor *string) (*ZonePolygon, error)
 	GetPolygons(zoneID int) ([]ZonePolygon, error)
 	UpdatePolygonPoints(polygonID int, points []Point) error
 	RemovePolygon(polygonID int) error
 	PolygonCount(zoneID int) (int, error)
+	SetPolygonFloor(polygonID int, floor *string) error
 
 	SetName(zoneID int, name string) error
 	GetName(zoneID int) (*ZoneName, error)

@@ -8,6 +8,7 @@ export interface ZonePolygon {
   zone_id: number
   points: Point[]
   order_index: number
+  floor?: 'haut' | 'bas'
   created_at: string
 }
 

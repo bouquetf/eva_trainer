@@ -417,9 +417,14 @@ func (r *templateRepo) DuplicateToTeam(teamID, templateID int) ([]*Zone, int, er
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to marshal polygon points: %w", err)
 				}
+				floorStr, hasFloor := poly["floor"].(string)
+				var floorArg interface{}
+				if hasFloor && floorStr != "" {
+					floorArg = floorStr
+				}
 				if _, err := tx.Exec(
-					`INSERT INTO zone_polygons (zone_id, polygon_data, order_index) VALUES ($1, $2::jsonb, $3)`,
-					zone.ID, pointsJSON, i,
+					`INSERT INTO zone_polygons (zone_id, polygon_data, order_index, floor) VALUES ($1, $2::jsonb, $3, $4)`,
+					zone.ID, pointsJSON, i, floorArg,
 				); err != nil {
 					return nil, 0, fmt.Errorf("failed to insert zone polygon: %w", err)
 				}
@@ -447,7 +452,7 @@ func (r *templateRepo) DuplicateToTeam(teamID, templateID int) ([]*Zone, int, er
 
 func (r *templateRepo) collectZonePolygons(zoneID int) ([]byte, error) {
 	rows, err := r.db.Query(
-		`SELECT polygon_data FROM zone_polygons WHERE zone_id = $1 ORDER BY order_index`,
+		`SELECT polygon_data, floor FROM zone_polygons WHERE zone_id = $1 ORDER BY order_index`,
 		zoneID,
 	)
 	if err != nil {
@@ -458,7 +463,8 @@ func (r *templateRepo) collectZonePolygons(zoneID int) ([]byte, error) {
 	var polygons []map[string]interface{}
 	for rows.Next() {
 		var data []byte
-		if err := rows.Scan(&data); err != nil {
+		var floor sql.NullString
+		if err := rows.Scan(&data, &floor); err != nil {
 			return nil, err
 		}
 		var polyData map[string]interface{}
@@ -469,6 +475,9 @@ func (r *templateRepo) collectZonePolygons(zoneID int) ([]byte, error) {
 			} else {
 				polyData = map[string]interface{}{"points": pointsData}
 			}
+		}
+		if floor.Valid {
+			polyData["floor"] = floor.String
 		}
 		polygons = append(polygons, polyData)
 	}

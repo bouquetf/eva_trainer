@@ -162,7 +162,7 @@ func createTestZone(t *testing.T, zoneRepo models.ZoneRepository, teamID, mapID 
 	for i := range points {
 		points[i] = models.Point{X: float64(i * 10), Y: float64(i * 10)}
 	}
-	_, err = zoneRepo.AddPolygon(zone.ID, points, 0)
+	_, err = zoneRepo.AddPolygon(zone.ID, points, 0, nil)
 	if err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}

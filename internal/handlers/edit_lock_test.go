@@ -311,7 +311,7 @@ func TestEditLockHandler_ModifyWithoutLock_Returns423(t *testing.T) {
 		t.Fatalf("failed to create zone: %v", err)
 	}
 	pts := []models.Point{{X: 100, Y: 100}, {X: 200, Y: 200}, {X: 300, Y: 100}}
-	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 

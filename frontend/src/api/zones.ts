@@ -26,11 +26,6 @@ export interface RemovePolygonResponse {
   polygon_deleted: boolean
   zone_deleted: boolean
 }
-
-export interface UpdatePointsPayload {
-  points: Point[]
-}
-
 export interface AddPointPayload {
   point: Point
   index_after: number
@@ -41,14 +36,15 @@ export interface SetNamePayload {
 }
 
 export type BatchAction =
-  | { type: 'create_zone'; temp_id: string; polygons: { points: Point[] }[]; name?: string }
-  | { type: 'add_polygon'; zone_id: number; points: Point[] }
+  | { type: 'create_zone'; temp_id: string; polygons: { points: Point[]; floor?: 'haut' | 'bas' }[]; name?: string }
+  | { type: 'add_polygon'; zone_id: number; points: Point[]; floor?: 'haut' | 'bas' }
   | { type: 'remove_polygon'; zone_id: number; polygon_id: number }
   | { type: 'update_points'; zone_id: number; polygon_id: number; points: Point[] }
   | { type: 'add_point'; polygon_id: number; point: Point; index_after: number }
   | { type: 'remove_point'; polygon_id: number; point_index: number; zone_id: number }
   | { type: 'rename'; zone_id: number; name: string }
   | { type: 'delete_zone'; zone_id: number }
+  | { type: 'set_floor'; zone_id: number; polygon_id: number; floor: 'haut' | 'bas' | null }
 
 export interface BatchResult {
   results: unknown[]
@@ -59,11 +55,6 @@ const api = () => getApiClient()
 export async function listZones(teamId: number, mapId: number): Promise<ListZonesResponse> {
   return api().get<ListZonesResponse>(`/api/v1/teams/${teamId}/maps/${mapId}/zones`)
 }
-
-export async function getZone(teamId: number, zoneId: number): Promise<{ zone: Zone }> {
-  return api().get<{ zone: Zone }>(`/api/v1/teams/${teamId}/zones/${zoneId}`)
-}
-
 export async function createZone(
   teamId: number,
   mapId: number,
@@ -93,19 +84,6 @@ export async function removePolygon(
     `/api/v1/teams/${teamId}/zones/${zoneId}/polygons/${polygonId}`,
   )
 }
-
-export async function updatePolygonPoints(
-  teamId: number,
-  zoneId: number,
-  polygonId: number,
-  payload: UpdatePointsPayload,
-): Promise<AddPolygonResponse> {
-  return api().put<AddPolygonResponse>(
-    `/api/v1/teams/${teamId}/zones/${zoneId}/polygons/${polygonId}/points`,
-    payload,
-  )
-}
-
 export async function addPolygonPoint(
   teamId: number,
   zoneId: number,

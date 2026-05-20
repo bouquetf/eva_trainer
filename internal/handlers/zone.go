@@ -76,6 +76,7 @@ type createZoneRequest struct {
 
 type createZonePolygon struct {
 	Points []models.Point `json:"points"`
+	Floor  *string        `json:"floor,omitempty"`
 }
 
 func (h *ZoneHandler) CreateZone(c *gin.Context) {
@@ -129,7 +130,7 @@ func (h *ZoneHandler) CreateZone(c *gin.Context) {
 	}
 
 	for i, p := range req.Polygons {
-		_, err := h.zoneRepo.AddPolygon(zone.ID, p.Points, i)
+		_, err := h.zoneRepo.AddPolygon(zone.ID, p.Points, i, p.Floor)
 		if err != nil {
 			if errors.Is(err, models.ErrPolygonHasTooFewPoints) {
 				h.zoneRepo.Delete(zone.ID)
@@ -341,7 +342,7 @@ func (h *ZoneHandler) AddPolygon(c *gin.Context) {
 		}
 	}
 
-	polygon, err := h.zoneRepo.AddPolygon(zoneID, req.Points, count)
+	polygon, err := h.zoneRepo.AddPolygon(zoneID, req.Points, count, nil)
 	if err != nil {
 		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to add polygon", http.StatusInternalServerError))
 		return
@@ -540,6 +541,7 @@ func (h *ZoneHandler) saveZoneSnapshot(zoneID, editorID int) {
 		snapshot.Polygons = append(snapshot.Polygons, models.SnapshotPolygon{
 			Points:     p.Points,
 			OrderIndex: p.OrderIndex,
+			Floor:      p.Floor,
 		})
 	}
 
@@ -838,10 +840,12 @@ type batchAction struct {
 	IndexAfter *int           `json:"index_after,omitempty"`
 	Polygons   []batchPolygon `json:"polygons,omitempty"`
 	ZoneName   string         `json:"name,omitempty"`
+	Floor      *string        `json:"floor,omitempty"`
 }
 
 type batchPolygon struct {
 	Points []models.Point `json:"points"`
+	Floor  *string        `json:"floor,omitempty"`
 }
 
 type batchActionResult struct {
@@ -992,6 +996,15 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 			}
 			results = append(results, result)
 
+		case "set_floor":
+			result, err := h.batchSetFloor(user.ID, action)
+			if err != nil {
+				h.logger.Warn("set_floor failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
+				return
+			}
+			results = append(results, result)
+
 		default:
 			apierror.RespondWithError(c, apierror.NewAPIError("unknown_action_type", "unknown action type: "+action.Type, http.StatusBadRequest))
 			return
@@ -1033,7 +1046,7 @@ func (h *ZoneHandler) batchCreateZone(teamID, mapID, editorID int, action batchA
 	}
 
 	for i, p := range action.Polygons {
-		_, err := h.zoneRepo.AddPolygon(zone.ID, p.Points, i)
+		_, err := h.zoneRepo.AddPolygon(zone.ID, p.Points, i, p.Floor)
 		if err != nil {
 			h.zoneRepo.Delete(zone.ID)
 			return batchActionResult{}, err
@@ -1075,7 +1088,7 @@ func (h *ZoneHandler) batchAddPolygon(editorID int, action batchAction) (batchAc
 		return batchActionResult{}, err
 	}
 
-	polygon, err := h.zoneRepo.AddPolygon(*action.ZoneID, action.Points, count)
+	polygon, err := h.zoneRepo.AddPolygon(*action.ZoneID, action.Points, count, action.Floor)
 	if err != nil {
 		return batchActionResult{}, err
 	}
@@ -1270,6 +1283,26 @@ func (h *ZoneHandler) batchRename(editorID int, action batchAction) (batchAction
 	return batchActionResult{
 		Name: zn,
 	}, nil
+}
+
+func (h *ZoneHandler) batchSetFloor(editorID int, action batchAction) (batchActionResult, error) {
+	if action.PolygonID == nil {
+		return batchActionResult{}, errors.New("polygon_id is required for set_floor")
+	}
+
+	if err := h.zoneRepo.SetPolygonFloor(*action.PolygonID, action.Floor); err != nil {
+		return batchActionResult{}, err
+	}
+
+	zoneIDForLog := 0
+	if action.ZoneID != nil {
+		zoneIDForLog = *action.ZoneID
+	}
+	var editorIDPtr *int
+	editorIDPtr = &editorID
+	h.historyRepo.Log(zoneIDForLog, editorIDPtr, "set_floor", nil, nil)
+
+	return batchActionResult{}, nil
 }
 
 func (h *ZoneHandler) batchDeleteZone(editorID int, action batchAction) (batchActionResult, error) {

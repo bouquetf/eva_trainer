@@ -8,6 +8,7 @@ export type ZonePolygon = {
   zone_id: number;
   points: Point[];
   order_index: number;
+  floor?: 'haut' | 'bas';
   created_at: string;
 };
 
@@ -34,9 +35,6 @@ export type MapDto = {
   /** @deprecated Use naturalWidth/naturalHeight from loaded img element */
   height: number;
 };
-
-export type EditorTool = "select" | "draw-polygon" | "move-zone" | "edit-points";
-
 /** @deprecated Use Zone instead. Kept for transition during Task #005. */
 export type ZoneDto = {
   id: string;

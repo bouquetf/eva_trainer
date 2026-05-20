@@ -83,6 +83,7 @@ func setupTemplateTestDB(t *testing.T) *sql.DB {
 		"000011_add_zone_polygon_constraints.up.sql",
 		"000013_add_zone_versions.up.sql",
 		"000015_add_template_is_public.up.sql",
+		"000017_add_polygon_floor.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -243,7 +244,7 @@ func createZoneWithPolygon(t *testing.T, zoneRepo models.ZoneRepository, teamID,
 	if err != nil {
 		t.Fatalf("failed to create zone: %v", err)
 	}
-	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 	if name != "" {
@@ -468,5 +469,119 @@ func TestTemplateHandler_GetPublishStatus_NotPublished(t *testing.T) {
 
 	if resp["published"] != false {
 		t.Errorf("expected published false, got %v", resp["published"])
+	}
+}
+
+func TestTemplateHandler_PublishMap_IncludesFloorInPolygonData(t *testing.T) {
+	f := setupTemplateTest(t)
+
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	zoneID := createZoneWithPolygon(t, f.zoneRepo, f.team.ID, f.mapObj.ID, "Floor Zone", pts)
+	polygons, err := f.zoneRepo.GetPolygons(zoneID)
+	if err != nil || len(polygons) == 0 {
+		t.Fatalf("failed to get polygons: %v", err)
+	}
+	if err := f.zoneRepo.SetPolygonFloor(polygons[0].ID, ptr("haut")); err != nil {
+		t.Fatalf("failed to set floor: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	w := executeTemplateRequest(t, f.templateHandler.PublishMap, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/publish", f.team.ID, f.mapObj.ID),
+		"", f.captain, f.captainToken, params)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var polygonDataStr string
+	err = f.db.QueryRow(
+		`SELECT polygon_data::text FROM template_zones WHERE template_id = (SELECT id FROM templates WHERE map_id = $1) ORDER BY order_index LIMIT 1`,
+		f.mapObj.ID,
+	).Scan(&polygonDataStr)
+	if err != nil {
+		t.Fatalf("failed to query polygon_data: %v", err)
+	}
+	if !strings.Contains(polygonDataStr, `"floor"`) {
+		t.Errorf("expected polygon_data to contain 'floor' field, got: %s", polygonDataStr)
+	}
+	if !strings.Contains(polygonDataStr, `"haut"`) {
+		t.Errorf("expected polygon_data to contain 'haut', got: %s", polygonDataStr)
+	}
+}
+
+func TestTemplateHandler_DuplicateTemplate_PreservesFloor(t *testing.T) {
+	f := setupTemplateTest(t)
+
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	zoneID := createZoneWithPolygon(t, f.zoneRepo, f.team.ID, f.mapObj.ID, "Source Zone", pts)
+	polygons, err := f.zoneRepo.GetPolygons(zoneID)
+	if err != nil || len(polygons) == 0 {
+		t.Fatalf("failed to get polygons: %v", err)
+	}
+	if err := f.zoneRepo.SetPolygonFloor(polygons[0].ID, ptr("bas")); err != nil {
+		t.Fatalf("failed to set floor: %v", err)
+	}
+
+	publishParams := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	pubResp := executeTemplateRequest(t, f.templateHandler.PublishMap, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/publish", f.team.ID, f.mapObj.ID),
+		"", f.captain, f.captainToken, publishParams)
+	if pubResp.Code != http.StatusCreated {
+		t.Fatalf("publish failed: %d. Body: %s", pubResp.Code, pubResp.Body.String())
+	}
+
+	var pubRespMap map[string]interface{}
+	if err := json.Unmarshal(pubResp.Body.Bytes(), &pubRespMap); err != nil {
+		t.Fatalf("failed to parse publish response: %v", err)
+	}
+	tmplObj := pubRespMap["template"].(map[string]interface{})
+	templateID := int(tmplObj["id"].(float64))
+
+	targetTeam, err := f.teamRepo.Create("Target Team "+t.Name(), f.captain.ID)
+	if err != nil {
+		t.Fatalf("failed to create target team: %v", err)
+	}
+	if err := f.teamMemberRepo.AddMember(targetTeam.ID, f.captain.ID, models.RoleCaptain); err != nil {
+		t.Fatalf("failed to add captain to target team: %v", err)
+	}
+
+	dupParams := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", targetTeam.ID)},
+		{Key: "templateId", Value: fmt.Sprintf("%d", templateID)},
+	}
+	dupResp := executeTemplateRequest(t, f.templateHandler.DuplicateTemplate, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/templates/%d/duplicate", targetTeam.ID, templateID),
+		"", f.captain, f.captainToken, dupParams)
+	if dupResp.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", dupResp.Code, dupResp.Body.String())
+	}
+
+	var dupRespMap map[string]interface{}
+	if err := json.Unmarshal(dupResp.Body.Bytes(), &dupRespMap); err != nil {
+		t.Fatalf("failed to parse duplicate response: %v", err)
+	}
+	zonesArr, ok := dupRespMap["zones"].([]interface{})
+	if !ok || len(zonesArr) == 0 {
+		t.Fatalf("expected zones array, got %T", dupRespMap["zones"])
+	}
+	firstZone := zonesArr[0].(map[string]interface{})
+	polysArr, ok := firstZone["polygons"].([]interface{})
+	if !ok || len(polysArr) == 0 {
+		t.Fatalf("expected polygons array, got %T", firstZone["polygons"])
+	}
+	firstPoly := polysArr[0].(map[string]interface{})
+	floorVal, hasFloor := firstPoly["floor"]
+	if !hasFloor {
+		t.Fatal("expected polygon to have 'floor' field after duplication")
+	}
+	if floorVal != "bas" {
+		t.Errorf("expected floor 'bas', got %v", floorVal)
 	}
 }

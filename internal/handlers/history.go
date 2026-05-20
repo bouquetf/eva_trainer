@@ -351,7 +351,7 @@ func (h *HistoryHandler) RestoreVersion(c *gin.Context) {
 	}
 
 	for _, sp := range version.VersionData.Polygons {
-		_, err := h.zoneRepo.AddPolygon(zoneID, sp.Points, sp.OrderIndex)
+		_, err := h.zoneRepo.AddPolygon(zoneID, sp.Points, sp.OrderIndex, sp.Floor)
 		if err != nil {
 			h.logger.Warn("failed to restore polygon for zone", "zone", zoneID, "error", err)
 		}

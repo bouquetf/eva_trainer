@@ -78,7 +78,7 @@ func TestZoneRepository_CreateWithPolygonAndName(t *testing.T) {
 	}
 
 	points := []Point{{X: 100, Y: 100}, {X: 200, Y: 200}, {X: 300, Y: 100}}
-	polygon, err := zoneRepo.AddPolygon(zone.ID, points, 0)
+	polygon, err := zoneRepo.AddPolygon(zone.ID, points, 0, nil)
 	if err != nil {
 		t.Fatalf("AddPolygon failed: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestZoneRepository_AddMultiplePolygons(t *testing.T) {
 			{X: float64(i*100 + 100), Y: float64(i * 100)},
 			{X: float64(i*100 + 50), Y: float64(i*100 + 100)},
 		}
-		_, err := zoneRepo.AddPolygon(zone.ID, points, i)
+		_, err := zoneRepo.AddPolygon(zone.ID, points, i, nil)
 		if err != nil {
 			t.Fatalf("AddPolygon %d failed: %v", i, err)
 		}
@@ -163,7 +163,7 @@ func TestZoneRepository_RemoveLastPolygonDeletesZone(t *testing.T) {
 	}
 
 	points := []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	polygon, err := zoneRepo.AddPolygon(zone.ID, points, 0)
+	polygon, err := zoneRepo.AddPolygon(zone.ID, points, 0, nil)
 	if err != nil {
 		t.Fatalf("AddPolygon failed: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestZoneRepository_IsNameTaken(t *testing.T) {
 	}
 
 	points := []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	if _, err := zoneRepo.AddPolygon(zoneA.ID, points, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zoneA.ID, points, 0, nil); err != nil {
 		t.Fatalf("AddPolygon for zone A failed: %v", err)
 	}
 
@@ -213,7 +213,7 @@ func TestZoneRepository_IsNameTaken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create zone B failed: %v", err)
 	}
-	if _, err := zoneRepo.AddPolygon(zoneB.ID, points, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zoneB.ID, points, 0, nil); err != nil {
 		t.Fatalf("AddPolygon for zone B failed: %v", err)
 	}
 
@@ -249,7 +249,7 @@ func TestZoneRepository_NameTooLong(t *testing.T) {
 	}
 
 	points := []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0, nil); err != nil {
 		t.Fatalf("AddPolygon failed: %v", err)
 	}
 
@@ -275,7 +275,7 @@ func TestZoneRepository_PolygonTooFewPoints(t *testing.T) {
 	}
 
 	points := []Point{{X: 0, Y: 0}, {X: 10, Y: 0}}
-	_, err = zoneRepo.AddPolygon(zone.ID, points, 0)
+	_, err = zoneRepo.AddPolygon(zone.ID, points, 0, nil)
 	if err != ErrPolygonHasTooFewPoints {
 		t.Errorf("expected ErrPolygonHasTooFewPoints, got %v", err)
 	}
@@ -327,7 +327,7 @@ func TestZoneRepository_DuplicateNameOnSameTeamMapFails(t *testing.T) {
 		t.Fatalf("Create zone A failed: %v", err)
 	}
 	pts := []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	if _, err := zoneRepo.AddPolygon(zoneA.ID, pts, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zoneA.ID, pts, 0, nil); err != nil {
 		t.Fatalf("AddPolygon zone A failed: %v", err)
 	}
 	if err := zoneRepo.SetName(zoneA.ID, "dup-name"); err != nil {
@@ -338,7 +338,7 @@ func TestZoneRepository_DuplicateNameOnSameTeamMapFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create zone B failed: %v", err)
 	}
-	if _, err := zoneRepo.AddPolygon(zoneB.ID, pts, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zoneB.ID, pts, 0, nil); err != nil {
 		t.Fatalf("AddPolygon zone B failed: %v", err)
 	}
 
@@ -381,6 +381,34 @@ func TestZoneRepository_Delete_NotFound(t *testing.T) {
 	}
 }
 
+func ptr(s string) *string {
+	return &s
+}
+
+func TestValidateFloor(t *testing.T) {
+	tests := []struct {
+		name  string
+		floor *string
+		want  error
+	}{
+		{"nil", nil, nil},
+		{"haut", ptr("haut"), nil},
+		{"bas", ptr("bas"), nil},
+		{"empty string", ptr(""), nil},
+		{"middle", ptr("middle"), ErrInvalidFloorValue},
+		{"HAUT uppercase", ptr("HAUT"), ErrInvalidFloorValue},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validateFloor(tt.floor)
+			if got != tt.want {
+				t.Errorf("validateFloor(%v) = %v, want %v", tt.floor, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestZoneRepository_UpdatePolygonPoints_TooFew(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -396,7 +424,7 @@ func TestZoneRepository_UpdatePolygonPoints_TooFew(t *testing.T) {
 	}
 
 	pts := []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	polygon, err := zoneRepo.AddPolygon(zone.ID, pts, 0)
+	polygon, err := zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
 	if err != nil {
 		t.Fatalf("AddPolygon failed: %v", err)
 	}

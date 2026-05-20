@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
 import { Stage, Layer, Path, Line, Image as KonvaImage } from 'react-konva'
 import useImage from 'use-image'
 import { getMapImageUrl } from '../api/maps'
@@ -108,6 +108,34 @@ export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
               listening={false}
             />
           ))}
+          {polygons.map((polygon) => {
+            if (!polygon.floor) return null;
+            const pts = polygon.points;
+            const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+            const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+            const iconSize = 30;
+            const arrowTip = polygon.floor === 'haut'
+              ? cy - iconSize * 0.6
+              : cy + iconSize * 0.6;
+            return (
+              <Fragment key={`floor-${polygon.id}`}>
+                <Line
+                  points={[cx - iconSize, cy, cx + iconSize, cy]}
+                  stroke="white"
+                  strokeWidth={2}
+                  listening={false}
+                />
+                <Line
+                  points={[cx, arrowTip, cx - iconSize * 0.4, cy, cx + iconSize * 0.4, cy]}
+                  closed
+                  fill="white"
+                  stroke="white"
+                  strokeWidth={1}
+                  listening={false}
+                />
+              </Fragment>
+            );
+          })}
         </Layer>
       </Stage>
     </div>

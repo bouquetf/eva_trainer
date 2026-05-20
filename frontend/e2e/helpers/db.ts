@@ -123,31 +123,3 @@ export async function seedZone(
 
   return { id: zoneId, name };
 }
-
-export async function cleanDatabase(): Promise<void> {
-  const tables = [
-    'zone_versions',
-    'edit_history',
-    'template_zones',
-    'templates',
-    'edit_locks',
-    'zones',
-    'split_maps',
-    'splits',
-    'team_join_requests',
-    'team_invitations',
-    'team_members',
-    'map_catalog',
-    'maps',
-    'refresh_tokens',
-    'teams',
-    'users',
-  ];
-  for (const table of tables) {
-    try {
-      await queryDB(`DELETE FROM ${table}`);
-    } catch {
-      // Table might not exist
-    }
-  }
-}

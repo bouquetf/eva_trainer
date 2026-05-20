@@ -21,7 +21,7 @@ func TestTemplateRepository_CreateFromMap_Success(t *testing.T) {
 	team, _ := teamRepo.Create("Test Team "+t.Name(), user.ID)
 	m, _ := mapRepo.Create("test-map-"+t.Name(), nil)
 	zone, _ := zoneRepo.Create(team.ID, m.ID)
-	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0)
+	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0, nil)
 	zoneRepo.SetName(zone.ID, "Test Zone")
 
 	tmpl, err := templateRepo.CreateFromMap(team.ID, m.ID)
@@ -74,7 +74,7 @@ func TestTemplateRepository_CreateFromMap_AlreadyExists(t *testing.T) {
 	team, _ := teamRepo.Create("Test Team "+t.Name(), user.ID)
 	m, _ := mapRepo.Create("test-map-"+t.Name(), nil)
 	zone, _ := zoneRepo.Create(team.ID, m.ID)
-	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0)
+	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0, nil)
 
 	first, err := templateRepo.CreateFromMap(team.ID, m.ID)
 	if err != nil {
@@ -104,7 +104,7 @@ func TestTemplateRepository_FindByMapID_Found(t *testing.T) {
 	team, _ := teamRepo.Create("Test Team "+t.Name(), user.ID)
 	m, _ := mapRepo.Create("test-map-"+t.Name(), nil)
 	zone, _ := zoneRepo.Create(team.ID, m.ID)
-	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0)
+	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0, nil)
 
 	templateRepo.CreateFromMap(team.ID, m.ID)
 
@@ -150,13 +150,13 @@ func TestTemplateRepository_UpdateFromMap_Success(t *testing.T) {
 	m, _ := mapRepo.Create("test-map-"+t.Name(), nil)
 
 	zone, _ := zoneRepo.Create(team.ID, m.ID)
-	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0)
+	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0, nil)
 	zoneRepo.SetName(zone.ID, "Initial Zone")
 
 	tmpl, _ := templateRepo.CreateFromMap(team.ID, m.ID)
 
 	zone2, _ := zoneRepo.Create(team.ID, m.ID)
-	zoneRepo.AddPolygon(zone2.ID, []Point{{X: 0, Y: 0}, {X: 20, Y: 0}, {X: 10, Y: 20}}, 0)
+	zoneRepo.AddPolygon(zone2.ID, []Point{{X: 0, Y: 0}, {X: 20, Y: 0}, {X: 10, Y: 20}}, 0, nil)
 	zoneRepo.SetName(zone2.ID, "Added Zone")
 
 	err := templateRepo.UpdateFromMap(tmpl.ID, team.ID, m.ID)
@@ -215,7 +215,7 @@ func TestTemplateRepository_DuplicateToTeam_Success(t *testing.T) {
 	m, _ := mapRepo.Create("test-map-"+t.Name(), nil)
 
 	zone, _ := zoneRepo.Create(sourceTeam.ID, m.ID)
-	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0)
+	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0, nil)
 	zoneRepo.SetName(zone.ID, "Duplicated Zone")
 
 	tmpl, _ := templateRepo.CreateFromMap(sourceTeam.ID, m.ID)
@@ -249,7 +249,7 @@ func TestTemplateRepository_Delete_Success(t *testing.T) {
 	team, _ := teamRepo.Create("Test Team "+t.Name(), user.ID)
 	m, _ := mapRepo.Create("test-map-"+t.Name(), nil)
 	zone, _ := zoneRepo.Create(team.ID, m.ID)
-	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0)
+	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0, nil)
 
 	tmpl, _ := templateRepo.CreateFromMap(team.ID, m.ID)
 

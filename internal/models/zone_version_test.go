@@ -21,7 +21,7 @@ func TestZoneVersionRepository_Save_Success(t *testing.T) {
 	team, _ := teamRepo.Create("Test Team "+t.Name(), user.ID)
 	m, _ := mapRepo.Create("test-map-"+t.Name(), nil)
 	zone, _ := zoneRepo.Create(team.ID, m.ID)
-	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0)
+	zoneRepo.AddPolygon(zone.ID, []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}, 0, nil)
 
 	snapshot := VersionSnapshot{
 		Name: "Test Zone",

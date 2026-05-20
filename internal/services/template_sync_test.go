@@ -75,6 +75,7 @@ func setupSyncTestDB(t *testing.T) *sql.DB {
 		"000004_add_discord_username.up.sql",
 		"000011_add_zone_polygon_constraints.up.sql",
 		"000015_add_template_is_public.up.sql",
+		"000017_add_polygon_floor.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -165,7 +166,7 @@ func createZoneForSync(t *testing.T, zoneRepo models.ZoneRepository, teamID, map
 	if err != nil {
 		t.Fatalf("failed to create zone: %v", err)
 	}
-	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 	if name != "" {
@@ -194,7 +195,7 @@ func TestTemplateSyncService_CreateZone_UpdatesTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create zone 3: %v", err)
 	}
-	if _, err := f.zoneRepo.AddPolygon(zone3.ID, pts3, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone3.ID, pts3, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon 3: %v", err)
 	}
 

@@ -63,7 +63,8 @@ var (
 	ErrTemplateAlreadyExists = errors.New("template already exists for this map")
 	ErrTemplateNotPublic     = errors.New("template is not public")
 
-	ErrVersionNotFound = errors.New("version not found")
+	ErrVersionNotFound   = errors.New("version not found")
+	ErrInvalidFloorValue = errors.New("invalid floor value: must be 'haut', 'bas', or empty")
 )
 
 var (

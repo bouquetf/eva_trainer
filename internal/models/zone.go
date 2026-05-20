@@ -26,6 +26,7 @@ type ZonePolygon struct {
 	ZoneID     int       `json:"zone_id"`
 	Points     []Point   `json:"points"`
 	OrderIndex int       `json:"order_index"`
+	Floor      *string   `json:"floor"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -81,6 +82,16 @@ func scanPolygonData(data []byte) ([]Point, error) {
 
 func marshalPoints(points []Point) ([]byte, error) {
 	return json.Marshal(points)
+}
+
+func validateFloor(floor *string) error {
+	if floor == nil {
+		return nil
+	}
+	if *floor != "haut" && *floor != "bas" && *floor != "" {
+		return ErrInvalidFloorValue
+	}
+	return nil
 }
 
 func (r *zoneRepo) Create(teamID, mapID int) (*Zone, error) {
@@ -299,9 +310,13 @@ func (r *zoneRepo) Delete(zoneID int) error {
 	return tx.Commit()
 }
 
-func (r *zoneRepo) AddPolygon(zoneID int, points []Point, orderIndex int) (*ZonePolygon, error) {
+func (r *zoneRepo) AddPolygon(zoneID int, points []Point, orderIndex int, floor *string) (*ZonePolygon, error) {
 	if len(points) < 3 {
 		return nil, ErrPolygonHasTooFewPoints
+	}
+
+	if err := validateFloor(floor); err != nil {
+		return nil, err
 	}
 
 	data, err := marshalPoints(points)
@@ -311,22 +326,23 @@ func (r *zoneRepo) AddPolygon(zoneID int, points []Point, orderIndex int) (*Zone
 
 	p := &ZonePolygon{}
 	err = r.db.QueryRow(
-		`INSERT INTO zone_polygons (zone_id, polygon_data, order_index)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO zone_polygons (zone_id, polygon_data, order_index, floor)
+		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, zone_id, order_index, created_at`,
-		zoneID, data, orderIndex,
+		zoneID, data, orderIndex, floor,
 	).Scan(&p.ID, &p.ZoneID, &p.OrderIndex, &p.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add polygon: %w", err)
 	}
 
 	p.Points = points
+	p.Floor = floor
 	return p, nil
 }
 
 func (r *zoneRepo) GetPolygons(zoneID int) ([]ZonePolygon, error) {
 	rows, err := r.db.Query(
-		`SELECT id, zone_id, polygon_data, order_index, created_at
+		`SELECT id, zone_id, polygon_data, order_index, floor, created_at
 		 FROM zone_polygons WHERE zone_id = $1 ORDER BY order_index`,
 		zoneID,
 	)
@@ -339,7 +355,8 @@ func (r *zoneRepo) GetPolygons(zoneID int) ([]ZonePolygon, error) {
 	for rows.Next() {
 		var p ZonePolygon
 		var data []byte
-		if err := rows.Scan(&p.ID, &p.ZoneID, &data, &p.OrderIndex, &p.CreatedAt); err != nil {
+		var floor sql.NullString
+		if err := rows.Scan(&p.ID, &p.ZoneID, &data, &p.OrderIndex, &floor, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		points, err := scanPolygonData(data)
@@ -347,6 +364,9 @@ func (r *zoneRepo) GetPolygons(zoneID int) ([]ZonePolygon, error) {
 			return nil, fmt.Errorf("failed to scan polygon data for polygon %d: %w", p.ID, err)
 		}
 		p.Points = points
+		if floor.Valid {
+			p.Floor = &floor.String
+		}
 		polygons = append(polygons, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -410,6 +430,28 @@ func (r *zoneRepo) PolygonCount(zoneID int) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (r *zoneRepo) SetPolygonFloor(polygonID int, floor *string) error {
+	if err := validateFloor(floor); err != nil {
+		return err
+	}
+
+	result, err := r.db.Exec(
+		`UPDATE zone_polygons SET floor = $1 WHERE id = $2`,
+		floor, polygonID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set polygon floor: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrPolygonNotFound
+	}
+	return nil
 }
 
 func (r *zoneRepo) SetName(zoneID int, name string) error {

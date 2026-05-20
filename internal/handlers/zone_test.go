@@ -33,6 +33,7 @@ var zoneMigrationFiles = []string{
 	"000004_add_discord_username.up.sql",
 	"000011_add_zone_polygon_constraints.up.sql",
 	"000013_add_zone_versions.up.sql",
+	"000017_add_polygon_floor.up.sql",
 }
 
 func setupZoneTestDB(t *testing.T) *sql.DB {
@@ -214,7 +215,7 @@ func TestZoneHandler_ListZones_Success(t *testing.T) {
 		t.Fatalf("failed to create zone: %v", err)
 	}
 	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 	if err := f.zoneRepo.SetName(zone.ID, "Zone A"); err != nil {
@@ -226,7 +227,7 @@ func TestZoneHandler_ListZones_Success(t *testing.T) {
 		t.Fatalf("failed to create zone 2: %v", err)
 	}
 	pts2 := []models.Point{{X: 100, Y: 100}, {X: 200, Y: 100}, {X: 150, Y: 200}}
-	if _, err := f.zoneRepo.AddPolygon(zone2.ID, pts2, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone2.ID, pts2, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon 2: %v", err)
 	}
 	if err := f.zoneRepo.SetName(zone2.ID, "Zone B"); err != nil {
@@ -368,7 +369,7 @@ func TestZoneHandler_DeleteZone_Success(t *testing.T) {
 		t.Fatalf("failed to create zone: %v", err)
 	}
 	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 
@@ -416,7 +417,7 @@ func TestZoneHandler_AddPolygon_Success(t *testing.T) {
 	}
 
 	pts := []models.Point{{X: 100, Y: 100}, {X: 200, Y: 200}, {X: 300, Y: 100}}
-	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 
@@ -455,7 +456,7 @@ func TestZoneHandler_RemovePolygon_LastDeletesZone(t *testing.T) {
 		t.Fatalf("failed to create zone: %v", err)
 	}
 	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0)
+	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
 	if err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
@@ -492,7 +493,7 @@ func TestZoneHandler_SetZoneName_Success(t *testing.T) {
 		t.Fatalf("failed to create zone: %v", err)
 	}
 	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 
@@ -532,7 +533,7 @@ func TestZoneHandler_AddPolygonPoint_Success(t *testing.T) {
 		t.Fatalf("failed to create zone: %v", err)
 	}
 	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0)
+	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
 	if err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
@@ -578,7 +579,7 @@ func TestZoneHandler_RemovePolygonPoint_FewerThan3Returns400(t *testing.T) {
 		t.Fatalf("failed to create zone: %v", err)
 	}
 	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
-	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0)
+	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
 	if err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
@@ -693,7 +694,7 @@ func TestZoneHandler_ModifyWithoutLock_Returns423(t *testing.T) {
 	}
 
 	pts := []models.Point{{X: 100, Y: 100}, {X: 200, Y: 200}, {X: 300, Y: 100}}
-	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0); err != nil {
+	if _, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 
@@ -709,5 +710,169 @@ func TestZoneHandler_ModifyWithoutLock_Returns423(t *testing.T) {
 
 	if w.Code != http.StatusLocked {
 		t.Errorf("expected 423, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func ptr(s string) *string {
+	return &s
+}
+
+func TestZoneHandler_BatchSetFloor_Haut(t *testing.T) {
+	f := setupZoneTest(t)
+	acquireLockForTest(t, f)
+
+	zone, err := f.zoneRepo.Create(f.team.ID, f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("failed to create zone: %v", err)
+	}
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to add polygon: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	body := fmt.Sprintf(`{"actions":[{"type":"set_floor","polygon_id":%d,"zone_id":%d,"floor":"haut"}]}`, polygon.ID, zone.ID)
+	w := executeZoneRequest(t, f.zoneHandler.BatchActions, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/zones/batch", f.team.ID, f.mapObj.ID),
+		body, f.user, f.token, params)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var floor sql.NullString
+	err = f.db.QueryRow("SELECT floor FROM zone_polygons WHERE id = $1", polygon.ID).Scan(&floor)
+	if err != nil {
+		t.Fatalf("failed to query floor: %v", err)
+	}
+	if !floor.Valid || floor.String != "haut" {
+		t.Errorf("expected floor 'haut', got %v", floor)
+	}
+}
+
+func TestZoneHandler_BatchSetFloor_Bas(t *testing.T) {
+	f := setupZoneTest(t)
+	acquireLockForTest(t, f)
+
+	zone, err := f.zoneRepo.Create(f.team.ID, f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("failed to create zone: %v", err)
+	}
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to add polygon: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	body := fmt.Sprintf(`{"actions":[{"type":"set_floor","polygon_id":%d,"zone_id":%d,"floor":"bas"}]}`, polygon.ID, zone.ID)
+	w := executeZoneRequest(t, f.zoneHandler.BatchActions, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/zones/batch", f.team.ID, f.mapObj.ID),
+		body, f.user, f.token, params)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var floor sql.NullString
+	err = f.db.QueryRow("SELECT floor FROM zone_polygons WHERE id = $1", polygon.ID).Scan(&floor)
+	if err != nil {
+		t.Fatalf("failed to query floor: %v", err)
+	}
+	if !floor.Valid || floor.String != "bas" {
+		t.Errorf("expected floor 'bas', got %v", floor)
+	}
+}
+
+func TestZoneHandler_BatchSetFloor_Null(t *testing.T) {
+	f := setupZoneTest(t)
+	acquireLockForTest(t, f)
+
+	zone, err := f.zoneRepo.Create(f.team.ID, f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("failed to create zone: %v", err)
+	}
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to add polygon: %v", err)
+	}
+	if err := f.zoneRepo.SetPolygonFloor(polygon.ID, ptr("haut")); err != nil {
+		t.Fatalf("failed to set floor: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	body := fmt.Sprintf(`{"actions":[{"type":"set_floor","polygon_id":%d,"zone_id":%d,"floor":null}]}`, polygon.ID, zone.ID)
+	w := executeZoneRequest(t, f.zoneHandler.BatchActions, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/zones/batch", f.team.ID, f.mapObj.ID),
+		body, f.user, f.token, params)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var floor sql.NullString
+	err = f.db.QueryRow("SELECT floor FROM zone_polygons WHERE id = $1", polygon.ID).Scan(&floor)
+	if err != nil {
+		t.Fatalf("failed to query floor: %v", err)
+	}
+	if floor.Valid {
+		t.Errorf("expected NULL floor, got %v", floor.String)
+	}
+}
+
+func TestZoneHandler_BatchSetFloor_InvalidValue(t *testing.T) {
+	f := setupZoneTest(t)
+	acquireLockForTest(t, f)
+
+	zone, err := f.zoneRepo.Create(f.team.ID, f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("failed to create zone: %v", err)
+	}
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	polygon, err := f.zoneRepo.AddPolygon(zone.ID, pts, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to add polygon: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	body := fmt.Sprintf(`{"actions":[{"type":"set_floor","polygon_id":%d,"zone_id":%d,"floor":"invalid"}]}`, polygon.ID, zone.ID)
+	w := executeZoneRequest(t, f.zoneHandler.BatchActions, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/zones/batch", f.team.ID, f.mapObj.ID),
+		body, f.user, f.token, params)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestZoneHandler_BatchSetFloor_NonExistentPolygon(t *testing.T) {
+	f := setupZoneTest(t)
+	acquireLockForTest(t, f)
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	body := `{"actions":[{"type":"set_floor","polygon_id":99999,"floor":"haut"}]}`
+	w := executeZoneRequest(t, f.zoneHandler.BatchActions, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/zones/batch", f.team.ID, f.mapObj.ID),
+		body, f.user, f.token, params)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }

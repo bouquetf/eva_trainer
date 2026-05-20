@@ -251,7 +251,7 @@ func createTestZone(t *testing.T, zoneRepo models.ZoneRepository, teamID, mapID 
 	if err != nil {
 		t.Fatalf("failed to create zone: %v", err)
 	}
-	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0); err != nil {
+	if _, err := zoneRepo.AddPolygon(zone.ID, points, 0, nil); err != nil {
 		t.Fatalf("failed to add polygon: %v", err)
 	}
 	if name != "" {

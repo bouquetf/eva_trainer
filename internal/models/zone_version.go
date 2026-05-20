@@ -24,6 +24,7 @@ type VersionSnapshot struct {
 type SnapshotPolygon struct {
 	Points     []Point `json:"points"`
 	OrderIndex int     `json:"order_index"`
+	Floor      *string `json:"floor,omitempty"`
 }
 
 type zoneVersionRepo struct {

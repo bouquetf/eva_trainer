@@ -105,6 +105,40 @@ export const ZoneOverlay: React.FC<ZoneOverlayProps> = ({
                       />
                     );
                   })}
+                  {polygon.floor && (() => {
+                    const pts = polygon.points;
+                    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+                    const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+                    const iconSize = 30;
+
+                    if (polygon.floor === 'haut') {
+                      const arrowTip = cy - iconSize * 0.6;
+                      return (
+                        <g key={`floor-${polygon.id}-${pIdx}`} style={{ pointerEvents: 'none' }}>
+                          <line x1={cx - iconSize} y1={cy} x2={cx + iconSize} y2={cy} stroke="white" strokeWidth={2} />
+                          <polygon
+                            points={`${cx},${arrowTip} ${cx - iconSize * 0.4},${cy} ${cx + iconSize * 0.4},${cy}`}
+                            fill="white"
+                          />
+                        </g>
+                      );
+                    }
+
+                    if (polygon.floor === 'bas') {
+                      const arrowTip = cy + iconSize * 0.6;
+                      return (
+                        <g key={`floor-${polygon.id}-${pIdx}`} style={{ pointerEvents: 'none' }}>
+                          <line x1={cx - iconSize} y1={cy} x2={cx + iconSize} y2={cy} stroke="white" strokeWidth={2} />
+                          <polygon
+                            points={`${cx},${arrowTip} ${cx - iconSize * 0.4},${cy} ${cx + iconSize * 0.4},${cy}`}
+                            fill="white"
+                          />
+                        </g>
+                      );
+                    }
+
+                    return null;
+                  })()}
                 </g>
               );
             })}
