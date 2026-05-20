@@ -1,5 +1,7 @@
 # Story #028 : Mode "Navigation en tant que" pour administrateurs
 
+TODO: spécifier correctement la fonctionnalité
+
 ## Description
 En tant qu'administrateur, je veux pouvoir naviguer sur le site en tant qu'utilisateur, membre d'une équipe, éditeur, cocapitaine et capitaine, avec les restrictions d'accès correspondant à chaque rôle, afin de tester et valider le comportement du site depuis la perspective de chaque rôle.
 
