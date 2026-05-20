@@ -1,4 +1,4 @@
-## 2026-05-14
+﻿## 2026-05-14
 
 * Ne pas afficher le bouton éditeur pour les membres [PROCESSED: story-024]
 * Afficher en cas d'erreur 5 secondes à la révision [PROCESSED: story-019]
@@ -17,3 +17,9 @@
 * Changer le titre de l'app à Eva-Trainer et non frontend [PROCESSED: story-026]
 * Le Copier/coller d'une forme n'est plus accessible dans l'éditeur [PROCESSED: story-027]
 * En tant qu'administrateur, je veux avoir la possibilité de naviguer sur le site en tant qu'utilisateur, membre d'une équipe donnée, cocapitanie de l'équipe et capitaine. Cela cache les autres fonctionnalités auxquelles ce rôle n'a pas accès à l'exception du panneau d'administration. La fonctionnalité s'active/configure et se désactive dans le panel d'administration. [PROCESSED: story-028]
+
+## 2026-05-19
+
+* Ajouter un indicateur d'étage sur une zone (Haut/Bas). Click droit -> étage -> Haut/Bas/Effacer. Flèche vers le haut et trait au dessus pour Haut, Flèche vers le bas et trait dessous pour bas. [PROCESSED: story-029]
+* Il semble y avoir des bugs lorsqu’un utilisateur tente de rejoindre une équipe et lorsqu’un admin tente d’accepter une demande. Faudrait retester ces fonctionnalités en e2e. [PROCESSED: story-030]
+* Dans l’interface d’équipe : le paragraphe "gestion des rôles" est inutile, supprime le bloc. Demandes d’adhésions doit être dans le bloc "Invitations". La zone membres doit être sous "cartes". Possibilité de réduire sous forme d’accordéon les blocs : Membres, Invitations, Zone de danger. [PROCESSED: story-031]

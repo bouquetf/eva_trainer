@@ -150,7 +150,7 @@ func (h *MapHandler) PurgeObsoleteMaps(c *gin.Context) {
 		return
 	}
 
-	var purgedIDs []int
+	purgedIDs := []int{}
 	for _, m := range obsoleteMaps {
 		if err := h.mapRepo.Delete(m.ID); err == nil {
 			purgedIDs = append(purgedIDs, m.ID)
