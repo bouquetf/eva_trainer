@@ -1,22 +1,25 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import Login from '../pages/Login'
-import Callback from '../pages/Callback'
-import Editor from '../pages/Editor'
-import History from '../pages/History'
-import Revision from '../pages/Revision'
-import NotFound from '../pages/NotFound'
 import AppLayout from '../components/AppLayout'
 import AdminGuard from '../components/AdminGuard'
+import Login from '../pages/Login'
+import Callback from '../pages/Callback'
+import TeamSettings from '../pages/TeamSettings'
 import TeamsList from '../pages/TeamsList'
 import CreateTeam from '../pages/CreateTeam'
-import TeamSettings from '../pages/TeamSettings'
+import History from '../pages/History'
 import ZoneList from '../pages/ZoneList'
 import InviteAccept from '../pages/InviteAccept'
 import ProfileSettings from '../pages/ProfileSettings'
-import AdminDashboard from '../pages/AdminDashboard'
+import NotFound from '../pages/NotFound'
+
+const Editor = lazy(() => import('../pages/Editor'))
+const Revision = lazy(() => import('../pages/Revision'))
+const AdminDashboard = lazy(() => import('../pages/AdminDashboard'))
 
 export function AppRoutes() {
   return (
+    <Suspense fallback={<div className="spinner" />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/callback" element={<Callback />} />
@@ -36,5 +39,6 @@ export function AppRoutes() {
       <Route path="/invite/:token" element={<InviteAccept />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   )
 }

@@ -209,6 +209,12 @@ export default function Revision() {
   }, [currentQuestion])
 
   useEffect(() => {
+    if (!isAnswerSubmitted && inputRef.current && step === 'active') {
+      inputRef.current.focus()
+    }
+  }, [isAnswerSubmitted, step])
+
+  useEffect(() => {
     if (!showFeedback) return
     const handler = () => handleSkipFeedback()
     document.addEventListener('mousedown', handler)

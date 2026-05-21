@@ -11,6 +11,9 @@ async function globalSetup(config: FullConfig) {
   const projectRoot = path.resolve(process.cwd(), '..');
 
   try {
+    console.log('Cleaning up previous Docker state...');
+    execSync('docker compose down -v', { stdio: 'inherit', cwd: projectRoot });
+
     console.log('Starting Docker Compose...');
     execSync('docker compose up -d', { stdio: 'inherit', cwd: projectRoot });
 

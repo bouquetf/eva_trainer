@@ -22,11 +22,11 @@ test.describe('Feature: Invitations', () => {
     await page.goto('/teams');
 
     await expect(page.getByText(/invitations en attente/i)).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(testTeam.name)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(testTeam.name).first()).toBeVisible({ timeout: 5000 });
 
     await page.getByRole('button', { name: /accepter/i }).click();
     await expect(page.getByText(/invitations en attente/i)).not.toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(testTeam.name)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(testTeam.name).first()).toBeVisible({ timeout: 5000 });
 
     await queryDB('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [testTeam.id, regularUser.id]);
     await queryDB('DELETE FROM team_invitations WHERE team_id = $1', [testTeam.id]);
@@ -129,9 +129,13 @@ test.describe('Feature: Invitations', () => {
       await joinBtn.first().click();
       await expect(discoverSection.getByText(/demande envoyée/i)).toBeVisible({ timeout: 10000 });
 
-      await discoverSection.getByRole('button', { name: /annuler/i }).click();
-
-      await expect(discoverSection.getByRole('button', { name: /demander.*rejoindre/i }).first()).toBeVisible({ timeout: 10000 });
+      const teamCard = page.locator('.discover-team-card').first();
+      const [cancelResp] = await Promise.all([
+        page.waitForResponse(resp => resp.url().includes('/join-requests/mine') && resp.request().method() === 'DELETE'),
+        teamCard.getByRole('button', { name: /annuler/i }).click(),
+      ]);
+      expect(cancelResp.ok()).toBe(true);
+      await expect(discoverSection.getByRole('button', { name: /demander.*rejoindre/i }).first()).toBeVisible({ timeout: 5000 });
       await expect(discoverSection.getByText(/demande envoyée/i)).not.toBeVisible();
     });
 
@@ -155,11 +159,16 @@ test.describe('Feature: Invitations', () => {
 
     const joinBtn = firstCard.getByRole('button', { name: /demander.*rejoindre/i });
     await expect(joinBtn).toBeVisible({ timeout: 10000 });
-    await joinBtn.click();
 
-    await expect(page.getByText(/déjà.*demande|déjà.*attente/i)).toBeVisible({ timeout: 10000 });
+    const [joinResp] = await Promise.all([
+      page.waitForResponse(resp => resp.url().endsWith('/join-requests') && resp.request().method() === 'POST'),
+      joinBtn.click(),
+    ]);
+    expect(joinResp.status()).toBe(400);
 
-    await queryDB('DELETE FROM team_join_requests WHERE team_id = $1', [teamId]);
+    await expect(page.getByText(/déjà.*demande|déjà.*attente/i)).toBeVisible({ timeout: 5000 });
+
+    await queryDB('DELETE FROM team_join_requests WHERE team_id = $1 AND user_id = $2', [teamId, regularUser.id]);
   });
   });
 

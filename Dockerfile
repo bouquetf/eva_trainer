@@ -1,10 +1,10 @@
 # Stage 1: Frontend build
-FROM node:20-alpine AS frontend
+FROM node:22-alpine AS frontend
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 WORKDIR /app
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm install -g npm@latest && npm ci
 COPY frontend/ .
 RUN npm run build
 
