@@ -14,6 +14,7 @@ import { useTeamRole } from '../hooks/useTeamRole'
 import ConfirmDialog from '../components/ConfirmDialog'
 import MemberList from '../components/MemberList'
 import TransferCaptaincyDialog from '../components/TransferCaptaincyDialog'
+import CollapsibleSection from '../components/CollapsibleSection'
 
 function TeamSettings() {
   const { id } = useParams<{ id: string }>()
@@ -309,39 +310,6 @@ function TeamSettings() {
         )}
       </div>
 
-      {canManageRoles && (
-        <div className="section">
-          <h2 className="section-title">Gestion des rôles</h2>
-          {isCaptain && (
-            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>
-              En tant que Capitaine, vous pouvez : assigner tous les rôles, promouvoir un cocapitaine, transférer la capitainerie.
-            </p>
-          )}
-          {isCocaptain && (
-            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>
-              En tant que Co-capitaine, vous pouvez : assigner les rôles Éditeur et Membre.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="section">
-        <h2 className="section-title">Membres ({members.length})</h2>
-        {membersLoading ? (
-          <div className="spinner" />
-        ) : (
-          <MemberList
-            teamId={teamId}
-            members={members}
-            currentUserId={currentUser?.id ?? 0}
-            currentUserRole={currentUserRole ?? ''}
-            onRoleChanged={() => {
-              queryClient.invalidateQueries({ queryKey: ['team-members', teamId] })
-            }}
-          />
-        )}
-      </div>
-
       <div className="section">
         <h2 className="section-title">Cartes ({maps.length})</h2>
         {splits.length > 0 && (
@@ -421,9 +389,24 @@ function TeamSettings() {
         )}
       </div>
 
+      <CollapsibleSection title="Membres" count={members.length}>
+        {membersLoading ? (
+          <div className="spinner" />
+        ) : (
+          <MemberList
+            teamId={teamId}
+            members={members}
+            currentUserId={currentUser?.id ?? 0}
+            currentUserRole={currentUserRole ?? ''}
+            onRoleChanged={() => {
+              queryClient.invalidateQueries({ queryKey: ['team-members', teamId] })
+            }}
+          />
+        )}
+      </CollapsibleSection>
+
       {canManageRoles && (
-        <div className="section">
-          <h2 className="section-title">Invitations</h2>
+        <CollapsibleSection title="Invitations" defaultOpen={pendingRequests.length > 0}>
 
           <div style={{ marginBottom: 16 }}>
             <h3>Inviter par pseudo</h3>
@@ -518,47 +501,45 @@ function TeamSettings() {
               </table>
             )}
           </div>
-        </div>
-      )}
 
-      {canManageRoles && (
-        <div className="section">
-          <h2 className="section-title">Demandes d'adhésion ({pendingRequests.length})</h2>
-          {pendingRequests.length === 0 ? (
-            <p style={{ color: '#888', fontSize: 14 }}>Aucune demande en attente.</p>
-          ) : (
-            <div>
-              {pendingRequests.map(req => (
-                <div key={req.id} className="join-request-item">
-                  <div className="join-request-info">
-                    <span className="join-request-user">
-                      {req.display_name || `#${req.user_id}`}
-                    </span>
-                    <span className="join-request-date">
-                      {new Date(req.created_at).toLocaleDateString()}
-                    </span>
+          <div>
+            <h3>Demandes d'adhésion ({pendingRequests.length})</h3>
+            {pendingRequests.length === 0 ? (
+              <p style={{ color: '#888', fontSize: 14 }}>Aucune demande en attente.</p>
+            ) : (
+              <div>
+                {pendingRequests.map(req => (
+                  <div key={req.id} className="join-request-item">
+                    <div className="join-request-info">
+                      <span className="join-request-user">
+                        {req.display_name || `#${req.user_id}`}
+                      </span>
+                      <span className="join-request-date">
+                        {new Date(req.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="join-request-actions">
+                      <button
+                        className="btn-primary btn-small"
+                        onClick={() => acceptRequestMutation.mutate(req.id)}
+                        disabled={acceptRequestMutation.isPending}
+                      >
+                        Accepter
+                      </button>
+                      <button
+                        className="btn-danger btn-small"
+                        onClick={() => declineRequestMutation.mutate(req.id)}
+                        disabled={declineRequestMutation.isPending}
+                      >
+                        Refuser
+                      </button>
+                    </div>
                   </div>
-                  <div className="join-request-actions">
-                    <button
-                      className="btn-primary btn-small"
-                      onClick={() => acceptRequestMutation.mutate(req.id)}
-                      disabled={acceptRequestMutation.isPending}
-                    >
-                      Accepter
-                    </button>
-                    <button
-                      className="btn-danger btn-small"
-                      onClick={() => declineRequestMutation.mutate(req.id)}
-                      disabled={declineRequestMutation.isPending}
-                    >
-                      Refuser
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
       )}
 
       {!isCaptain && (
@@ -574,8 +555,7 @@ function TeamSettings() {
       )}
 
       {canDeleteTeam && (
-        <div className="section danger">
-          <h2 className="section-title">Zone de danger</h2>
+        <CollapsibleSection title="Zone de danger" className="danger">
           <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>
             Supprimer l'équipe effacera toutes les zones associées. Cette action est irréversible.
           </p>
@@ -607,7 +587,7 @@ function TeamSettings() {
               </button>
             </div>
           )}
-        </div>
+        </CollapsibleSection>
       )}
 
       <ConfirmDialog

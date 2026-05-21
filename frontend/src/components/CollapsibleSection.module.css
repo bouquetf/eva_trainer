@@ -1,0 +1,60 @@
+.collapsibleSection {
+  margin: 24px 0;
+  padding: 20px;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.header:hover {
+  opacity: 0.85;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: #ccc;
+}
+
+.chevron {
+  transition: transform 0.3s ease;
+  font-size: 14px;
+  color: #888;
+  display: inline-block;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.content {
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.contentInner {
+  padding-top: 16px;
+}
+
+.collapsibleSection:global(.danger) {
+  border-color: rgba(255, 69, 58, 0.3);
+}
+
+.collapsibleSection:global(.danger) .title {
+  color: #ff453a;
+}

@@ -7,6 +7,7 @@ test.describe('Feature: Suppression d\'équipe', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Zone de danger/ }).click();
     await page.fill('#delete-confirm', testTeam.name);
     await page.getByRole('button', { name: /supprimer.*équipe/i }).click();
 

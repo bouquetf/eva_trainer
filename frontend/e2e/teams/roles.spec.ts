@@ -13,7 +13,8 @@ test.describe('Feature: Gestion des rôles', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
-    await page.getByRole('button', { name: /éditeur/i }).first().click();
+    await page.getByRole('button', { name: /Membres/ }).first().click();
+    await page.locator('.member-action-btn', { hasText: 'Éditeur' }).click();
     await page.getByRole('button', { name: /confirmer/i }).click();
 
     await expect(page.locator('.member-item').filter({ hasText: 'Éditeur' })).toBeVisible({ timeout: 10000 });
@@ -31,6 +32,7 @@ test.describe('Feature: Gestion des rôles', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Membres/ }).first().click();
     await page.getByRole('button', { name: /cocapitaine/i }).first().click();
     await page.getByRole('button', { name: /confirmer/i }).click();
 
@@ -52,6 +54,7 @@ test.describe('Feature: Gestion des rôles', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Membres/ }).first().click();
     await page.locator('.member-action-btn', { hasText: 'Cocapitaine' }).first().click();
     await page.getByRole('button', { name: /confirmer/i }).click();
 
@@ -72,6 +75,7 @@ test.describe('Feature: Gestion des rôles', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Membres/ }).first().click();
     const adminBadge = page.locator('.role-badge-admin');
     await expect(adminBadge.first()).toBeVisible();
 

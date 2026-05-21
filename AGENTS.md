@@ -53,7 +53,7 @@ go test ./internal/services/ ./internal/middleware/ ./pkg/...
 go test -tags=integration ./internal/models/ ./internal/handlers/
 ```
 
-## E2E Status (88/88 — 100%)
+## E2E Status (92/92 — 100%)
 
 ### Notes de build
 - Le Go binary embarque `frontend/dist` via `//go:embed`. Après toute modification de composants frontend, reconstruire avant les tests E2E : `cd frontend && npm run build && npm run test:e2e`.
@@ -75,3 +75,16 @@ go test -tags=integration ./internal/models/ ./internal/handlers/
 13. `frontend/src/components/MapEditor/Toolbar.tsx` + `.module.css` : ajout bouton "?" + prop `onHelpClick`.
 14. `frontend/src/components/MapEditor/MapEditor.tsx` : intégration popup d'aide, raccourcis F1/Ctrl+?/Cmd+?.
 15. `frontend/e2e/editor/help-popup.spec.ts` : 3 tests E2E pour la popup d'aide.
+16. **Story #031** — Réorganisation interface équipe :
+    - `frontend/src/components/CollapsibleSection.tsx` + `.module.css` : nouveau composant accordéon réutilisable (9 tests unitaires).
+    - `frontend/src/components/CollapsibleSection.test.tsx` : 9 tests unitaires.
+    - `frontend/src/pages/TeamSettings.tsx` : suppression bloc Gestion des rôles, sections dans l'ordre Infos → Cartes → Membres → Invitations (avec Demandes) → Quitter → Danger.
+    - `frontend/e2e/teams/interface.spec.ts` : 4 tests E2E pour la réorganisation.
+    - **Fixes tests E2E existants** (12 tests échouaient car Membres/Invitations/Danger sont repliés par défaut) :
+      - `deletion.spec.ts` 7.1 : ouvrir Zone de danger avant de supprimer.
+      - `invitations.spec.ts` 4.1, 4.2, 3.1, 3.2 : ouvrir Invitations avant d'interagir.
+      - `invitations.spec.ts` 2.1 : ouvrir Membres après acceptation + `dispatchEvent('click')` pour éviter l'interception.
+      - `invitations.spec.ts` 2.2, 2.3 : `dispatchEvent('click')` pour éviter l'interception par l'en-tête Membres.
+      - `roles.spec.ts` 8.1, 8.2, 8.3, 8.4 : ouvrir Membres avant d'interagir avec les rôles.
+      - `roles.spec.ts` 8.1 : remplacer `getByRole('button', /éditeur/).first()` par `.member-action-btn` pour éviter le bouton "Éditeur" de la section Cartes.
+      - `transfer.spec.ts` 9.1 : ouvrir Zone de danger avant transfert.

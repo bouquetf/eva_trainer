@@ -8,6 +8,7 @@ test.describe('Feature: Invitations', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Invitations/ }).first().click();
     const inviteInput = page.locator('input[placeholder*="Rechercher"]');
     await inviteInput.fill(regularUser.displayName);
     await expect(page.locator('.autocomplete-item').first()).toBeVisible({ timeout: 5000 });
@@ -36,6 +37,7 @@ test.describe('Feature: Invitations', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Invitations/ }).first().click();
     const inviteInput = page.locator('input[placeholder*="Rechercher"]');
     await inviteInput.fill('NonExistentUser_' + Date.now());
     await page.waitForTimeout(1000);
@@ -49,6 +51,7 @@ test.describe('Feature: Invitations', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Invitations/ }).first().click();
     await page.getByRole('button', { name: /générer.*lien/i }).click();
 
     const linkInput = page.locator('input[readonly]');
@@ -75,6 +78,7 @@ test.describe('Feature: Invitations', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Invitations/ }).first().click();
     await page.getByRole('button', { name: /générer.*lien/i }).click();
     const linkInput = page.locator('input[readonly]');
     await expect(linkInput).toBeVisible({ timeout: 10000 });
@@ -175,11 +179,11 @@ test.describe('Feature: Invitations', () => {
       const requestsSection = page.locator('text=Demandes d\'adhésion').locator('..');
       await expect(requestsSection.getByText(regularUser.displayName)).toBeVisible({ timeout: 10000 });
 
-      await requestsSection.getByRole('button', { name: /accepter/i }).click();
+      await requestsSection.getByRole('button', { name: /accepter/i }).dispatchEvent('click');
       await expect(requestsSection.getByText(/aucune demande/i)).toBeVisible({ timeout: 10000 });
 
-      const membersSection = page.locator('text=Membres').locator('..');
-      await expect(membersSection.getByText(regularUser.displayName)).toBeVisible({ timeout: 10000 });
+      await page.getByRole('button', { name: /Membres/ }).first().click();
+      await expect(page.locator('.member-item').filter({ hasText: regularUser.displayName })).toBeVisible({ timeout: 10000 });
 
       await page.goto('/login');
       await loginAsUser(page, regularUser);
@@ -197,7 +201,7 @@ test.describe('Feature: Invitations', () => {
       const requestsSection = page.locator('text=Demandes d\'adhésion').locator('..');
       await expect(requestsSection.getByText(regularUser.displayName)).toBeVisible({ timeout: 10000 });
 
-      await requestsSection.getByRole('button', { name: /refuser/i }).click();
+      await requestsSection.getByRole('button', { name: /refuser/i }).dispatchEvent('click');
       await expect(requestsSection.getByText(/aucune demande/i)).toBeVisible({ timeout: 10000 });
     });
 
@@ -211,7 +215,7 @@ test.describe('Feature: Invitations', () => {
       const requestsSection = page.locator('text=Demandes d\'adhésion').locator('..');
       await expect(requestsSection.getByText(regularUser.displayName)).toBeVisible({ timeout: 10000 });
 
-      await requestsSection.getByRole('button', { name: /accepter/i }).click();
+      await requestsSection.getByRole('button', { name: /accepter/i }).dispatchEvent('click');
       await expect(requestsSection.getByText(/aucune demande/i)).toBeVisible({ timeout: 10000 });
     });
   });

@@ -13,6 +13,7 @@ test.describe('Feature: Transfert de capitainerie', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${testTeam.id}`);
 
+    await page.getByRole('button', { name: /Zone de danger/ }).click();
     await page.getByRole('button', { name: /transférer.*capitainerie/i }).click();
 
     await page.selectOption('.transfer-select', String(regularUser.id));
