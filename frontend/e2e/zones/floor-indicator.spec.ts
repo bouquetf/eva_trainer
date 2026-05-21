@@ -20,7 +20,9 @@ test.describe('Feature: Indicateur d\'étage (Haut/Bas)', () => {
     await page.goto('/login');
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${team.id}/editor/${map.id}`);
+    await page.getByText('Floor Zone').click();
     await page.waitForSelector('polygon[style*="cursor: pointer"]');
+    await page.locator('polygon[style*="cursor: pointer"]').first().click();
 
     return { team, map, token };
   }
@@ -41,8 +43,8 @@ test.describe('Feature: Indicateur d\'étage (Haut/Bas)', () => {
     const etageItem = page.locator('span:text("Étage")');
     await etageItem.hover();
 
-    const submenu = page.locator('div[style*="position: absolute"][style*="background: #1e1e1e"]');
-    await expect(submenu).toBeVisible();
+    const submenu = page.locator('div[style*="position: absolute"]');
+    await expect(submenu.first()).toBeVisible();
 
     await submenu.locator('div:text("Haut")').click();
     await page.waitForTimeout(500);
@@ -50,7 +52,11 @@ test.describe('Feature: Indicateur d\'étage (Haut/Bas)', () => {
     const indicator = page.locator('g[style*="pointer-events: none"]');
     await expect(indicator.first()).toBeVisible();
 
+    await page.getByRole('button', { name: 'Sauvegarder' }).click();
+    await page.waitForTimeout(500);
+
     await page.reload();
+    await page.getByText('Floor Zone').click();
     await page.waitForSelector('polygon[style*="cursor: pointer"]');
 
     const indicatorAfterReload = page.locator('g[style*="pointer-events: none"]');

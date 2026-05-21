@@ -6,6 +6,7 @@ export { expect } from '@playwright/test';
 export interface TestFixtures {
   adminUser: TestUser;
   regularUser: TestUser;
+  cocaptainUser: TestUser;
   testTeam: TestTeam;
   testMap: TestMap;
 }
@@ -29,6 +30,17 @@ export const test = base.extend<TestFixtures>({
     const team = await seedTeam('E2E Team ' + Date.now(), adminUser.id);
     await use(team);
     await queryDB('DELETE FROM teams WHERE id = $1', [team.id]);
+  },
+
+  cocaptainUser: async ({ testTeam }, use) => {
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const user = await seedUser('e2e-cocaptain-' + Date.now() + '_' + suffix, { isAdmin: false });
+    await queryDB(
+      `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'cocaptain')`,
+      [testTeam.id, user.id],
+    );
+    await use(user);
+    await queryDB('DELETE FROM users WHERE discord_id = $1', [user.discordId]);
   },
 
   testMap: async ({}, use) => {

@@ -123,3 +123,21 @@ export async function seedZone(
 
   return { id: zoneId, name };
 }
+
+export async function expireInvitationLink(token: string): Promise<void> {
+  await queryDB(
+    `UPDATE team_invitations SET expires_at = NOW() - INTERVAL '1 hour' WHERE token = $1`,
+    [token],
+  );
+}
+
+export async function seedJoinRequest(teamId: number, userId: number): Promise<{ id: number } | null> {
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO team_join_requests (team_id, user_id, status)
+     VALUES ($1, $2, 'pending')
+     ON CONFLICT (team_id, user_id) DO NOTHING
+     RETURNING id`,
+    [teamId, userId],
+  );
+  return rows[0] || null;
+}

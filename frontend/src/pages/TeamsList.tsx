@@ -208,6 +208,10 @@ function DiscoverSection({
                     Annuler
                   </button>
                 </div>
+              ) : joinRequestStatus[item.team.id] ? (
+                <div className="error-message" style={{ fontSize: 14 }}>
+                  {joinRequestStatus[item.team.id]}
+                </div>
               ) : (
                 <button
                   className="btn-primary"
