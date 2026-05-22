@@ -165,7 +165,7 @@ func TestTemplateRepository_UpdateFromMap_Success(t *testing.T) {
 	}
 }
 
-func TestTemplateRepository_FindAllPublic(t *testing.T) {
+func TestTemplateRepository_FindAllTemplates(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -187,9 +187,9 @@ func TestTemplateRepository_FindAllPublic(t *testing.T) {
 	templateRepo.CreateFromMap(team.ID, m1.ID)
 	templateRepo.CreateFromMap(team.ID, m2.ID)
 
-	all, err := templateRepo.FindAllPublic()
+	all, err := templateRepo.FindAllTemplates()
 	if err != nil {
-		t.Fatalf("FindAllPublic failed: %v", err)
+		t.Fatalf("FindAllTemplates failed: %v", err)
 	}
 	if len(all) < 2 {
 		t.Errorf("expected at least 2 templates, got %d", len(all))

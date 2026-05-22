@@ -12,7 +12,7 @@ type Template struct {
 	OriginalTeamID   int       `json:"original_team_id"`
 	OriginalTeamName string    `json:"original_team_name"`
 	MapID            int       `json:"map_id"`
-	IsPublic         bool      `json:"is_public"`
+	SyncActive       bool      `json:"sync_active"`
 	MapName          string    `json:"map_name"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
@@ -44,7 +44,7 @@ func scanTemplate(scanner interface {
 }) (*Template, error) {
 	t := &Template{}
 	var mapName, teamName sql.NullString
-	err := scanner.Scan(&t.ID, &t.OriginalTeamID, &t.MapID, &t.IsPublic, &t.CreatedAt, &t.UpdatedAt, &mapName, &teamName)
+	err := scanner.Scan(&t.ID, &t.OriginalTeamID, &t.MapID, &t.SyncActive, &t.CreatedAt, &t.UpdatedAt, &mapName, &teamName)
 	if err != nil {
 		return nil, err
 	}
@@ -59,9 +59,9 @@ func scanTemplate(scanner interface {
 
 func (r *templateRepo) CreateFromMap(teamID, mapID int) (*Template, error) {
 	t, err := scanTemplate(r.db.QueryRow(
-		`INSERT INTO templates (original_team_id, map_id, created_at, updated_at)
-		 VALUES ($1, $2, NOW(), NOW())
-		 RETURNING id, original_team_id, map_id, is_public, created_at, updated_at,
+		`INSERT INTO templates (original_team_id, map_id, sync_active, created_at, updated_at)
+		 VALUES ($1, $2, true, NOW(), NOW())
+		 RETURNING id, original_team_id, map_id, sync_active, created_at, updated_at,
 		     (SELECT name FROM maps WHERE id = templates.map_id),
 		     (SELECT name FROM teams WHERE id = templates.original_team_id)`,
 		teamID, mapID,
@@ -117,7 +117,7 @@ func (r *templateRepo) CreateFromMap(teamID, mapID int) (*Template, error) {
 
 func (r *templateRepo) FindByMapID(mapID int) (*Template, error) {
 	t, err := scanTemplate(r.db.QueryRow(
-		`SELECT t.id, t.original_team_id, t.map_id, t.is_public, t.created_at, t.updated_at,
+		`SELECT t.id, t.original_team_id, t.map_id, t.sync_active, t.created_at, t.updated_at,
 		        COALESCE(m.name, '') as map_name,
 		        COALESCE(te.name, '') as team_name
 		 FROM templates t
@@ -135,9 +135,9 @@ func (r *templateRepo) FindByMapID(mapID int) (*Template, error) {
 	return t, nil
 }
 
-func (r *templateRepo) FindAllPublic() ([]*TemplateWithZones, error) {
+func (r *templateRepo) FindAllTemplates() ([]*TemplateWithZones, error) {
 	rows, err := r.db.Query(
-		`SELECT t.id, t.original_team_id, t.map_id, t.is_public, t.created_at, t.updated_at,
+		`SELECT t.id, t.original_team_id, t.map_id, t.sync_active, t.created_at, t.updated_at,
 		        COALESCE(m.name, '') as map_name,
 		        COALESCE(te.name, '') as team_name,
 		        tz.id, tz.polygon_data, tz.name, tz.order_index
@@ -165,7 +165,7 @@ func (r *templateRepo) FindAllPublic() ([]*TemplateWithZones, error) {
 		)
 		var mapName, teamName sql.NullString
 		err := rows.Scan(
-			&t.ID, &t.OriginalTeamID, &t.MapID, &t.IsPublic, &t.CreatedAt, &t.UpdatedAt,
+			&t.ID, &t.OriginalTeamID, &t.MapID, &t.SyncActive, &t.CreatedAt, &t.UpdatedAt,
 			&mapName, &teamName,
 			&tzID, &tzPolygonData, &tzName, &tzOrderIndex,
 		)
@@ -293,18 +293,15 @@ func (r *templateRepo) Delete(templateID int) error {
 func (r *templateRepo) DuplicateToTeam(teamID, templateID int) ([]*Zone, int, error) {
 	var t Template
 	err := r.db.QueryRow(
-		`SELECT id, original_team_id, map_id, is_public, created_at, updated_at
+		`SELECT id, original_team_id, map_id, sync_active, created_at, updated_at
 		 FROM templates WHERE id = $1`,
 		templateID,
-	).Scan(&t.ID, &t.OriginalTeamID, &t.MapID, &t.IsPublic, &t.CreatedAt, &t.UpdatedAt)
+	).Scan(&t.ID, &t.OriginalTeamID, &t.MapID, &t.SyncActive, &t.CreatedAt, &t.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, 0, ErrTemplateNotFound
 	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to find template: %w", err)
-	}
-	if !t.IsPublic {
-		return nil, 0, ErrTemplateNotPublic
 	}
 
 	mapID := t.MapID
@@ -450,6 +447,14 @@ func (r *templateRepo) DuplicateToTeam(teamID, templateID int) ([]*Zone, int, er
 	return createdZones, mapID, nil
 }
 
+func (r *templateRepo) SetSyncStatus(templateID int, active bool) error {
+	_, err := r.db.Exec(
+		`UPDATE templates SET sync_active = $1, updated_at = NOW() WHERE id = $2`,
+		active, templateID,
+	)
+	return err
+}
+
 func (r *templateRepo) collectZonePolygons(zoneID int) ([]byte, error) {
 	rows, err := r.db.Query(
 		`SELECT polygon_data, floor FROM zone_polygons WHERE zone_id = $1 ORDER BY order_index`,
@@ -510,7 +515,7 @@ func (r *templateRepo) getZoneName(zoneID int) (string, error) {
 func (r *templateRepo) FindTemplateZonesByMapID(mapID int) ([]TemplateZone, error) {
 	var templateID int
 	err := r.db.QueryRow(
-		`SELECT id FROM templates WHERE map_id = $1 AND is_public = true`,
+		`SELECT id FROM templates WHERE map_id = $1`,
 		mapID,
 	).Scan(&templateID)
 	if err == sql.ErrNoRows {

@@ -5,7 +5,7 @@ export interface Template {
   original_team_id: number
   original_team_name: string
   map_id: number
-  is_public: boolean
+  sync_active: boolean
   map_name: string
   created_at: string
   updated_at: string
@@ -29,9 +29,14 @@ export interface PublishStatus {
   template?: Template
 }
 
-export async function publishMap(teamId: number, mapId: number): Promise<Template> {
+export async function publishMap(teamId: number, mapId: number): Promise<{ created: boolean; template: Template }> {
   const api = getApiClient()
   return api.post(`/api/v1/teams/${teamId}/maps/${mapId}/publish`)
+}
+
+export async function unpublishMap(teamId: number, mapId: number): Promise<{ template: Template }> {
+  const api = getApiClient()
+  return api.post(`/api/v1/teams/${teamId}/maps/${mapId}/unpublish`)
 }
 
 export async function getPublishStatus(teamId: number, mapId: number): Promise<PublishStatus> {
@@ -39,7 +44,7 @@ export async function getPublishStatus(teamId: number, mapId: number): Promise<P
   return api.get(`/api/v1/teams/${teamId}/maps/${mapId}/publish-status`)
 }
 
-export async function listPublicTemplates(): Promise<{ templates: TemplateWithZones[] }> {
+export async function listAllTemplates(): Promise<{ templates: TemplateWithZones[] }> {
   const api = getApiClient()
   return api.get('/api/v1/templates/public')
 }

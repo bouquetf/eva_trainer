@@ -89,7 +89,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, logger services.Logger, f
 
 	apiV1.GET("/templates/public",
 		middleware.RequireAuth(logger, deps.userRepo, deps.jwtService),
-		templateHandler.ListPublicTemplates,
+		templateHandler.ListAllTemplates,
 	)
 
 	r.StaticFS("/assets", assetsFS)
@@ -199,7 +199,13 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 
 		teams.POST("/:id/maps/:mapId/publish",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:publish"),
 			templateHandler.PublishMap,
+		)
+		teams.POST("/:id/maps/:mapId/unpublish",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:publish"),
+			templateHandler.UnpublishMap,
 		)
 		teams.GET("/:id/maps/:mapId/publish-status",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),

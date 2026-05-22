@@ -27,6 +27,11 @@ func (s *TemplateSyncService) SyncOnZoneChange(teamID, mapID int) error {
 		return nil
 	}
 
+	if !template.SyncActive {
+		s.Logger.Debug("sync skipped: sync_active is false", "template", template.ID, "map", mapID)
+		return nil
+	}
+
 	if err := s.templateRepo.UpdateFromMap(template.ID, teamID, mapID); err != nil {
 		s.Logger.Warn("failed to sync template after zone change", "template", template.ID, "map", mapID, "error", err)
 		return err

@@ -51,8 +51,19 @@ func (h *TemplateHandler) PublishMap(c *gin.Context) {
 		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check template status", http.StatusInternalServerError))
 		return
 	}
-	if existing != nil {
-		apierror.RespondWithError(c, apierror.NewAPIError("already_published", "this map is already published", http.StatusConflict))
+	if existing != nil && existing.OriginalTeamID == teamID {
+		err = h.templateRepo.UpdateFromMap(existing.ID, teamID, mapID)
+		if err != nil {
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to replace template zones", http.StatusInternalServerError))
+			return
+		}
+		err = h.templateRepo.SetSyncStatus(existing.ID, true)
+		if err != nil {
+			apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to activate sync", http.StatusInternalServerError))
+			return
+		}
+		existing.SyncActive = true
+		apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"created": false, "template": existing})
 		return
 	}
 
@@ -62,7 +73,40 @@ func (h *TemplateHandler) PublishMap(c *gin.Context) {
 		return
 	}
 
-	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"template": template})
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"created": true, "template": template})
+}
+
+func (h *TemplateHandler) UnpublishMap(c *gin.Context) {
+	mapID, err := strconv.Atoi(c.Param("mapId"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_map_id", "invalid map id", http.StatusBadRequest))
+		return
+	}
+
+	teamID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
+		return
+	}
+
+	existing, err := h.templateRepo.FindByMapID(mapID)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check template status", http.StatusInternalServerError))
+		return
+	}
+	if existing == nil || existing.OriginalTeamID != teamID {
+		apierror.RespondWithError(c, apierror.NewAPIError("template_not_found", "template not found", http.StatusNotFound))
+		return
+	}
+
+	err = h.templateRepo.SetSyncStatus(existing.ID, false)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to unpublish map", http.StatusInternalServerError))
+		return
+	}
+	existing.SyncActive = false
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"template": existing})
 }
 
 func (h *TemplateHandler) GetPublishStatus(c *gin.Context) {
@@ -72,13 +116,19 @@ func (h *TemplateHandler) GetPublishStatus(c *gin.Context) {
 		return
 	}
 
+	teamID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
+		return
+	}
+
 	template, err := h.templateRepo.FindByMapID(mapID)
 	if err != nil {
 		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to check publish status", http.StatusInternalServerError))
 		return
 	}
 
-	if template == nil {
+	if template == nil || template.OriginalTeamID != teamID {
 		apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"published": false})
 		return
 	}
@@ -106,8 +156,8 @@ func (h *TemplateHandler) AdminDeleteTemplate(c *gin.Context) {
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "template deleted"})
 }
 
-func (h *TemplateHandler) ListPublicTemplates(c *gin.Context) {
-	templates, err := h.templateRepo.FindAllPublic()
+func (h *TemplateHandler) ListAllTemplates(c *gin.Context) {
+	templates, err := h.templateRepo.FindAllTemplates()
 	if err != nil {
 		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list public templates", http.StatusInternalServerError))
 		return
@@ -133,10 +183,6 @@ func (h *TemplateHandler) DuplicateTemplate(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, models.ErrTemplateNotFound) {
 			apierror.RespondWithError(c, apierror.NewAPIError("template_not_found", "template not found", http.StatusNotFound))
-			return
-		}
-		if errors.Is(err, models.ErrTemplateNotPublic) {
-			apierror.RespondWithError(c, apierror.NewAPIError("template_not_public", "template is not public", http.StatusForbidden))
 			return
 		}
 		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to duplicate template", http.StatusInternalServerError))

@@ -280,6 +280,10 @@ func TestTemplateHandler_PublishMap_Success(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
+	if resp["created"] != true {
+		t.Errorf("expected created true, got %v", resp["created"])
+	}
+
 	tmplObj, ok := resp["template"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected template object, got %T", resp["template"])
@@ -288,8 +292,8 @@ func TestTemplateHandler_PublishMap_Success(t *testing.T) {
 	if tmplObj["map_id"] == nil || tmplObj["map_id"].(float64) != float64(f.mapObj.ID) {
 		t.Errorf("expected map_id %d, got %v", f.mapObj.ID, tmplObj["map_id"])
 	}
-	if tmplObj["is_public"] != true {
-		t.Errorf("expected is_public true, got %v", tmplObj["is_public"])
+	if tmplObj["sync_active"] != true {
+		t.Errorf("expected sync_active true, got %v", tmplObj["sync_active"])
 	}
 
 	templateID := tmplObj["id"].(float64)
@@ -331,8 +335,12 @@ func TestTemplateHandler_PublishMap_EmptyMap(t *testing.T) {
 		t.Fatalf("expected template object, got %T", resp["template"])
 	}
 
-	if tmplObj["is_public"] != true {
-		t.Errorf("expected is_public true, got %v", tmplObj["is_public"])
+	if tmplObj["sync_active"] != true {
+		t.Errorf("expected sync_active true, got %v", tmplObj["sync_active"])
+	}
+
+	if resp["created"] != true {
+		t.Errorf("expected created true, got %v", resp["created"])
 	}
 }
 
@@ -358,16 +366,19 @@ func TestTemplateHandler_PublishMap_AlreadyPublished(t *testing.T) {
 		fmt.Sprintf("/api/v1/teams/%d/maps/%d/publish", f.team.ID, f.mapObj.ID),
 		"", f.captain, f.captainToken, params)
 
-	if w2.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d. Body: %s", w2.Code, w2.Body.String())
+	if w2.Code != http.StatusOK {
+		t.Fatalf("second publish: expected 200, got %d. Body: %s", w2.Code, w2.Body.String())
 	}
 
 	var resp map[string]interface{}
 	if err := json.Unmarshal(w2.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
-	if resp["error"] != "already_published" {
-		t.Errorf("expected error 'already_published', got %v", resp["error"])
+	if resp["created"] != false {
+		t.Errorf("expected created false, got %v", resp["created"])
+	}
+	if resp["template"] == nil {
+		t.Error("expected template to be present")
 	}
 }
 
@@ -510,6 +521,84 @@ func TestTemplateHandler_PublishMap_IncludesFloorInPolygonData(t *testing.T) {
 	}
 	if !strings.Contains(polygonDataStr, `"haut"`) {
 		t.Errorf("expected polygon_data to contain 'haut', got: %s", polygonDataStr)
+	}
+}
+
+func TestTemplateHandler_UnpublishMap_Success(t *testing.T) {
+	f := setupTemplateTest(t)
+
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	createZoneWithPolygon(t, f.zoneRepo, f.team.ID, f.mapObj.ID, "Zone", pts)
+
+	publishParams := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	pubResp := executeTemplateRequest(t, f.templateHandler.PublishMap, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/publish", f.team.ID, f.mapObj.ID),
+		"", f.captain, f.captainToken, publishParams)
+	if pubResp.Code != http.StatusCreated {
+		t.Fatalf("publish failed: %d. Body: %s", pubResp.Code, pubResp.Body.String())
+	}
+
+	unpubParams := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	w := executeTemplateRequest(t, f.templateHandler.UnpublishMap, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/unpublish", f.team.ID, f.mapObj.ID),
+		"", f.captain, f.captainToken, unpubParams)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	tmplObj, ok := resp["template"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected template object, got %T", resp["template"])
+	}
+	if tmplObj["sync_active"] != false {
+		t.Errorf("expected sync_active false, got %v", tmplObj["sync_active"])
+	}
+
+	tmpl, err := f.templateRepo.FindByMapID(f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("FindByMapID failed: %v", err)
+	}
+	if tmpl == nil {
+		t.Fatal("expected template to still exist")
+	}
+	if tmpl.SyncActive != false {
+		t.Errorf("expected template SyncActive false, got %v", tmpl.SyncActive)
+	}
+}
+
+func TestTemplateHandler_UnpublishMap_NotPublished(t *testing.T) {
+	f := setupTemplateTest(t)
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "mapId", Value: fmt.Sprintf("%d", f.mapObj.ID)},
+	}
+	w := executeTemplateRequest(t, f.templateHandler.UnpublishMap, http.MethodPost,
+		fmt.Sprintf("/api/v1/teams/%d/maps/%d/unpublish", f.team.ID, f.mapObj.ID),
+		"", f.captain, f.captainToken, params)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp["error"] != "template_not_found" {
+		t.Errorf("expected error 'template_not_found', got %v", resp["error"])
 	}
 }
 

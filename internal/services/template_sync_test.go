@@ -332,3 +332,94 @@ func TestTemplateSyncService_RenameZone_UpdatesTemplate(t *testing.T) {
 		t.Fatalf("expected name 'secret' after rename, got '%s'", nameAfter)
 	}
 }
+
+func TestTemplateSyncService_SyncActiveFalse_SkipsSync(t *testing.T) {
+	f := setupSyncTest(t)
+
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	zoneID := createZoneForSync(t, f.zoneRepo, f.team.ID, f.mapObj.ID, "Original", pts)
+
+	tmpl, err := f.templateRepo.CreateFromMap(f.team.ID, f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("CreateFromMap failed: %v", err)
+	}
+
+	if err := f.zoneRepo.SetName(zoneID, "Modified"); err != nil {
+		t.Fatalf("failed to rename zone: %v", err)
+	}
+
+	if err := f.syncService.SyncOnZoneChange(f.team.ID, f.mapObj.ID); err != nil {
+		t.Fatalf("SyncOnZoneChange failed: %v", err)
+	}
+
+	var nameAfter string
+	err = f.db.QueryRow(`SELECT name FROM template_zones WHERE template_id = $1`, tmpl.ID).Scan(&nameAfter)
+	if err != nil {
+		t.Fatalf("failed to get template zone name: %v", err)
+	}
+	if nameAfter != "Modified" {
+		t.Fatalf("expected name 'Modified' when sync_active is true, got '%s'", nameAfter)
+	}
+
+	_, err = f.db.Exec(`UPDATE templates SET sync_active = false WHERE id = $1`, tmpl.ID)
+	if err != nil {
+		t.Fatalf("failed to set sync_active = false: %v", err)
+	}
+
+	if err := f.zoneRepo.SetName(zoneID, "ShouldNotSync"); err != nil {
+		t.Fatalf("failed to rename zone: %v", err)
+	}
+
+	if err := f.syncService.SyncOnZoneChange(f.team.ID, f.mapObj.ID); err != nil {
+		t.Fatalf("SyncOnZoneChange failed: %v", err)
+	}
+
+	var nameAfterUnsync string
+	err = f.db.QueryRow(`SELECT name FROM template_zones WHERE template_id = $1`, tmpl.ID).Scan(&nameAfterUnsync)
+	if err != nil {
+		t.Fatalf("failed to get template zone name: %v", err)
+	}
+	if nameAfterUnsync != "Modified" {
+		t.Fatalf("expected name 'Modified' (unchanged) when sync_active is false, got '%s'", nameAfterUnsync)
+	}
+}
+
+func TestTemplateSyncService_SyncActiveFalse_IgnoresNewZones(t *testing.T) {
+	f := setupSyncTest(t)
+
+	pts := []models.Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 5, Y: 10}}
+	createZoneForSync(t, f.zoneRepo, f.team.ID, f.mapObj.ID, "Zone Unchanged", pts)
+
+	tmpl, err := f.templateRepo.CreateFromMap(f.team.ID, f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("CreateFromMap failed: %v", err)
+	}
+
+	initialCount := countTemplateZones(t, f.db, tmpl.ID)
+	if initialCount != 1 {
+		t.Fatalf("expected 1 zone initially, got %d", initialCount)
+	}
+
+	_, err = f.db.Exec(`UPDATE templates SET sync_active = false WHERE id = $1`, tmpl.ID)
+	if err != nil {
+		t.Fatalf("failed to set sync_active = false: %v", err)
+	}
+
+	pts2 := []models.Point{{X: 100, Y: 100}, {X: 200, Y: 100}, {X: 150, Y: 200}}
+	zone2, err := f.zoneRepo.Create(f.team.ID, f.mapObj.ID)
+	if err != nil {
+		t.Fatalf("failed to create zone: %v", err)
+	}
+	if _, err := f.zoneRepo.AddPolygon(zone2.ID, pts2, 0, nil); err != nil {
+		t.Fatalf("failed to add polygon: %v", err)
+	}
+
+	if err := f.syncService.SyncOnZoneChange(f.team.ID, f.mapObj.ID); err != nil {
+		t.Fatalf("SyncOnZoneChange failed: %v", err)
+	}
+
+	afterCount := countTemplateZones(t, f.db, tmpl.ID)
+	if afterCount != 1 {
+		t.Fatalf("expected 1 zone (unchanged) when sync_active is false, got %d", afterCount)
+	}
+}

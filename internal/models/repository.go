@@ -169,11 +169,12 @@ type EditLockRepository interface {
 type TemplateRepository interface {
 	CreateFromMap(teamID, mapID int) (*Template, error)
 	FindByMapID(mapID int) (*Template, error)
-	FindAllPublic() ([]*TemplateWithZones, error)
+	FindAllTemplates() ([]*TemplateWithZones, error)
 	UpdateFromMap(templateID, teamID, mapID int) error
 	Delete(templateID int) error
 	DuplicateToTeam(teamID, templateID int) ([]*Zone, int, error)
 	FindTemplateZonesByMapID(mapID int) ([]TemplateZone, error)
+	SetSyncStatus(templateID int, active bool) error
 }
 
 type ZoneVersionRepository interface {

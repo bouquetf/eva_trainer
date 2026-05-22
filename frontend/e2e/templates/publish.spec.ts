@@ -17,7 +17,7 @@ test.describe('Feature: Publication de template', () => {
       [{ points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 10 }] }],
     );
 
-    const pubRes = await apiPost<{ id: number; is_public: boolean }>(
+    const pubRes = await apiPost<{ id: number; sync_active: boolean }>(
       `/api/v1/teams/${team.id}/maps/${map.id}/publish`,
       {},
       token,

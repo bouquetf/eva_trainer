@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { publishMap, getPublishStatus, listPublicTemplates, duplicateTemplate } from './templates'
+import { publishMap, getPublishStatus, listAllTemplates, duplicateTemplate, unpublishMap } from './templates'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -65,8 +65,8 @@ beforeEach(() => {
 
 describe('templates API', () => {
   it('publishMap calls POST /api/v1/teams/:id/maps/:mapId/publish', async () => {
-    const template = { id: 1, original_team_id: 1, original_team_name: 'Team A', map_id: 5, is_public: true, map_name: 'Test Map', created_at: '', updated_at: '' }
-    mockFetch.mockResolvedValue(okResponse(template))
+    const response = { created: true, template: { id: 1, original_team_id: 1, original_team_name: 'Team A', map_id: 5, sync_active: true, map_name: 'Test Map', created_at: '', updated_at: '' } }
+    mockFetch.mockResolvedValue(okResponse(response))
 
     const result = await publishMap(1, 5)
 
@@ -74,7 +74,21 @@ describe('templates API', () => {
       'http://localhost:8080/api/v1/teams/1/maps/5/publish',
       expect.objectContaining({ method: 'POST' }),
     )
-    expect(result.id).toBe(1)
+    expect(result.created).toBe(true)
+    expect(result.template.id).toBe(1)
+  })
+
+  it('unpublishMap calls POST /api/v1/teams/:id/maps/:mapId/unpublish', async () => {
+    const response = { template: { id: 1, original_team_id: 1, original_team_name: 'Team A', map_id: 5, sync_active: false, map_name: 'Test Map', created_at: '', updated_at: '' } }
+    mockFetch.mockResolvedValue(okResponse(response))
+
+    const result = await unpublishMap(1, 5)
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:8080/api/v1/teams/1/maps/5/unpublish',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(result.template.sync_active).toBe(false)
   })
 
   it('getPublishStatus calls GET /api/v1/teams/:id/maps/:mapId/publish-status', async () => {
@@ -91,7 +105,7 @@ describe('templates API', () => {
   })
 
   it('getPublishStatus returns published: true with a template', async () => {
-    const status = { published: true, template: { id: 1, original_team_id: 1, original_team_name: 'Team A', map_id: 5, is_public: true, map_name: 'Test Map', created_at: '', updated_at: '' } }
+    const status = { published: true, template: { id: 1, original_team_id: 1, original_team_name: 'Team A', map_id: 5, sync_active: true, map_name: 'Test Map', created_at: '', updated_at: '' } }
     mockFetch.mockResolvedValue(okResponse(status))
 
     const result = await getPublishStatus(1, 5)
@@ -100,15 +114,15 @@ describe('templates API', () => {
     expect(result.template).toBeDefined()
   })
 
-  it('listPublicTemplates calls GET /api/v1/templates/public', async () => {
+  it('listAllTemplates calls GET /api/v1/templates/public', async () => {
     const response = {
       templates: [
-        { template: { id: 1, original_team_id: 1, original_team_name: 'Team A', map_id: 5, is_public: true, map_name: 'Map A', created_at: '', updated_at: '' }, zones: [] },
+        { template: { id: 1, original_team_id: 1, original_team_name: 'Team A', map_id: 5, sync_active: true, map_name: 'Map A', created_at: '', updated_at: '' }, zones: [] },
       ],
     }
     mockFetch.mockResolvedValue(okResponse(response))
 
-    const result = await listPublicTemplates()
+    const result = await listAllTemplates()
 
     expect(mockFetch).toHaveBeenCalledWith(
       'http://localhost:8080/api/v1/templates/public',
