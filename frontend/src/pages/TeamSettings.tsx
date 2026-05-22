@@ -381,7 +381,7 @@ function TeamSettings() {
                       {canEditTeam && (
                         <button
                           className="btn-secondary btn-small"
-                          onClick={() => { setImportMapId(m.id); setShowImportModal(true) }}
+                          onClick={() => { setImportMapId(m.id); setImportError(null); importMutation.reset(); setShowImportModal(true) }}
                         >
                           Importer
                         </button>
@@ -627,7 +627,7 @@ function TeamSettings() {
       />
 
       {showImportModal && (
-        <div className="modal-overlay" onClick={() => { if (!importMutation.isPending) setShowImportModal(false) }}>
+        <div className="modal-overlay" onClick={() => { if (!importMutation.isPending) { importMutation.reset(); setImportError(null); setConfirmImportTemplateId(null); setShowImportModal(false) } }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
             {confirmImportTemplateId === null ? (
               <>
@@ -677,7 +677,7 @@ function TeamSettings() {
                 )}
                 {importError && <div className="error-message" style={{ marginTop: 12 }}>{importError}</div>}
                 <div className="modal-actions" style={{ marginTop: 16 }}>
-                  <button className="btn-secondary" onClick={() => setShowImportModal(false)} disabled={importMutation.isPending}>
+                  <button className="btn-secondary" onClick={() => { importMutation.reset(); setImportError(null); setShowImportModal(false) }} disabled={importMutation.isPending}>
                     Fermer
                   </button>
                 </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { getPublishStatus, publishMap, unpublishMap, type PublishStatus } from "../../api/templates";
 import { listMyTeams } from "../../api/teams";
 import ConfirmDialog from "../ConfirmDialog";
@@ -10,6 +11,7 @@ interface PublishButtonProps {
 }
 
 export const PublishButton: React.FC<PublishButtonProps> = ({ teamId, mapId }) => {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<PublishStatus | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,13 +63,14 @@ export const PublishButton: React.FC<PublishButtonProps> = ({ teamId, mapId }) =
       } else {
         setSuccessMsg("Le template a été remplacé avec les zones actuelles.");
       }
+      queryClient.invalidateQueries({ queryKey: ['public-templates'] })
       await refreshStatus();
     } catch {
       alert("Erreur lors de la publication.");
     } finally {
       setActionLoading(false);
     }
-  }, [teamId, mapId, refreshStatus]);
+  }, [teamId, mapId, refreshStatus, queryClient]);
 
   const handleUnpublish = useCallback(async () => {
     setShowConfirm(false);
@@ -76,13 +79,14 @@ export const PublishButton: React.FC<PublishButtonProps> = ({ teamId, mapId }) =
     try {
       await unpublishMap(teamId, mapId);
       setSuccessMsg("Carte rendue privée. Le template n'est plus synchronisé.");
+      queryClient.invalidateQueries({ queryKey: ['public-templates'] })
       await refreshStatus();
     } catch {
       alert("Erreur lors du passage en privé.");
     } finally {
       setActionLoading(false);
     }
-  }, [teamId, mapId, refreshStatus]);
+  }, [teamId, mapId, refreshStatus, queryClient]);
 
   const isPublished = status?.published && status?.template?.sync_active === true;
   const isUnpublished = status?.published && status?.template?.sync_active === false;

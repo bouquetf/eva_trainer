@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PublishButton } from './PublishButton'
+
+function renderWithClient(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+}
 
 const mockGetPublishStatus = vi.fn()
 const mockPublishMap = vi.fn()
@@ -41,7 +47,7 @@ describe('PublishButton', () => {
     })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'captain', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Publique')).toBeInTheDocument()
@@ -63,7 +69,7 @@ describe('PublishButton', () => {
     })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'editor', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Publique')).toBeInTheDocument()
@@ -85,7 +91,7 @@ describe('PublishButton', () => {
     })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'captain', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Privée')).toBeInTheDocument()
@@ -107,7 +113,7 @@ describe('PublishButton', () => {
     })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'member', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Privée')).toBeInTheDocument()
@@ -119,7 +125,7 @@ describe('PublishButton', () => {
     mockGetPublishStatus.mockResolvedValue({ published: false })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'captain', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Rendre publique')).toBeInTheDocument()
@@ -130,7 +136,7 @@ describe('PublishButton', () => {
     mockGetPublishStatus.mockResolvedValue({ published: false })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'editor', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Privée')).toBeInTheDocument()
@@ -154,7 +160,7 @@ describe('PublishButton', () => {
       },
     })
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Rendre publique')).toBeInTheDocument()
@@ -192,7 +198,7 @@ describe('PublishButton', () => {
     })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'captain', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Rendre privée')).toBeInTheDocument()
@@ -216,7 +222,7 @@ describe('PublishButton', () => {
     mockGetPublishStatus.mockResolvedValue({ published: false })
     mockListMyTeams.mockResolvedValue([{ team: { id: 1 }, my_role: 'captain', member_count: 2 }])
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Rendre publique')).toBeInTheDocument()
@@ -263,7 +269,7 @@ describe('PublishButton', () => {
       },
     })
 
-    render(<PublishButton teamId={1} mapId={1} />)
+    renderWithClient(<PublishButton teamId={1} mapId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('Rendre publique')).toBeInTheDocument()
