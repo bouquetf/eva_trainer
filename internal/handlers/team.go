@@ -58,7 +58,7 @@ func (h *TeamHandler) ListAllTeams(c *gin.Context) {
 		})
 	}
 
-	user, _ := middleware.MustGetUser(c)
+	user, _ := middleware.GetUser(c)
 
 	type myTeamStatus struct {
 		TeamID int    `json:"team_id"`

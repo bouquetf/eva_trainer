@@ -67,6 +67,15 @@ var (
 )
 
 var (
+	ErrLineOfFireNotFound     = errors.New("line of fire not found")
+	ErrLineOfFireNameTooLong  = errors.New("line of fire name exceeds maximum length of 250 characters")
+	ErrLineOfFireNameTaken    = errors.New("line of fire name already exists for this team on this map")
+	ErrLineOfFireNameRequired = errors.New("line of fire name is required")
+	ErrLineOfFireNoCones      = errors.New("line of fire must have at least one cone")
+	ErrConeOriginRequired     = errors.New("cone must have an origin point")
+)
+
+var (
 	ErrDiscordUnavailable  = errors.New("discord API is unavailable")
 	ErrDatabaseUnavailable = errors.New("database is unavailable")
 	ErrInternalServer      = errors.New("internal server error")

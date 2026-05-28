@@ -71,7 +71,7 @@ func (r *teamInvitationRepo) CreateLink(teamID, invitedByUserID int, token strin
 		`INSERT INTO team_invitations (team_id, invited_by_user_id, token, status, expires_at)
 		 VALUES ($1, $2, $3, 'pending', $4)
 		 RETURNING id, team_id, invited_user_id, invited_by_user_id, token, status, expires_at, created_at`,
-		teamID, invitedByUserID, token, expiresAt,
+		teamID, invitedByUserID, token, expiresAt.UTC(),
 	).Scan(&inv.ID, &inv.TeamID, &inv.InvitedUserID, &inv.InvitedByUserID, &inv.Token, &inv.Status, &inv.ExpiresAt, &inv.CreatedAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
@@ -250,7 +250,7 @@ func (r *teamInvitationRepo) AcceptByToken(token string, userID int) error {
 		return err
 	}
 
-	if time.Now().After(inv.ExpiresAt) {
+	if time.Now().UTC().After(inv.ExpiresAt.UTC()) {
 		return ErrInvitationExpired
 	}
 

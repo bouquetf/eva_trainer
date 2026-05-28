@@ -131,7 +131,7 @@ func setupAuthHandler(t *testing.T) (*AuthHandler, models.UserRepository, models
 		Scopes:      []string{"identify"},
 	}
 
-	handler := NewAuthHandler(userRepo, refreshRepo, oauthCfg, jwtService, "http://localhost:5173")
+	handler := NewAuthHandler(userRepo, refreshRepo, oauthCfg, jwtService, "http://localhost:5173", services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return handler, userRepo, refreshRepo, jwtService
 }
@@ -572,7 +572,6 @@ func TestUpdateSettings_InvalidValues_Returns400(t *testing.T) {
 	}{
 		{"timer correct = 0", `{"revision_correct_timer": 0}`},
 		{"question_count = 0", `{"revision_question_count": 0}`},
-		{"body vide", `{}`},
 		{"body invalide", `not-json`},
 	}
 

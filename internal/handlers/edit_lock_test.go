@@ -19,6 +19,11 @@ func TestEditLockHandler_AcquireAndRejectSecond(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	f := setupZoneTest(t)
 
+	// Give Editor A a display name so editor_name appears in 409 response
+	if err := f.userRepo.UpdateDisplayName(f.user.ID, "Editor A"); err != nil {
+		t.Fatalf("failed to set display name for editor A: %v", err)
+	}
+
 	user2, _, err := f.userRepo.FindOrCreateByDiscordID("lock-editor-b-" + t.Name())
 	if err != nil {
 		t.Fatalf("failed to create editor B: %v", err)

@@ -102,7 +102,7 @@ func setupTeamHandler(t *testing.T) (*TeamHandler, models.UserRepository, models
 	userRepo := models.NewUserRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
-	handler := NewTeamHandler(teamRepo, teamMemberRepo)
+	handler := NewTeamHandler(teamRepo, teamMemberRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return handler, userRepo, teamRepo, teamMemberRepo, db
 }

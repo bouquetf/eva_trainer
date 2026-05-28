@@ -22,6 +22,28 @@ export type Zone = {
   updated_at: string;
 };
 
+export interface Cone {
+  origin: Point
+  left_end: Point
+  right_end: Point
+  arc_bulge?: number
+}
+
+export interface ConeData {
+  cones: Cone[]
+}
+
+export interface LineOfFire {
+  id: number
+  team_id: number
+  map_id: number
+  name: string
+  polygon_data: ConeData
+  order_index: number
+  created_at: string
+  updated_at: string
+}
+
 /** @deprecated imageUrl/width/height will be removed in Task #005 */
 export type MapDto = {
   id: number;
@@ -80,6 +102,15 @@ export type VersionPage = {
   total: number;
   page: number;
   limit: number;
+}
+
+export type LineOfFireVersion = {
+  id: number;
+  line_of_fire_id: number;
+  editor_id: number | null;
+  editor_name: string;
+  version_data: Record<string, unknown>;
+  created_at: string;
 }
 
 export type VersionFilters = {

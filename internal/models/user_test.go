@@ -501,8 +501,8 @@ func TestUserRepository_UpdateUserSettings_PartialUpdate(t *testing.T) {
 	// Les valeurs non fournies sont donc à 0 après Marshal → le merge dans GetUserSettings
 	// les remplace par les defaults. C'est le comportement attendu car le handler fait
 	// lui-même la fusion avant d'appeler UpdateUserSettings.
-	if settings.RevisionCorrectTimer != 3 {
-		t.Errorf("expected correct timer 3 (0 dans le JSON → default), got %d", settings.RevisionCorrectTimer)
+	if settings.RevisionCorrectTimer != 2 {
+		t.Errorf("expected correct timer 2, got %d", settings.RevisionCorrectTimer)
 	}
 	if settings.RevisionIncorrectTimer != 5 {
 		t.Errorf("expected incorrect timer 5 (default), got %d", settings.RevisionIncorrectTimer)

@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useRevisionStore, selectWeightedRandom } from './revision'
-import type { RevisionConfig, RevisionZone } from '../lib/revision/types'
+import type { RevisionConfig, RevisionItem } from '../lib/revision/types'
 
-function makeZone(id: number, name: string): RevisionZone {
+function makeZone(id: number, name: string): RevisionItem {
   return {
     id,
     source: 'team',
     map_id: 1,
     polygons: [],
     name,
+    type: 'zone',
   }
 }
 
@@ -20,6 +21,7 @@ function makeConfig(overrides?: Partial<RevisionConfig>): RevisionConfig {
     teamId: 1,
     correctTimerSeconds: 3,
     incorrectTimerSeconds: 5,
+    filterMode: 'zones',
     ...overrides,
   }
 }
@@ -30,15 +32,15 @@ beforeEach(() => {
 
 describe('startSession', () => {
   it('initializes state correctly', () => {
-    const zones = [makeZone(1, 'top'), makeZone(2, 'secret')]
+    const items = [makeZone(1, 'top'), makeZone(2, 'secret')]
     const config = makeConfig()
 
-    useRevisionStore.getState().startSession(config, zones)
+    useRevisionStore.getState().startSession(config, items)
 
     const state = useRevisionStore.getState()
     expect(state.isActive).toBe(true)
     expect(state.config).toEqual(config)
-    expect(state.zones).toEqual(zones)
+    expect(state.items).toEqual(items)
     expect(state.currentQuestion).not.toBeNull()
     expect(state.questionIndex).toBe(0)
     expect(state.correctCount).toBe(0)
@@ -48,8 +50,8 @@ describe('startSession', () => {
   })
 
   it('sets all weights to 1', () => {
-    const zones = [makeZone(1, 'top'), makeZone(2, 'secret')]
-    useRevisionStore.getState().startSession(makeConfig(), zones)
+    const items = [makeZone(1, 'top'), makeZone(2, 'secret')]
+    useRevisionStore.getState().startSession(makeConfig(), items)
 
     const { weights } = useRevisionStore.getState()
     expect(weights[1]).toBe(1)
@@ -57,10 +59,10 @@ describe('startSession', () => {
   })
 
   it('includes timer values in config', () => {
-    const zones = [makeZone(1, 'top')]
+    const items = [makeZone(1, 'top')]
     const config = makeConfig({ correctTimerSeconds: 2, incorrectTimerSeconds: 7 })
 
-    useRevisionStore.getState().startSession(config, zones)
+    useRevisionStore.getState().startSession(config, items)
 
     const state = useRevisionStore.getState()
     expect(state.config?.correctTimerSeconds).toBe(2)
@@ -70,8 +72,8 @@ describe('startSession', () => {
 
 describe('submitAnswer', () => {
   it('marks correct answer', () => {
-    const zones = [makeZone(1, 'top'), makeZone(2, 'secret')]
-    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 5 }), zones)
+    const items = [makeZone(1, 'top'), makeZone(2, 'secret')]
+    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 5 }), items)
 
     const { currentQuestion } = useRevisionStore.getState()
     expect(currentQuestion).not.toBeNull()
@@ -86,8 +88,8 @@ describe('submitAnswer', () => {
   })
 
   it('marks incorrect answer', () => {
-    const zones = [makeZone(1, 'top')]
-    useRevisionStore.getState().startSession(makeConfig(), zones)
+    const items = [makeZone(1, 'top')]
+    useRevisionStore.getState().startSession(makeConfig(), items)
 
     useRevisionStore.getState().submitAnswer('wrong')
 
@@ -99,8 +101,8 @@ describe('submitAnswer', () => {
   })
 
   it('decreases weight on success (floor 1)', () => {
-    const zones = [makeZone(1, 'top')]
-    useRevisionStore.getState().startSession(makeConfig(), zones)
+    const items = [makeZone(1, 'top')]
+    useRevisionStore.getState().startSession(makeConfig(), items)
 
     const zoneId = useRevisionStore.getState().currentQuestion!.id
 
@@ -113,8 +115,8 @@ describe('submitAnswer', () => {
   })
 
   it('increases weight on failure', () => {
-    const zones = [makeZone(1, 'top')]
-    useRevisionStore.getState().startSession(makeConfig(), zones)
+    const items = [makeZone(1, 'top')]
+    useRevisionStore.getState().startSession(makeConfig(), items)
 
     const zoneId = useRevisionStore.getState().currentQuestion!.id
     useRevisionStore.getState().submitAnswer('wrong')
@@ -125,9 +127,9 @@ describe('submitAnswer', () => {
 })
 
 describe('2 consecutive successes rule', () => {
-  it('removes zone from pool after 2 consecutive successes', () => {
-    const zones = [makeZone(1, 'top')]
-    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 10 }), zones)
+  it('removes item from pool after 2 consecutive successes', () => {
+    const items = [makeZone(1, 'top')]
+    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 10 }), items)
 
     useRevisionStore.getState().submitAnswer('top')
     useRevisionStore.getState().nextQuestion()
@@ -141,8 +143,8 @@ describe('2 consecutive successes rule', () => {
 
 describe('natural session end', () => {
   it('finishes after totalQuestions questions', () => {
-    const zones = [makeZone(1, 'top')]
-    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 3 }), zones)
+    const items = [makeZone(1, 'top')]
+    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 3 }), items)
 
     for (let i = 0; i < 3; i++) {
       useRevisionStore.getState().submitAnswer('top')
@@ -155,8 +157,8 @@ describe('natural session end', () => {
 
 describe('finishSession', () => {
   it('sets isFinished to true', () => {
-    const zones = [makeZone(1, 'top')]
-    useRevisionStore.getState().startSession(makeConfig(), zones)
+    const items = [makeZone(1, 'top')]
+    useRevisionStore.getState().startSession(makeConfig(), items)
 
     useRevisionStore.getState().finishSession()
 
@@ -167,13 +169,14 @@ describe('finishSession', () => {
 })
 
 describe('no immediate repeat', () => {
-  it('does not repeat the same zone with multiple available', () => {
-    const zones = [makeZone(1, 'top'), makeZone(2, 'secret'), makeZone(3, 'zone3')]
-    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 10 }), zones)
+  it('does not repeat the same item with multiple available', () => {
+    const items = [makeZone(1, 'top'), makeZone(2, 'secret'), makeZone(3, 'zone3')]
+    useRevisionStore.getState().startSession(makeConfig({ totalQuestions: 10 }), items)
 
     const firstId = useRevisionStore.getState().currentQuestion!.id
+    const answer = firstId === 1 ? 'top' : firstId === 2 ? 'secret' : 'zone3'
 
-    useRevisionStore.getState().submitAnswer(firstId === 1 ? 'top' : firstId === 2 ? 'secret' : 'zone3')
+    useRevisionStore.getState().submitAnswer(answer)
     useRevisionStore.getState().nextQuestion()
 
     const secondId = useRevisionStore.getState().currentQuestion!.id

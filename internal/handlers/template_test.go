@@ -84,6 +84,13 @@ func setupTemplateTestDB(t *testing.T) *sql.DB {
 		"000013_add_zone_versions.up.sql",
 		"000015_add_template_is_public.up.sql",
 		"000017_add_polygon_floor.up.sql",
+		"000018_rename_template_is_public.up.sql",
+		"000019_template_original_team_cascade.up.sql",
+		"000020_create_lines_of_fire.up.sql",
+		"000021_create_template_lines_of_fire.up.sql",
+		"000022_create_line_of_fire_edit_history.up.sql",
+		"000023_create_line_of_fire_versions.up.sql",
+		"000024_add_line_of_fire_permissions.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -191,8 +198,8 @@ func setupTemplateTest(t *testing.T) *templateTestFixtures {
 		t.Fatalf("GenerateAccessToken failed: %v", err)
 	}
 
-	templateHandler := NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo)
 	testLogger := services.NewLogger(services.LogLevelError, services.LogFormatText)
+	templateHandler := NewTemplateHandler(templateRepo, zoneRepo, teamMemberRepo, testLogger)
 	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo, testLogger)
 
 	return &templateTestFixtures{
@@ -633,12 +640,13 @@ func TestTemplateHandler_DuplicateTemplate_PreservesFloor(t *testing.T) {
 	tmplObj := pubRespMap["template"].(map[string]interface{})
 	templateID := int(tmplObj["id"].(float64))
 
-	targetTeam, err := f.teamRepo.Create("Target Team "+t.Name(), f.captain.ID)
+	targetCaptain, _, err := f.userRepo.FindOrCreateByDiscordID("template-dup-cap-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create target captain: %v", err)
+	}
+	targetTeam, err := f.teamRepo.Create("Target Team "+t.Name(), targetCaptain.ID)
 	if err != nil {
 		t.Fatalf("failed to create target team: %v", err)
-	}
-	if err := f.teamMemberRepo.AddMember(targetTeam.ID, f.captain.ID, models.RoleCaptain); err != nil {
-		t.Fatalf("failed to add captain to target team: %v", err)
 	}
 
 	dupParams := gin.Params{

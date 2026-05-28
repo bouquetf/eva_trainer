@@ -13,7 +13,6 @@ func RequireAdmin(logger services.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, err := MustGetUser(c)
 		if err != nil {
-			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeUnauthorized, "unauthorized", http.StatusUnauthorized))
 			return
 		}
 

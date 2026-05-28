@@ -79,7 +79,7 @@ func setupTeamJoinRequestTestDB(t *testing.T) *sql.DB {
 		"000002_add_refresh_tokens.up.sql",
 		"000003_add_display_name.up.sql",
 		"000004_add_discord_username.up.sql",
-		"000007_add_invitations_tables.up.sql",
+		"000007_add_team_invitations_and_join_requests.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -128,7 +128,7 @@ func setupTeamJoinRequestTest(t *testing.T) *teamJoinRequestTestFixtures {
 	userRepo := models.NewUserRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
-	joinRequestRepo := models.NewTeamJoinRequestRepository(db)
+	joinRequestRepo := models.NewTeamJoinRequestRepository(db, teamMemberRepo)
 	testLogger := services.NewLogger(services.LogLevelError, services.LogFormatText)
 
 	captain, _, err := userRepo.FindOrCreateByDiscordID("jreq-cap-" + t.Name())

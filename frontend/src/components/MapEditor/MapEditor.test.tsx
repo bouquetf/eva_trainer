@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor, act, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MapEditor } from './MapEditor'
 import { acquireLock, releaseLock, releaseLockSync, getLockStatus } from '../../api/locks'
 import { listZones } from '../../api/zones'
 import { listTeamMaps } from '../../api/maps'
 import { useAuthStore } from '../../store/auth'
 import { BrowserRouter } from 'react-router-dom'
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
 
 vi.mock('../../api/locks', () => ({
   acquireLock: vi.fn(),
@@ -43,9 +48,11 @@ describe('MapEditor lock integration', () => {
     vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
 
     render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
@@ -62,9 +69,11 @@ describe('MapEditor lock integration', () => {
     vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
 
     const { unmount } = render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
@@ -83,9 +92,11 @@ describe('MapEditor lock integration', () => {
     vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
 
     render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
@@ -104,9 +115,11 @@ describe('MapEditor lock integration', () => {
     vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
 
     render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
@@ -134,9 +147,11 @@ describe('MapEditor lock integration', () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
 
     render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
@@ -165,9 +180,11 @@ describe('MapEditor lock integration', () => {
     vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
 
     render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
@@ -232,9 +249,11 @@ describe('MapEditor copy/paste', () => {
     })
 
     render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
@@ -283,9 +302,11 @@ describe('MapEditor copy/paste', () => {
     vi.mocked(listTeamMaps).mockResolvedValue({ maps: [] })
 
     render(
-      <BrowserRouter>
-        <MapEditor teamId={1} mapId={1} />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <MapEditor teamId={1} mapId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {

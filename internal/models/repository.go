@@ -174,6 +174,7 @@ type TemplateRepository interface {
 	Delete(templateID int) error
 	DuplicateToTeam(teamID, templateID int) ([]*Zone, int, error)
 	FindTemplateZonesByMapID(mapID int) ([]TemplateZone, error)
+	FindTemplateLinesOfFireByMapID(mapID int) ([]TemplateLineOfFire, error)
 	SetSyncStatus(templateID int, active bool) error
 }
 
@@ -186,6 +187,28 @@ type ZoneVersionRepository interface {
 	FindFirstOtherEditorVersion(zoneID, editorID int) (*int, error)
 	CountByZone(zoneID int) (int, error)
 	DeleteNewerThan(zoneID int, olderThan time.Time) error
+}
+
+type LineOfFireRepository interface {
+	Create(teamID, mapID int, name string, data ConeData) (*LineOfFire, error)
+	FindByID(id int) (*LineOfFire, error)
+	FindByTeamAndMap(teamID, mapID int) ([]*LineOfFire, error)
+	UpdateName(id int, name string) error
+	UpdateOrder(id int, orderIndex int) error
+	UpdatePolygonData(id int, data ConeData) error
+	Delete(id int) error
+	IsNameTaken(teamID, mapID int, name string) (bool, error)
+}
+
+type LineOfFireEditHistoryRepository interface {
+	Log(lineOfFireID int, editorID *int, action string, oldData, newData json.RawMessage) error
+}
+
+type LineOfFireVersionRepository interface {
+	Save(lineOfFireID int, editorID *int, snapshot json.RawMessage) (*LineOfFireVersion, error)
+	FindByLineOfFire(lineOfFireID int) ([]*LineOfFireVersion, error)
+	GetLatestForLineOfFire(lineOfFireID int) (*LineOfFireVersion, error)
+	DeleteNewerThan(lineOfFireID int, olderThan time.Time) error
 }
 
 type EditHistoryRepository interface {

@@ -112,7 +112,58 @@ func (r *templateRepo) CreateFromMap(teamID, mapID int) (*Template, error) {
 		}
 	}
 
+	if err := r.syncTemplateLinesOfFire(t.ID, teamID, mapID); err != nil {
+		return nil, err
+	}
+
 	return t, nil
+}
+
+func (r *templateRepo) syncTemplateLinesOfFire(templateID, teamID, mapID int) error {
+	lofRows, err := r.db.Query(
+		`SELECT polygon_data, name, order_index FROM lines_of_fire
+		 WHERE team_id = $1 AND map_id = $2 ORDER BY order_index`,
+		teamID, mapID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to query lines of fire: %w", err)
+	}
+	defer lofRows.Close()
+
+	type lofData struct {
+		polygonData []byte
+		name        string
+		orderIndex  int
+	}
+
+	var lines []lofData
+	for lofRows.Next() {
+		var d lofData
+		var polygonData sql.NullString
+		if err := lofRows.Scan(&polygonData, &d.name, &d.orderIndex); err != nil {
+			return fmt.Errorf("failed to scan line of fire: %w", err)
+		}
+		if polygonData.Valid {
+			d.polygonData = []byte(polygonData.String)
+		}
+		lines = append(lines, d)
+	}
+	if err := lofRows.Err(); err != nil {
+		return err
+	}
+
+	for _, l := range lines {
+		_, err := r.db.Exec(
+			`INSERT INTO template_lines_of_fire (template_id, polygon_data, name, order_index)
+			 VALUES ($1, $2::jsonb, $3, $4)`,
+			templateID, l.polygonData, l.name, l.orderIndex,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert template line of fire: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (r *templateRepo) FindByMapID(mapID int) (*Template, error) {
@@ -262,6 +313,14 @@ func (r *templateRepo) UpdateFromMap(templateID, teamID, mapID int) error {
 		if err != nil {
 			return fmt.Errorf("failed to insert template zone: %w", err)
 		}
+	}
+
+	if _, err := r.db.Exec(`DELETE FROM template_lines_of_fire WHERE template_id = $1`, templateID); err != nil {
+		return fmt.Errorf("failed to delete existing template lines of fire: %w", err)
+	}
+
+	if err := r.syncTemplateLinesOfFire(templateID, teamID, mapID); err != nil {
+		return err
 	}
 
 	_, err = r.db.Exec(
@@ -440,6 +499,60 @@ func (r *templateRepo) DuplicateToTeam(teamID, templateID int) ([]*Zone, int, er
 		createdZones = append(createdZones, &zone)
 	}
 
+	if _, err := tx.Exec(
+		`DELETE FROM line_of_fire_edit_history WHERE line_of_fire_id IN
+		 (SELECT id FROM lines_of_fire WHERE team_id = $1 AND map_id = $2)`,
+		teamID, mapID,
+	); err != nil {
+		return nil, 0, fmt.Errorf("failed to delete line of fire edit history: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM line_of_fire_versions WHERE line_of_fire_id IN
+		 (SELECT id FROM lines_of_fire WHERE team_id = $1 AND map_id = $2)`,
+		teamID, mapID,
+	); err != nil {
+		return nil, 0, fmt.Errorf("failed to delete line of fire versions: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM lines_of_fire WHERE team_id = $1 AND map_id = $2`,
+		teamID, mapID,
+	); err != nil {
+		return nil, 0, fmt.Errorf("failed to delete lines of fire: %w", err)
+	}
+
+	tlofRows, err := tx.Query(
+		`SELECT polygon_data, name, order_index
+		 FROM template_lines_of_fire WHERE template_id = $1 ORDER BY order_index`,
+		templateID,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query template lines of fire: %w", err)
+	}
+	defer tlofRows.Close()
+
+	for tlofRows.Next() {
+		var polygonData sql.NullString
+		var name string
+		var orderIndex int
+		if err := tlofRows.Scan(&polygonData, &name, &orderIndex); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan template line of fire: %w", err)
+		}
+		var polygonArg interface{}
+		if polygonData.Valid {
+			polygonArg = []byte(polygonData.String)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO lines_of_fire (team_id, map_id, name, polygon_data, order_index)
+			 VALUES ($1, $2, $3, $4::jsonb, $5)`,
+			teamID, mapID, name, polygonArg, orderIndex,
+		); err != nil {
+			return nil, 0, fmt.Errorf("failed to insert line of fire: %w", err)
+		}
+	}
+	if err := tlofRows.Err(); err != nil {
+		return nil, 0, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -553,4 +666,51 @@ func (r *templateRepo) FindTemplateZonesByMapID(mapID int) ([]TemplateZone, erro
 		return []TemplateZone{}, nil
 	}
 	return zones, nil
+}
+
+func (r *templateRepo) FindTemplateLinesOfFireByMapID(mapID int) ([]TemplateLineOfFire, error) {
+	var templateID int
+	err := r.db.QueryRow(
+		`SELECT id FROM templates WHERE map_id = $1`,
+		mapID,
+	).Scan(&templateID)
+	if err == sql.ErrNoRows {
+		return []TemplateLineOfFire{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find template for map %d: %w", mapID, err)
+	}
+
+	rows, err := r.db.Query(
+		`SELECT id, template_id, polygon_data, name, order_index
+		 FROM template_lines_of_fire WHERE template_id = $1 ORDER BY order_index`,
+		templateID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query template lines of fire: %w", err)
+	}
+	defer rows.Close()
+
+	var lines []TemplateLineOfFire
+	for rows.Next() {
+		var l TemplateLineOfFire
+		var polygonData []byte
+		if err := rows.Scan(&l.ID, &l.TemplateID, &polygonData, &l.Name, &l.OrderIndex); err != nil {
+			return nil, fmt.Errorf("failed to scan template line of fire: %w", err)
+		}
+		if len(polygonData) > 0 {
+			if err := json.Unmarshal(polygonData, &l.PolygonData); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal polygon data: %w", err)
+			}
+		}
+		lines = append(lines, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if lines == nil {
+		return []TemplateLineOfFire{}, nil
+	}
+	return lines, nil
 }

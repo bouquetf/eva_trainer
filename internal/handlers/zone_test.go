@@ -160,7 +160,7 @@ func setupZoneTest(t *testing.T) *zoneTestFixtures {
 
 	testLogger := services.NewLogger(services.LogLevelError, services.LogFormatText)
 	zoneHandler := NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, nil, versionRepo, testLogger)
-	lockHandler := NewEditLockHandler(lockRepo, userRepo)
+	lockHandler := NewEditLockHandler(lockRepo, userRepo, testLogger)
 
 	return &zoneTestFixtures{
 		db:             db,

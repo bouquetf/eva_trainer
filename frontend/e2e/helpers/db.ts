@@ -131,6 +131,26 @@ export async function expireInvitationLink(token: string): Promise<void> {
   );
 }
 
+export interface TestLineOfFire {
+  id: number;
+  name: string;
+}
+
+export async function seedLineOfFire(
+  teamId: number,
+  mapId: number,
+  name: string,
+  coneData?: string,
+): Promise<TestLineOfFire> {
+  const data = coneData ?? '{"cones":[{"origin":{"x":10,"y":20},"left_end":{"x":30,"y":40},"right_end":{"x":50,"y":60}}]}';
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO lines_of_fire (team_id, map_id, name, polygon_data)
+     VALUES ($1, $2, $3, $4::jsonb) RETURNING id`,
+    [teamId, mapId, name, data],
+  );
+  return { id: rows[0].id, name };
+}
+
 export async function seedJoinRequest(teamId: number, userId: number): Promise<{ id: number } | null> {
   const rows = await queryDB<{ id: number }[]>(
     `INSERT INTO team_join_requests (team_id, user_id, status)

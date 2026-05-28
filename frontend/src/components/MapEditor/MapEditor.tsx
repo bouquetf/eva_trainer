@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import type { Zone, Point, ZoneVersion, ZonePolygon } from "../../lib/api/types";
+import type { LineOfFireVersion, Zone, Point, ZoneVersion, ZonePolygon } from "../../lib/api/types";
 import {
   listZones,
   batchActions,
@@ -17,6 +17,7 @@ import { MapCanvas } from "./MapCanvas";
 import { ZoneList } from "./ZoneList";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import VersionBrowser from "../VersionBrowser";
+import LineOfFireVersionBrowser from "../LineOfFireVersionBrowser";
 import ConfirmDialog from "../ConfirmDialog";
 import RestoreConfirmModal from "../RestoreConfirmModal";
 import { EditorHelpPopup } from "./EditorHelpPopup";
@@ -30,6 +31,9 @@ import {
   mirrorSelectedPolygonsH,
   mirrorSelectedPolygonsV,
 } from "../../lib/geometry/transforms";
+import { listLinesOfFire, createLineOfFire, deleteLineOfFire, addLineOfFireCone, setLineOfFireName, batchLinesOfFireActions } from "../../api/lines_of_fire";
+import type { LineOfFire, ConeData, BatchLineOfFireAction } from "../../lib/lines_of_fire/types";
+import { LineOfFireNameDialog } from "./LineOfFireNameDialog";
 
 interface ContextMenuState {
   x: number;
@@ -85,17 +89,35 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [versionRefreshKey, setVersionRefreshKey] = useState(0);
   const [browsingVersion, setBrowsingVersion] = useState<ZoneVersion | null>(null);
+  const [lofVersionRefreshKey, setLofVersionRefreshKey] = useState(0);
+  const [browsingLoFVersion, setBrowsingLoFVersion] = useState<LineOfFireVersion | null>(null);
+  const lofCurrentSnapshotRef = useRef<string | null>(null);
   const [currentVersionSnapshot, setCurrentVersionSnapshot] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<ZoneVersion | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [clipboardPolygons, setClipboardPolygons] = useState<ZonePolygon[]>([]);
   const [clipboardSourceZoneId, setClipboardSourceZoneId] = useState<number | null>(null);
+  const [linesOfFire, setLinesOfFire] = useState<LineOfFire[]>([]);
+  const [selectedLineOfFireId, setSelectedLineOfFireId] = useState<number | null>(null);
+  const [drawingLineOfFire, setDrawingLineOfFire] = useState(false);
+  const [tempConePoints, setTempConePoints] = useState<Point[]>([]);
+  const [pendingLineOfFireData, setPendingLineOfFireData] = useState<ConeData | null>(null);
+  const [renamingLineOfFireId, setRenamingLineOfFireId] = useState<number | null>(null);
+  const [renamingLineOfFireName, setRenamingLineOfFireName] = useState("");
+  const [lofSnapshot, setLofSnapshot] = useState<string | null>(null);
+  const [lofIsSaving, setLofIsSaving] = useState(false);
+  const [extendingConeLofId, setExtendingConeLofId] = useState<number | null>(null);
+  const linesOfFireRef = useRef<LineOfFire[]>([]);
+  const lofSnapshotRef = useRef<string | null>(null);
   const pendingZoneSwitch = useRef<PendingSwitch | null>(null);
 
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+
+  linesOfFireRef.current = linesOfFire;
+  lofSnapshotRef.current = lofSnapshot;
 
   const getEditorId = () => useAuthStore.getState().user?.id;
 
@@ -192,6 +214,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         }
       } catch {
         // non-critical
+      }
+
+      if (!readOnly) {
+        try {
+          const lofData = await listLinesOfFire(teamId, mapId);
+          if (mountedRef.current) {
+            setLinesOfFire(lofData);
+          }
+        } catch {
+          // non-critical
+        }
       }
 
       try {
@@ -350,7 +383,21 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         return;
       }
 
+      if (e.key === "Escape") {
+        if (extendingConeLofId !== null || drawingLineOfFire) {
+          setExtendingConeLofId(null);
+          setDrawingLineOfFire(false);
+          setTempConePoints([]);
+          return;
+        }
+      }
+
       if (e.key === "Delete" || e.key === "Suppr") {
+        if (selectedLineOfFireId !== null && selectedPolygonIndexes.size === 0) {
+          e.preventDefault();
+          handleLineOfFireDelete(selectedLineOfFireId);
+          return;
+        }
         if (selectedPolygonIndexes.size === 0 || !editingZone) return;
         e.preventDefault();
         updateEditingPolygon((z) => removePolygonsByIndex(z, selectedPolygonIndexes));
@@ -441,6 +488,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     setOriginalSnapshot(JSON.stringify(zone));
     setIsDirty(false);
     setSelectedZoneId(zone.id);
+    setSelectedLineOfFireId(null);
     setSelectedPolygonIndexes(new Set(zone.polygons.map((_, i) => i)));
     setTempPoints([]);
     setUndoStack([]);
@@ -665,6 +713,41 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     }
   };
 
+  const handleBrowseLoFVersion = (version: LineOfFireVersion | null) => {
+    if (version && browsingLoFVersion === null) {
+      lofCurrentSnapshotRef.current = JSON.stringify(linesOfFire);
+      const target = linesOfFire.find((l) => l.id === version.line_of_fire_id);
+      if (!target) return;
+      const reconstructed = lofFromVersion(target, version);
+      setLinesOfFire((prev) => prev.map((l) =>
+        l.id === version.line_of_fire_id ? reconstructed : l
+      ));
+      setBrowsingLoFVersion(version);
+    } else if (version && browsingLoFVersion !== null) {
+      const target = linesOfFire.find((l) => l.id === version.line_of_fire_id);
+      if (!target) return;
+      const reconstructed = lofFromVersion(target, version);
+      setLinesOfFire((prev) => prev.map((l) =>
+        l.id === version.line_of_fire_id ? reconstructed : l
+      ));
+      setBrowsingLoFVersion(version);
+    } else if (version === null && browsingLoFVersion !== null && lofCurrentSnapshotRef.current) {
+      const restored = JSON.parse(lofCurrentSnapshotRef.current) as LineOfFire[];
+      setLinesOfFire(restored);
+      setBrowsingLoFVersion(null);
+      lofCurrentSnapshotRef.current = null;
+    }
+  };
+
+  function lofFromVersion(base: LineOfFire, version: LineOfFireVersion): LineOfFire {
+    const vd = version.version_data as { name?: string; polygon_data?: ConeData };
+    return {
+      ...base,
+      name: vd.name ?? base.name,
+      polygon_data: vd.polygon_data ?? base.polygon_data,
+    };
+  }
+
   function zoneFromVersion(base: Zone, version: ZoneVersion): Zone {
     return {
       ...base,
@@ -885,10 +968,6 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     }
   };
 
-  const handleBackgroundClick = () => {
-    setSelectedPolygonIndexes(new Set());
-  };
-
   const handleFlipH = async () => {
     if (!(await ensureLock()) || !editingZone) return;
     if (selectedPolygonIndexes.size === 0) return;
@@ -947,9 +1026,341 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     [editingZone, ensureLock],
   );
 
+  const handleLineOfFirePointAdd = useCallback(
+    async (p: Point) => {
+      if (!(await ensureLock())) return;
+      const newPoints = [...tempConePoints, p];
+      setTempConePoints(newPoints);
+
+      if (newPoints.length === 3) {
+        setDrawingLineOfFire(false);
+        setTempConePoints([]);
+
+        if (extendingConeLofId !== null) {
+          const lofId = extendingConeLofId;
+          setExtendingConeLofId(null);
+          try {
+            await addLineOfFireCone(teamId, lofId, {
+              origin: newPoints[0],
+              left_end: newPoints[1],
+              right_end: newPoints[2],
+            });
+            const fresh = await listLinesOfFire(teamId, mapId);
+            setLinesOfFire(fresh);
+          } catch {
+            showError("Erreur lors de l'ajout du cône.");
+          }
+        } else {
+          const coneData: ConeData = {
+            cones: [{ origin: newPoints[0], left_end: newPoints[1], right_end: newPoints[2] }],
+          };
+          setPendingLineOfFireData(coneData);
+        }
+      }
+    },
+    [ensureLock, tempConePoints, extendingConeLofId, teamId, mapId],
+  );
+
+  const handleLineOfFireNameConfirm = useCallback(
+    async (name: string) => {
+      if (!pendingLineOfFireData) return;
+      if (!(await ensureLock())) return;
+      try {
+        const line = await createLineOfFire(teamId, mapId, name, pendingLineOfFireData);
+        setLinesOfFire((prev) => [...prev, line]);
+        setSelectedLineOfFireId(line.id);
+      } catch {
+        showError("Erreur lors de la création de la ligne de tir.");
+      } finally {
+        setPendingLineOfFireData(null);
+      }
+    },
+    [teamId, mapId, pendingLineOfFireData, ensureLock],
+  );
+
+  const handleLineOfFireNameCancel = useCallback(() => {
+    setPendingLineOfFireData(null);
+  }, []);
+
+  const handleLineOfFireClick = useCallback((lofId: number) => {
+    if (lofCurrentSnapshotRef.current) {
+      const restored = JSON.parse(lofCurrentSnapshotRef.current) as LineOfFire[];
+      setLinesOfFire(restored);
+      lofCurrentSnapshotRef.current = null;
+    }
+    setBrowsingLoFVersion(null);
+    setSelectedLineOfFireId(lofId);
+    setSelectedZoneId(null);
+    setSelectedPolygonIndexes(new Set());
+    setEditingZone(null);
+    setBrowsingVersion(null);
+    setCurrentVersionSnapshot(null);
+  }, []);
+
+  const handleLineOfFireDelete = useCallback(async (lofId: number) => {
+    if (!(await ensureLock())) return;
+    if (!confirm("Supprimer cette ligne de tir ?")) return;
+    try {
+      await deleteLineOfFire(teamId, lofId);
+      setLinesOfFire((prev) => prev.filter((l) => l.id !== lofId));
+      if (selectedLineOfFireId === lofId) setSelectedLineOfFireId(null);
+    } catch {
+      showError("Erreur lors de la suppression.");
+    }
+  }, [teamId, selectedLineOfFireId, ensureLock]);
+
+  const handleLineOfFireDeleteCone = useCallback(async (lofId: number, coneIndex: number) => {
+    if (!(await ensureLock())) return;
+    try {
+      await batchLinesOfFireActions(teamId, mapId, [
+        { type: "remove_cone", line_of_fire_id: lofId, cone_index: coneIndex },
+      ]);
+      setLinesOfFire((prev) =>
+        prev.map((l) => {
+          if (l.id !== lofId) return l;
+          return { ...l, polygon_data: { cones: l.polygon_data.cones.filter((_, i) => i !== coneIndex) } };
+        }),
+      );
+      setVersionRefreshKey((k) => k + 1);
+      setLofVersionRefreshKey((k) => k + 1);
+    } catch {
+      showError("Erreur lors de la suppression du cône.");
+    }
+  }, [teamId, mapId, ensureLock]);
+
+  const handleLineOfFireOriginDoubleClick = useCallback(async (lofId: number, coneIndex?: number) => {
+    if (browsingLoFVersion) return;
+    const lof = linesOfFire.find((l) => l.id === lofId);
+    if (!lof || lof.polygon_data.cones.length === 0) return;
+    const cone = lof.polygon_data.cones[coneIndex ?? 0];
+    if (!cone) return;
+    setTempConePoints([cone.origin]);
+    setDrawingLineOfFire(true);
+    setExtendingConeLofId(lofId);
+    setLofSnapshot(null);
+  }, [linesOfFire, browsingLoFVersion]);
+
+  const handleLineOfFireRename = useCallback(
+    async (lofId: number, name: string) => {
+      if (!(await ensureLock())) return;
+      try {
+        await setLineOfFireName(teamId, lofId, name);
+        setLinesOfFire((prev) => prev.map((l) => (l.id === lofId ? { ...l, name } : l)));
+      } catch {
+        showError("Erreur lors du renommage.");
+      }
+    },
+    [teamId, ensureLock],
+  );
+
+  const handleLineOfFireRightClick = useCallback(
+    (lofId: number, clientX: number, clientY: number, coneIndex?: number) => {
+      const lof = linesOfFire.find((l) => l.id === lofId);
+      const items: ContextMenuItem[] = [
+        {
+          label: "Renommer",
+          action: () => {
+            setRenamingLineOfFireId(lofId);
+            setRenamingLineOfFireName(lof?.name ?? "");
+          },
+        },
+        {
+          label: "Supprimer",
+          action: () => handleLineOfFireDelete(lofId),
+        },
+        {
+          label: "Ajouter un cône",
+          action: () => handleLineOfFireOriginDoubleClick(lofId, coneIndex),
+        },
+      ];
+      if (coneIndex !== undefined) {
+        items.push({
+          label: "Supprimer ce cône",
+          action: () => handleLineOfFireDeleteCone(lofId, coneIndex),
+        });
+      }
+      setContextMenu({ x: clientX, y: clientY, items });
+    },
+    [handleLineOfFireDelete, handleLineOfFireOriginDoubleClick, linesOfFire],
+  );
+
+  const handleRenameLineOfFireConfirm = useCallback(
+    async (name: string) => {
+      if (renamingLineOfFireId === null) return;
+      await handleLineOfFireRename(renamingLineOfFireId, name);
+      setRenamingLineOfFireId(null);
+      setRenamingLineOfFireName("");
+    },
+    [renamingLineOfFireId, handleLineOfFireRename],
+  );
+
+  const handleRenameLineOfFireCancel = useCallback(() => {
+    setRenamingLineOfFireId(null);
+    setRenamingLineOfFireName("");
+  }, []);
+
+  const captureLofSnapshot = useCallback(() => {
+    setLofSnapshot((prev) => {
+      if (prev !== null) return prev;
+      const json = JSON.stringify(linesOfFireRef.current);
+      lofSnapshotRef.current = json;
+      return json;
+    });
+  }, []);
+
+  const handleConeOriginDrag = useCallback(
+    (lofId: number, _coneIndex: number, newOrigin: Point) => {
+      captureLofSnapshot();
+      setLinesOfFire((prev) =>
+        prev.map((l) => {
+          if (l.id !== lofId) return l;
+          const cones = l.polygon_data.cones.map((c) => ({ ...c, origin: newOrigin }));
+          return { ...l, polygon_data: { cones } };
+        }),
+      );
+    },
+    [captureLofSnapshot],
+  );
+
+  const handleConeBodyDrag = useCallback(
+    (lofId: number, coneIndex: number, newOrigin: Point) => {
+      captureLofSnapshot();
+      setLinesOfFire((prev) =>
+        prev.map((l) => {
+          if (l.id !== lofId) return l;
+          const dragged = l.polygon_data.cones[coneIndex];
+          if (!dragged) return l;
+          const dx = newOrigin.x - dragged.origin.x;
+          const dy = newOrigin.y - dragged.origin.y;
+          const cones = l.polygon_data.cones.map((c) => ({
+            ...c,
+            origin: { x: c.origin.x + dx, y: c.origin.y + dy },
+            left_end: { x: c.left_end.x + dx, y: c.left_end.y + dy },
+            right_end: { x: c.right_end.x + dx, y: c.right_end.y + dy },
+          }));
+          return { ...l, polygon_data: { cones } };
+        }),
+      );
+    },
+    [captureLofSnapshot],
+  );
+
+  const handleConeEndDrag = useCallback(
+    (lofId: number, coneIndex: number, _which: "left_end" | "right_end", newPos: Point) => {
+      captureLofSnapshot();
+      setLinesOfFire((prev) =>
+        prev.map((l) => {
+          if (l.id !== lofId) return l;
+          const cones = l.polygon_data.cones.map((c, i) => {
+            if (i !== coneIndex) return c;
+            return { ...c, [_which]: newPos };
+          });
+          return { ...l, polygon_data: { cones } };
+        }),
+      );
+    },
+    [captureLofSnapshot],
+  );
+
+  const handleConeArcDrag = useCallback(
+    (lofId: number, coneIndex: number, arcBulge: number) => {
+      captureLofSnapshot();
+      setLinesOfFire((prev) =>
+        prev.map((l) => {
+          if (l.id !== lofId) return l;
+          const cones = l.polygon_data.cones.map((c, i) => {
+            if (i !== coneIndex) return c;
+            return { ...c, arc_bulge: arcBulge };
+          });
+          return { ...l, polygon_data: { cones } };
+        }),
+      );
+    },
+    [captureLofSnapshot],
+  );
+
+  const handleLineOfFireDragEnd = useCallback(
+    async (_lofId: number, _coneIndex: number) => {
+      const snapshot = lofSnapshotRef.current;
+      if (!snapshot) return;
+      if (!(await ensureLock())) return;
+
+      const actions = computeLofDiff(snapshot, linesOfFireRef.current);
+      if (actions.length === 0) {
+        setLofSnapshot(null);
+        return;
+      }
+
+      setLofIsSaving(true);
+      try {
+        await batchLinesOfFireActions(teamId, mapId, actions);
+        setLofSnapshot(null);
+        setVersionRefreshKey((k) => k + 1);
+        setLofVersionRefreshKey((k) => k + 1);
+      } catch {
+        showError("Erreur lors de la sauvegarde automatique.");
+      } finally {
+        setLofIsSaving(false);
+      }
+    },
+    [teamId, mapId, ensureLock],
+  );
+
+  function computeLofDiff(snapshotJson: string, current: LineOfFire[]): BatchLineOfFireAction[] {
+    const oldList: LineOfFire[] = JSON.parse(snapshotJson);
+    const oldMap = new Map(oldList.map((l) => [l.id, l]));
+    const actions: BatchLineOfFireAction[] = [];
+
+    for (const lof of current) {
+      const old = oldMap.get(lof.id);
+      if (!old) continue;
+      if (JSON.stringify(old.polygon_data.cones) !== JSON.stringify(lof.polygon_data.cones)) {
+        actions.push({ type: "update_polygon_data", line_of_fire_id: lof.id, polygon_data: lof.polygon_data });
+      }
+    }
+
+    return actions;
+  }
+
+  const handleLofSave = useCallback(async () => {
+    if (!lofSnapshot) return;
+    if (!(await ensureLock())) return;
+
+    const actions = computeLofDiff(lofSnapshot, linesOfFireRef.current);
+    if (actions.length === 0) {
+      setLofSnapshot(null);
+      return;
+    }
+
+    setLofIsSaving(true);
+    try {
+      await batchLinesOfFireActions(teamId, mapId, actions);
+      setLofSnapshot(null);
+      setVersionRefreshKey((k) => k + 1);
+      setLofVersionRefreshKey((k) => k + 1);
+    } catch {
+      showError("Erreur lors de la sauvegarde des lignes de tir.");
+    } finally {
+      setLofIsSaving(false);
+    }
+  }, [lofSnapshot, teamId, mapId, ensureLock]);
+
+  const handleLofDiscard = useCallback(() => {
+    if (!lofSnapshot) return;
+    const restored: LineOfFire[] = JSON.parse(lofSnapshot);
+    setLinesOfFire(restored);
+    setLofSnapshot(null);
+  }, [lofSnapshot]);
+
+  const handleBackgroundClick = useCallback(() => {
+    setSelectedZoneId(null);
+    setSelectedPolygonIndexes(new Set());
+    setSelectedLineOfFireId(null);
+  }, []);
+
   const handleMapRightClick = useCallback(
     (clientX: number, clientY: number) => {
-      const items = [];
+      const items: ContextMenuItem[] = [];
 
       if (tempPoints.length > 0) {
         items.push({
@@ -969,6 +1380,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         },
       });
 
+      if (!drawingLineOfFire) {
+        items.push({
+          label: "Créer une ligne de tir",
+          action: () => {
+            setDrawingLineOfFire(true);
+            setTempConePoints([]);
+            setExtendingConeLofId(null);
+          },
+        });
+      }
+
       if (clipboardPolygons.length > 0) {
         items.push({
           label: "Coller",
@@ -980,7 +1402,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         setContextMenu({ x: clientX, y: clientY, items });
       }
     },
-    [handlePaste, tempPoints.length, clipboardPolygons.length],
+    [handlePaste, tempPoints.length, clipboardPolygons.length, drawingLineOfFire],
   );
 
   const handleZoneRightClick = useCallback(
@@ -1122,6 +1544,18 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
             onMapRightClick={readOnly ? () => {} : handleMapRightClick}
             onZoneRightClick={readOnly ? () => {} : handleZoneRightClick}
             onMapDoubleClick={readOnly ? () => {} : handleMapDoubleClick}
+            linesOfFire={readOnly && !browsingLoFVersion ? [] : linesOfFire}
+            selectedLineOfFireId={selectedLineOfFireId}
+            tempConePoints={tempConePoints}
+            drawingLineOfFire={drawingLineOfFire}
+            onLineOfFirePointAdd={readOnly || browsingLoFVersion ? undefined : handleLineOfFirePointAdd}
+            onLineOfFireRightClick={readOnly || browsingLoFVersion ? undefined : handleLineOfFireRightClick}
+            onOriginDoubleClick={readOnly ? undefined : handleLineOfFireOriginDoubleClick}
+            onConeOriginDrag={readOnly || browsingLoFVersion ? undefined : handleConeOriginDrag}
+            onConeTranslateDrag={readOnly || browsingLoFVersion ? undefined : handleConeBodyDrag}
+            onConeEndDrag={readOnly || browsingLoFVersion ? undefined : handleConeEndDrag}
+            onConeArcDrag={readOnly || browsingLoFVersion ? undefined : handleConeArcDrag}
+            onLineOfFireDragEnd={readOnly || browsingLoFVersion ? undefined : handleLineOfFireDragEnd}
           />
         </div>
 
@@ -1186,8 +1620,29 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
               </button>
             </div>
           )}
+          {!readOnly && lofSnapshot !== null && (
+            <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
+              <button
+                className="btn-primary btn-small"
+                onClick={handleLofSave}
+                disabled={lofIsSaving}
+                style={{ flex: 1 }}
+              >
+                {lofIsSaving ? "Sauvegarde..." : "Sauv. lignes de tir"}
+              </button>
+              <button
+                className="btn-secondary btn-small"
+                onClick={handleLofDiscard}
+                style={{ flex: 1 }}
+              >
+                Annuler
+              </button>
+            </div>
+          )}
           <ZoneList
             zones={zones}
+            linesOfFire={linesOfFire}
+            selectedLineOfFireId={selectedLineOfFireId}
             editingZoneId={selectedZoneId}
             onSelectZone={readOnly ? (id: number) => {
               const zone = zones.find((z) => z.id === id);
@@ -1200,8 +1655,20 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
             onDeleteZone={readOnly ? undefined : handleDeleteZone}
             onCreateZone={readOnly ? undefined : handleCreateZone}
             onRenameZone={readOnly ? undefined : handleRenameZone}
+            onSelectLineOfFire={readOnly ? undefined : handleLineOfFireClick}
+            onDeleteLineOfFire={readOnly ? undefined : handleLineOfFireDelete}
+            onRenameLineOfFire={readOnly ? undefined : handleLineOfFireRename}
             readOnly={readOnly}
           />
+          {!readOnly && selectedLineOfFireId != null && !browsingVersion && (
+            <LineOfFireVersionBrowser
+              teamId={teamId}
+              lineOfFireId={selectedLineOfFireId}
+              refreshKey={lofVersionRefreshKey}
+              browsingVersionId={browsingLoFVersion?.id}
+              onBrowse={handleBrowseLoFVersion}
+            />
+          )}
           {!readOnly && editingZone && editingZone.id > 0 && (
             <VersionBrowser
               teamId={teamId}
@@ -1213,6 +1680,38 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
           )}
         </div>
       </div>
+
+      {!readOnly && browsingLoFVersion && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          background: '#1565c0',
+          color: '#fff',
+          textAlign: 'center',
+          padding: '8px 16px',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 12,
+          fontSize: 14,
+        }}>
+          <span>
+            Affichage de la version du{' '}
+            <strong>{new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(browsingLoFVersion.created_at))}</strong>
+            {' '}(lecture seule)
+          </span>
+          <button
+            className="btn-small"
+            style={{ background: '#fff', color: '#1565c0', border: 'none', fontWeight: 'bold' }}
+            onClick={() => handleBrowseLoFVersion(null)}
+          >
+            Retour à l'édition
+          </button>
+        </div>
+      )}
 
       {!readOnly && browsingVersion && (
         <div style={{
@@ -1286,6 +1785,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         />
       )}
 
+      <LineOfFireNameDialog
+        open={pendingLineOfFireData !== null}
+        onConfirm={handleLineOfFireNameConfirm}
+        onCancel={handleLineOfFireNameCancel}
+      />
+      <LineOfFireNameDialog
+        open={renamingLineOfFireId !== null}
+        initialName={renamingLineOfFireName}
+        onConfirm={handleRenameLineOfFireConfirm}
+        onCancel={handleRenameLineOfFireCancel}
+      />
       <EditorHelpPopup open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );

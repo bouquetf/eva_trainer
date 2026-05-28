@@ -106,7 +106,7 @@ func setupMapHandlerTest(t *testing.T) (*MapHandler, models.UserRepository, *ser
 	mapRepo := models.NewMapRepository(db)
 	userRepo := models.NewUserRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	handler := NewMapHandler(mapRepo)
+	handler := NewMapHandler(mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return handler, userRepo, jwtService, db
 }

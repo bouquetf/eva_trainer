@@ -106,7 +106,7 @@ func setupAdminHandler(t *testing.T) (*AdminHandler, models.UserRepository, *sql
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
 
-	handler := NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo)
+	handler := NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return handler, userRepo, db
 }
@@ -385,7 +385,7 @@ func TestAdminHandler_Middleware_NonAdmin_Returns403(t *testing.T) {
 			c.Set("user", nonAdmin)
 			c.Next()
 		},
-		middleware.RequireAdmin(),
+		middleware.RequireAdmin(services.NewLogger(services.LogLevelError, services.LogFormatText)),
 		handler.ListUsers,
 	)
 
@@ -416,7 +416,7 @@ func TestAdminHandler_Middleware_NoAuth_Returns401(t *testing.T) {
 			c.Set("user", nil)
 			c.Next()
 		},
-		middleware.RequireAdmin(),
+		middleware.RequireAdmin(services.NewLogger(services.LogLevelError, services.LogFormatText)),
 		handler.ListUsers,
 	)
 
@@ -449,7 +449,7 @@ func TestAdminHandler_Middleware_NonAdminPromote_Returns403(t *testing.T) {
 			c.Params = append(c.Params, gin.Param{Key: "id", Value: strconv.Itoa(targetUser.ID)})
 			c.Next()
 		},
-		middleware.RequireAdmin(),
+		middleware.RequireAdmin(services.NewLogger(services.LogLevelError, services.LogFormatText)),
 		handler.PromoteToAdmin,
 	)
 

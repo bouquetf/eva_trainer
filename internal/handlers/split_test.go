@@ -118,8 +118,8 @@ func setupSplitHandlerTest(t *testing.T) (*SplitHandler, *MapHandler, models.Use
 	permRepo := models.NewPermissionRepository(db)
 	rolePermRepo := models.NewRolePermissionRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	splitHandler := NewSplitHandler(splitRepo)
-	mapHandler := NewMapHandler(mapRepo)
+	splitHandler := NewSplitHandler(splitRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	mapHandler := NewMapHandler(mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return splitHandler, mapHandler, userRepo, jwtService, db, permRepo, rolePermRepo
 }
@@ -312,7 +312,7 @@ func TestSplitHandler_CreateSplit_ForbiddenForNonAdmin(t *testing.T) {
 	c.Request = req
 
 	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
-	adminMw := middleware.RequireAdmin()
+	adminMw := middleware.RequireAdmin(services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	authMw(c)
 	if !c.IsAborted() {
@@ -936,8 +936,8 @@ func TestSplitHandler_ListSplitsPublic_Forbidden(t *testing.T) {
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["error"] != "insufficient_permission" {
-		t.Errorf("expected error 'insufficient_permission', got '%v'", resp["error"])
+	if resp["error"] != "forbidden" {
+		t.Errorf("expected error 'forbidden', got '%v'", resp["error"])
 	}
 }
 

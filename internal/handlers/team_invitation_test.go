@@ -79,7 +79,7 @@ func setupTeamInvitationTestDB(t *testing.T) *sql.DB {
 		"000002_add_refresh_tokens.up.sql",
 		"000003_add_display_name.up.sql",
 		"000004_add_discord_username.up.sql",
-		"000007_add_invitations_tables.up.sql",
+		"000007_add_team_invitations_and_join_requests.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -128,7 +128,7 @@ func setupTeamInvitationTest(t *testing.T) *teamInvitationTestFixtures {
 	userRepo := models.NewUserRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
-	invitationRepo := models.NewTeamInvitationRepository(db)
+	invitationRepo := models.NewTeamInvitationRepository(db, teamMemberRepo)
 	testLogger := services.NewLogger(services.LogLevelError, services.LogFormatText)
 
 	captain, _, err := userRepo.FindOrCreateByDiscordID("invite-cap-" + t.Name())
@@ -145,6 +145,12 @@ func setupTeamInvitationTest(t *testing.T) *teamInvitationTestFixtures {
 	if err != nil {
 		t.Fatalf("failed to create other user: %v", err)
 	}
+	// Set a display name so invitation by display_name works
+	_, err = db.Exec("UPDATE users SET display_name = $1 WHERE id = $2", "DisplayName-"+t.Name(), otherUser.ID)
+	if err != nil {
+		t.Fatalf("failed to set display name: %v", err)
+	}
+	otherUser.DisplayName = "DisplayName-" + t.Name()
 
 	team, err := teamRepo.Create("Invite Test Team "+t.Name(), captain.ID)
 	if err != nil {

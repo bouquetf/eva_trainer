@@ -35,6 +35,7 @@ var ieMigrationFiles = []string{
 	"000009_add_map_catalog.up.sql",
 	"000011_add_zone_polygon_constraints.up.sql",
 	"000013_add_zone_versions.up.sql",
+	"000017_add_polygon_floor.up.sql",
 }
 
 func setupImportExportTestDB(t *testing.T) (*ImportExportHandler, *sql.DB, models.UserRepository, models.TeamRepository, models.MapRepository, models.ZoneRepository) {
@@ -150,7 +151,7 @@ func createTestMap(t *testing.T, mapRepo models.MapRepository, name string) *mod
 	return evaMap
 }
 
-func createTestZone(t *testing.T, zoneRepo models.ZoneRepository, teamID, mapID int, name string, pointCount int) *models.Zone {
+func createTestZoneWithPoints(t *testing.T, zoneRepo models.ZoneRepository, teamID, mapID int, name string, pointCount int) *models.Zone {
 	t.Helper()
 
 	zone, err := zoneRepo.Create(teamID, mapID)
@@ -215,8 +216,8 @@ func TestExportTeamMap_Success(t *testing.T) {
 	handler, _, userRepo, teamRepo, mapRepo, zoneRepo := setupImportExportTestDB(t)
 	team, user, token := createTestTeam(t, teamRepo, userRepo)
 	evaMap := createTestMap(t, mapRepo, "Atlantis")
-	createTestZone(t, zoneRepo, team.ID, evaMap.ID, "top", 4)
-	createTestZone(t, zoneRepo, team.ID, evaMap.ID, "secret", 3)
+	createTestZoneWithPoints(t, zoneRepo, team.ID, evaMap.ID, "top", 4)
+	createTestZoneWithPoints(t, zoneRepo, team.ID, evaMap.ID, "secret", 3)
 
 	w := executeImportExportHandler(t, handler.ExportTeamMap, http.MethodGet,
 		fmt.Sprintf("/api/v1/admin/teams/%d/export/%d", team.ID, evaMap.ID),
@@ -316,9 +317,9 @@ func TestExportTeamMaps_Success(t *testing.T) {
 
 	map1 := createTestMap(t, mapRepo, "Atlantis")
 	map2 := createTestMap(t, mapRepo, "Lunar")
-	createTestZone(t, zoneRepo, team.ID, map1.ID, "top", 4)
-	createTestZone(t, zoneRepo, team.ID, map1.ID, "secret", 3)
-	createTestZone(t, zoneRepo, team.ID, map2.ID, "base", 3)
+	createTestZoneWithPoints(t, zoneRepo, team.ID, map1.ID, "top", 4)
+	createTestZoneWithPoints(t, zoneRepo, team.ID, map1.ID, "secret", 3)
+	createTestZoneWithPoints(t, zoneRepo, team.ID, map2.ID, "base", 3)
 
 	w := executeImportExportHandler(t, handler.ExportTeamMaps, http.MethodGet,
 		fmt.Sprintf("/api/v1/admin/teams/%d/export", team.ID),
@@ -397,7 +398,7 @@ func TestImportTeamZones_DuplicateName(t *testing.T) {
 	handler, _, userRepo, teamRepo, mapRepo, zoneRepo := setupImportExportTestDB(t)
 	team, user, token := createTestTeam(t, teamRepo, userRepo)
 	evaMap := createTestMap(t, mapRepo, "Atlantis")
-	createTestZone(t, zoneRepo, team.ID, evaMap.ID, "existing-zone", 4)
+	createTestZoneWithPoints(t, zoneRepo, team.ID, evaMap.ID, "existing-zone", 4)
 
 	importBody := fmt.Sprintf(`[
 		{

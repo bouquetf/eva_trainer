@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
-import { Stage, Layer, Path, Line, Image as KonvaImage } from 'react-konva'
+import { Stage, Layer, Path, Line, Image as KonvaImage, Circle } from 'react-konva'
 import useImage from 'use-image'
 import { getMapImageUrl } from '../api/maps'
-import type { ZonePolygon } from '../lib/revision/types'
+import type { ZonePolygon, RevisionItem } from '../lib/revision/types'
 
 function useHatchPattern(): HTMLImageElement | undefined {
   return useMemo(() => {
@@ -42,10 +42,13 @@ export function calcAdaptiveScale(
 
 interface RevisionMapProps {
   mapId: number
-  polygons: ZonePolygon[]
+  polygons?: ZonePolygon[]
+  item?: RevisionItem
 }
 
-export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
+export function RevisionMap({ mapId, polygons, item }: RevisionMapProps) {
+  const activePolygons = item?.type === 'zone' ? item.polygons ?? [] : polygons ?? []
+  const activeCones = item?.type === 'line_of_fire' ? item.polygon_data?.cones ?? [] : []
   const [image] = useImage(getMapImageUrl(mapId))
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const containerRef = useRef<HTMLDivElement>(null)
@@ -89,7 +92,7 @@ export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
       >
         <Layer>
           <KonvaImage image={image} />
-          {polygons.map((polygon) => (
+          {activePolygons.map((polygon) => (
             <Line
               key={polygon.id}
               points={polygon.points.flatMap(p => [p.x, p.y])}
@@ -99,7 +102,7 @@ export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
               closed
             />
           ))}
-          {hatchCanvas && polygons.map((polygon) => (
+          {hatchCanvas && activePolygons.map((polygon) => (
             <Path
               key={`hatch-${polygon.id}`}
               data={pointsToSvgPath(polygon.points)}
@@ -108,7 +111,7 @@ export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
               listening={false}
             />
           ))}
-          {polygons.map((polygon) => {
+          {activePolygons.map((polygon) => {
             if (!polygon.floor) return null;
             const pts = polygon.points;
             const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
@@ -136,6 +139,30 @@ export function RevisionMap({ mapId, polygons }: RevisionMapProps) {
               </Fragment>
             );
           })}
+          {activeCones.map((cone, idx) => (
+            <Fragment key={`cone-${idx}`}>
+              <Line
+                points={[
+                  cone.origin.x, cone.origin.y,
+                  cone.left_end.x, cone.left_end.y,
+                  cone.right_end.x, cone.right_end.y,
+                  cone.origin.x, cone.origin.y,
+                ]}
+                fill="rgba(255, 150, 0, 0.2)"
+                stroke="#ff8800"
+                strokeWidth={3}
+                closed
+              />
+              <Circle
+                x={cone.origin.x}
+                y={cone.origin.y}
+                radius={5}
+                fill="#ff8800"
+                stroke="#fff"
+                strokeWidth={1.5}
+              />
+            </Fragment>
+          ))}
         </Layer>
       </Stage>
     </div>

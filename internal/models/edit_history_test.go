@@ -3,7 +3,6 @@
 package models
 
 import (
-	"database/sql"
 	"encoding/json"
 	"testing"
 )

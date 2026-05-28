@@ -72,6 +72,16 @@ func (h *TeamInvitationHandler) InviteByDisplayName(c *gin.Context) {
 		return
 	}
 
+	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
+		return
+	}
+	if member.Role != models.RoleCaptain && member.Role != models.RoleCocaptain {
+		apierror.RespondWithError(c, apierror.NewAPIError("forbidden", "only captains can invite members", http.StatusForbidden))
+		return
+	}
+
 	inv, err := h.teamInvitationRepo.CreateByUser(teamID, targetUser.ID, user.ID)
 	if err != nil {
 		if errors.Is(err, models.ErrCannotInviteSelf) {
@@ -116,7 +126,7 @@ func (h *TeamInvitationHandler) GenerateInviteLink(c *gin.Context) {
 		return
 	}
 
-	expiresAt := time.Now().Add(24 * time.Hour)
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
 
 	inv, err := h.teamInvitationRepo.CreateLink(teamID, user.ID, token, expiresAt)
 	if err != nil {

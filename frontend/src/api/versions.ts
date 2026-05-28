@@ -1,5 +1,10 @@
 import { getApiClient } from './client'
-import type { Zone, VersionPage, VersionFilters } from '../lib/api/types'
+import type {
+  LineOfFireVersion,
+  Zone,
+  VersionPage,
+  VersionFilters,
+} from '../lib/api/types'
 
 const api = () => getApiClient()
 
@@ -17,6 +22,15 @@ export async function listMapVersions(
   const query = params.toString()
   const path = `/api/v1/teams/${teamId}/maps/${mapId}/versions${query ? `?${query}` : ''}`
   return api().get<VersionPage>(path)
+}
+
+export async function listLineOfFireVersions(
+  teamId: number,
+  lineOfFireId: number,
+): Promise<{ versions: LineOfFireVersion[]; total: number }> {
+  return api().get<{ versions: LineOfFireVersion[]; total: number }>(
+    `/api/v1/teams/${teamId}/lines-of-fire/${lineOfFireId}/versions`,
+  )
 }
 
 export async function listZoneVersions(

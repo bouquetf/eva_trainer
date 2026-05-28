@@ -1000,7 +1000,16 @@ func (h *ZoneHandler) BatchActions(c *gin.Context) {
 			result, err := h.batchSetFloor(user.ID, action)
 			if err != nil {
 				h.logger.Warn("set_floor failed", "user", user.ID, "team", teamID, "map", mapID, "error", err)
-				apierror.RespondWithError(c, apierror.NewAPIError("batch_action_failed", err.Error(), http.StatusInternalServerError))
+				status := http.StatusInternalServerError
+				code := "batch_action_failed"
+				if errors.Is(err, models.ErrInvalidFloorValue) {
+					status = http.StatusBadRequest
+					code = "invalid_floor_value"
+				} else if errors.Is(err, models.ErrPolygonNotFound) {
+					status = http.StatusNotFound
+					code = "polygon_not_found"
+				}
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrorCode(code), err.Error(), status))
 				return
 			}
 			results = append(results, result)

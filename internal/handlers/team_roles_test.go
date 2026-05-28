@@ -114,7 +114,7 @@ func setupTeamRolesHandler(t *testing.T) (*TeamRolesHandler, models.UserReposito
 	teamMemberRepo := models.NewTeamMemberRepository(db)
 	rolePermRepo := models.NewRolePermissionRepository(db)
 	permRepo := models.NewPermissionRepository(db)
-	handler := NewTeamRolesHandler(teamRepo, teamMemberRepo, userRepo, rolePermRepo, permRepo)
+	handler := NewTeamRolesHandler(teamRepo, teamMemberRepo, userRepo, rolePermRepo, permRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return handler, userRepo, teamRepo, teamMemberRepo, permRepo, rolePermRepo, db
 }

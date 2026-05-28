@@ -127,9 +127,13 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 	templateRepo := models.NewTemplateRepository(db)
 	templateSyncSvc := services.NewTemplateSyncService(templateRepo, zoneRepo, logger)
 	zoneHandler := handlers.NewZoneHandler(zoneRepo, mapRepo, lockRepo, historyRepo, teamMemberRepo, templateSyncSvc, versionRepo, logger)
+	lineOfFireRepo := models.NewLineOfFireRepository(db)
+	lofVersionRepo := models.NewLineOfFireVersionRepository(db)
+	lofHistoryRepo := models.NewLineOfFireEditHistoryRepository(db)
+	lineOfFireHandler := handlers.NewLineOfFireHandler(lineOfFireRepo, mapRepo, lockRepo, lofHistoryRepo, teamMemberRepo, userRepo, templateSyncSvc, lofVersionRepo, logger)
 	lockHandler := handlers.NewEditLockHandler(lockRepo, userRepo, logger)
 	historyHandler := handlers.NewHistoryHandler(versionRepo, zoneRepo, lockRepo, teamMemberRepo, userRepo, historyRepo, logger)
-	revisionHandler := handlers.NewRevisionHandler(zoneRepo, mapRepo, logger)
+	revisionHandler := handlers.NewRevisionHandler(zoneRepo, mapRepo, lineOfFireRepo, templateRepo, logger)
 
 	rg.GET("/myteams", middleware.RequireAuth(logger, userRepo, jwtService), teamHandler.ListMyTeams)
 
@@ -175,6 +179,32 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 			zoneHandler.BatchActions,
 		)
 
+		teams.GET("/:id/maps/:mapId/lines-of-fire",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:view"),
+			lineOfFireHandler.ListLinesOfFire,
+		)
+		teams.POST("/:id/maps/:mapId/lines-of-fire",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:create"),
+			lineOfFireHandler.CreateLineOfFire,
+		)
+		teams.POST("/:id/maps/:mapId/lines-of-fire/batch",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:edit"),
+			lineOfFireHandler.BatchActions,
+		)
+		teams.POST("/:id/maps/:mapId/lines-of-fire/import",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:create"),
+			lineOfFireHandler.ImportLinesOfFire,
+		)
+		teams.GET("/:id/maps/:mapId/lines-of-fire/export",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:view"),
+			lineOfFireHandler.ExportLinesOfFire,
+		)
+
 		teams.POST("/:id/maps/:mapId/lock",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:lock"),
@@ -215,6 +245,10 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
 			revisionHandler.ListRevisionZones,
 		)
+		teams.POST("/:id/maps/:mapId/revision-items",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			revisionHandler.ListRevisionItems,
+		)
 
 		teams.POST("/:id/templates/:templateId/duplicate",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "cocaptain", "captain"),
@@ -232,6 +266,42 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:delete"),
 			zoneHandler.DeleteZone,
 		)
+		teams.GET("/:id/lines-of-fire/:lineOfFireId",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:view"),
+			lineOfFireHandler.GetLineOfFire,
+		)
+		teams.DELETE("/:id/lines-of-fire/:lineOfFireId",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:delete"),
+			lineOfFireHandler.DeleteLineOfFire,
+		)
+		teams.PUT("/:id/lines-of-fire/:lineOfFireId/name",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:edit"),
+			lineOfFireHandler.SetLineOfFireName,
+		)
+		teams.POST("/:id/lines-of-fire/:lineOfFireId/cones",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:edit"),
+			lineOfFireHandler.AddLineOfFireCone,
+		)
+		teams.PUT("/:id/lines-of-fire/:lineOfFireId/cones/:coneIndex",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:edit"),
+			lineOfFireHandler.UpdateLineOfFireCone,
+		)
+		teams.DELETE("/:id/lines-of-fire/:lineOfFireId/cones/:coneIndex",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "line_of_fire:edit"),
+			lineOfFireHandler.RemoveLineOfFireCone,
+		)
+		teams.GET("/:id/lines-of-fire/:lineOfFireId/versions",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "edit_history:view"),
+			lineOfFireHandler.ListLineOfFireVersions,
+		)
+
 		teams.PUT("/:id/zones/:zoneId/name",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "editor", "cocaptain", "captain"),
 			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "zone:edit"),

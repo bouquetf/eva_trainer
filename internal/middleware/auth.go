@@ -69,6 +69,7 @@ func GetUser(c *gin.Context) (*models.User, bool) {
 func MustGetUser(c *gin.Context) (*models.User, error) {
 	user, exists := GetUser(c)
 	if !exists {
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
 		return nil, &authError{"unauthorized", "unauthorized"}
 	}
 	return user, nil

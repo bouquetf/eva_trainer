@@ -48,11 +48,15 @@ export async function startRevisionSession(
   mapId = 1,
   mapName = 'Test Map',
 ): Promise<void> {
-  await page.route('**/api/v1/teams/' + teamId + '/maps/*/revision-zones', async (route) => {
+  await page.route('**/api/v1/teams/' + teamId + '/maps/*/revision-items', async (route) => {
+    const body = route.request().postDataJSON();
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ zones }),
+      body: JSON.stringify({
+        zones: body?.zones !== false ? zones : [],
+        lines: [],
+      }),
     });
   });
 

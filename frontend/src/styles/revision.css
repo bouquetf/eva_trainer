@@ -223,6 +223,61 @@
   gap: 12px;
 }
 
+.revision-filter-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.revision-filter-label {
+  font-size: 14px;
+  color: #ccc;
+  margin-right: 4px;
+}
+
+.revision-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #aaa;
+  transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+}
+
+.revision-filter-option:hover {
+  border-color: var(--primary-color);
+  color: #e0e0e0;
+}
+
+.revision-filter-option.active {
+  border-color: var(--primary-color);
+  background-color: rgba(0, 230, 118, 0.1);
+  color: var(--primary-color);
+}
+
+.revision-filter-option input[type="radio"] {
+  accent-color: var(--primary-color);
+}
+
+.revision-type-badge {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #aaa;
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
 .revision-config label {
   font-size: 14px;
   color: #ccc;

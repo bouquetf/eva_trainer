@@ -81,7 +81,7 @@ func setupHistoryTestDB(t *testing.T) *sql.DB {
 		"000004_add_discord_username.up.sql",
 		"000011_add_zone_polygon_constraints.up.sql",
 		"000013_add_zone_versions.up.sql",
-		"000016_add_edit_history.up.sql",
+		"000017_add_polygon_floor.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -430,7 +430,7 @@ func TestHistoryHandler_RestoreVersion_Success(t *testing.T) {
 func TestHistoryHandler_RestoreVersion_NoLock(t *testing.T) {
 	f := setupHistoryTest(t)
 
-	pts := []models.Point{{X: 1, Y: 1}, {X: 2, Y: 2}}
+	pts := []models.Point{{X: 1, Y: 1}, {X: 2, Y: 2}, {X: 3, Y: 3}}
 	zone := createTestZone(t, f.zoneRepo, f.team.ID, f.mapObj.ID, "No Lock Zone", pts)
 
 	v := saveVersionForTest(t, f.versionRepo, zone.ID, &f.editor.ID, models.VersionSnapshot{

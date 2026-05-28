@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import { validateAnswer } from '../lib/revision/validation'
-import type { RevisionConfig, RevisionZone } from '../lib/revision/types'
+import type { RevisionConfig, RevisionItem } from '../lib/revision/types'
 
 interface RevisionState {
   isActive: boolean
   config: RevisionConfig | null
-  zones: RevisionZone[]
-  currentQuestion: RevisionZone | null
+  items: RevisionItem[]
+  currentQuestion: RevisionItem | null
   questionIndex: number
   userAnswer: string
   isAnswerSubmitted: boolean
@@ -21,7 +21,7 @@ interface RevisionState {
 }
 
 interface RevisionActions {
-  startSession: (config: RevisionConfig, zones: RevisionZone[]) => void
+  startSession: (config: RevisionConfig, items: RevisionItem[]) => void
   submitAnswer: (answer: string) => void
   nextQuestion: () => void
   finishSession: () => void
@@ -48,11 +48,11 @@ export function selectWeightedRandom(
   return available[available.length - 1]
 }
 
-function getAvailableZoneIds(
-  zones: RevisionZone[],
+function getAvailableItemIds(
+  items: RevisionItem[],
   correctStreak: Record<number, number>,
 ): number[] {
-  return zones
+  return items
     .filter((z) => {
       const streak = correctStreak[z.id] || 0
       return streak < 2
@@ -63,7 +63,7 @@ function getAvailableZoneIds(
 export const useRevisionStore = create<RevisionStore>((set, get) => ({
   isActive: false,
   config: null,
-  zones: [],
+  items: [],
   currentQuestion: null,
   questionIndex: 0,
   userAnswer: '',
@@ -77,27 +77,27 @@ export const useRevisionStore = create<RevisionStore>((set, get) => ({
   history: [],
   isFinished: false,
 
-  startSession: (config, zones) => {
+  startSession: (config, items) => {
     const weights: Record<number, number> = {}
     const attemptCount: Record<number, number> = {}
     const correctStreak: Record<number, number> = {}
 
-    for (const z of zones) {
+    for (const z of items) {
       weights[z.id] = 1
       attemptCount[z.id] = 0
       correctStreak[z.id] = 0
     }
 
-    const available = getAvailableZoneIds(zones, correctStreak)
+    const available = getAvailableItemIds(items, correctStreak)
     const firstId = selectWeightedRandom(weights, available)
     const currentQuestion = firstId !== null
-      ? zones.find((z) => z.id === firstId) ?? null
+      ? items.find((z) => z.id === firstId) ?? null
       : null
 
     set({
       isActive: true,
       config,
-      zones,
+      items,
       currentQuestion,
       questionIndex: 0,
       userAnswer: '',
@@ -143,14 +143,14 @@ export const useRevisionStore = create<RevisionStore>((set, get) => ({
   },
 
   nextQuestion: () => {
-    const { config, zones, weights, correctStreak, questionIndex, currentQuestion, history } = get()
+    const { config, items, weights, correctStreak, questionIndex, currentQuestion, history } = get()
 
     if (questionIndex >= (config?.totalQuestions ?? 20) - 1) {
       set({ isActive: false, isFinished: true })
       return
     }
 
-    const available = getAvailableZoneIds(zones, correctStreak)
+    const available = getAvailableItemIds(items, correctStreak)
 
     if (available.length === 0) {
       set({ isActive: false, isFinished: true })
@@ -168,7 +168,7 @@ export const useRevisionStore = create<RevisionStore>((set, get) => ({
     }
 
     const nextQuestion = nextId !== null
-      ? zones.find((z) => z.id === nextId) ?? null
+      ? items.find((z) => z.id === nextId) ?? null
       : null
 
     set({
@@ -189,7 +189,7 @@ export const useRevisionStore = create<RevisionStore>((set, get) => ({
     set({
       isActive: false,
       config: null,
-      zones: [],
+      items: [],
       currentQuestion: null,
       questionIndex: 0,
       userAnswer: '',

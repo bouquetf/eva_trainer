@@ -27,6 +27,13 @@ var migrationFiles = []string{
 	"000015_add_template_is_public.up.sql",
 	"000016_add_user_settings.up.sql",
 	"000017_add_polygon_floor.up.sql",
+	"000018_rename_template_is_public.up.sql",
+	"000019_template_original_team_cascade.up.sql",
+	"000020_create_lines_of_fire.up.sql",
+	"000021_create_template_lines_of_fire.up.sql",
+	"000022_create_line_of_fire_edit_history.up.sql",
+	"000023_create_line_of_fire_versions.up.sql",
+	"000024_add_line_of_fire_permissions.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

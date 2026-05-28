@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { listTeamMaps } from '../api/maps'
-import { fetchRevisionZones } from '../api/revision'
+import { fetchRevisionItems } from '../api/revision'
 import { fetchSettings } from '../api/auth'
 import { useRevisionStore } from '../store/revision'
 import { RevisionMap } from '../components/RevisionMap'
 import { RevisionScore } from '../components/RevisionScore'
 import type { Map as TeamMap } from '../api/maps'
 import type { UserSettings } from '../api/auth'
+import type { RevisionItem } from '../lib/revision/types'
 import '../styles/revision.css'
 
 type Step = 'select' | 'active' | 'finished'
@@ -25,6 +26,7 @@ export default function Revision() {
   const autoStarted = useRef(false)
   const [settings, setSettings] = useState<UserSettings | null>(null)
   const settingsLoaded = useRef(false)
+  const [filterMode, setFilterMode] = useState<'zones' | 'lines' | 'both'>('zones')
 
   const {
     currentQuestion,
@@ -86,9 +88,16 @@ export default function Revision() {
       setError(null)
       try {
         const parsedMapId = Number(mapId)
-        const zones = await fetchRevisionZones(teamId, parsedMapId)
-        if (zones.length === 0) {
-          setError('Aucune zone disponible pour la révision sur cette carte.')
+        const result = await fetchRevisionItems(teamId, parsedMapId, {
+          zones: filterMode === 'zones' || filterMode === 'both',
+          lines: filterMode === 'lines' || filterMode === 'both',
+        })
+        const items: RevisionItem[] = [
+          ...result.zones.map(z => ({ ...z, type: 'zone' as const })),
+          ...result.lines.map(l => ({ ...l, type: 'line_of_fire' as const })),
+        ]
+        if (items.length === 0) {
+          setError('Aucun élément disponible pour la révision sur cette carte.')
           setStep('select')
           setLoading(false)
           return
@@ -101,15 +110,16 @@ export default function Revision() {
           teamId,
           correctTimerSeconds: settings.revision_correct_timer,
           incorrectTimerSeconds: settings.revision_incorrect_timer,
-        }, zones)
+          filterMode,
+        }, items)
       } catch {
-        setError('Erreur lors du chargement des zones de révision.')
+        setError('Erreur lors du chargement des éléments de révision.')
       } finally {
         setLoading(false)
       }
     }
     start()
-  }, [mapId, loading, error, maps, teamId, startSession, settings])
+  }, [mapId, loading, error, maps, teamId, startSession, settings, filterMode])
 
   const handleMapClick = (mapId: number) => {
     setSelectedMapId((prev) => prev === mapId ? 0 : mapId)
@@ -121,9 +131,16 @@ export default function Revision() {
     setLoading(true)
     setError(null)
     try {
-      const zones = await fetchRevisionZones(teamId, selectedMapId)
-      if (zones.length === 0) {
-        setError('Aucune zone disponible pour la révision sur cette carte.')
+      const result = await fetchRevisionItems(teamId, selectedMapId, {
+        zones: filterMode === 'zones' || filterMode === 'both',
+        lines: filterMode === 'lines' || filterMode === 'both',
+      })
+      const items: RevisionItem[] = [
+        ...result.zones.map(z => ({ ...z, type: 'zone' as const })),
+        ...result.lines.map(l => ({ ...l, type: 'line_of_fire' as const })),
+      ]
+      if (items.length === 0) {
+        setError('Aucun élément disponible pour la révision sur cette carte.')
         setLoading(false)
         return
       }
@@ -137,10 +154,11 @@ export default function Revision() {
         teamId,
         correctTimerSeconds: settings?.revision_correct_timer ?? 3,
         incorrectTimerSeconds: settings?.revision_incorrect_timer ?? 5,
-      }, zones)
+        filterMode,
+      }, items)
       setStep('active')
     } catch {
-      setError('Erreur lors du chargement des zones de révision.')
+      setError('Erreur lors du chargement des éléments de révision.')
     } finally {
       setLoading(false)
     }
@@ -274,6 +292,39 @@ export default function Revision() {
 
               {selectedMapId > 0 && (
                 <div className="revision-config">
+                  <div className="revision-filter-group">
+                    <span className="revision-filter-label">Inclure :</span>
+                    <label className={`revision-filter-option${filterMode === 'zones' ? ' active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="revision-filter"
+                        value="zones"
+                        checked={filterMode === 'zones'}
+                        onChange={() => setFilterMode('zones')}
+                      />
+                      Zones uniquement
+                    </label>
+                    <label className={`revision-filter-option${filterMode === 'lines' ? ' active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="revision-filter"
+                        value="lines"
+                        checked={filterMode === 'lines'}
+                        onChange={() => setFilterMode('lines')}
+                      />
+                      Lignes uniquement
+                    </label>
+                    <label className={`revision-filter-option${filterMode === 'both' ? ' active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="revision-filter"
+                        value="both"
+                        checked={filterMode === 'both'}
+                        onChange={() => setFilterMode('both')}
+                      />
+                      Les deux
+                    </label>
+                  </div>
                   <button className="btn-primary" onClick={handleStartRevision}>
                     Lancer la révision
                   </button>
@@ -297,8 +348,11 @@ export default function Revision() {
 
           <div className="main-content">
             <div className="canvas-area">
+              <div className="revision-type-badge">
+                {currentQuestion.type === 'zone' ? 'Zone' : 'Ligne de tir'}
+              </div>
               <div className="revision-canvas-wrapper">
-                <RevisionMap mapId={currentQuestion.map_id} polygons={currentQuestion.polygons} />
+                <RevisionMap mapId={currentQuestion.map_id} item={currentQuestion} />
               </div>
               <div className="revision-input-area">
                 <input
