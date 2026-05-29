@@ -1,18 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 interface ZoneNameDialogProps {
   open: boolean;
+  initialName?: string;
   onConfirm: (name: string) => void;
   onCancel: () => void;
 }
 
 export const ZoneNameDialog: React.FC<ZoneNameDialogProps> = ({
   open,
+  initialName = "",
   onConfirm,
   onCancel,
 }) => {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setName(initialName);
+      setError("");
+    }
+  }, [open, initialName]);
 
   if (!open) return null;
 

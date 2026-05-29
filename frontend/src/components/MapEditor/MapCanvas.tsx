@@ -29,7 +29,7 @@ interface MapCanvasProps {
   onPointInsert: (zoneId: number, polygonIndex: number, pointIndexAfter: number, newPoint: Point) => void;
   onMapRightClick: (clientX: number, clientY: number) => void;
   onZoneRightClick: (zoneId: number, clientX: number, clientY: number) => void;
-  onMapDoubleClick: (point: Point) => void;
+  awaitingFirstPoint?: boolean;
   previewPolygons?: PreviewPolygon[];
   linesOfFire?: LineOfFire[];
   selectedLineOfFireId?: number | null;
@@ -63,7 +63,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   onPointInsert,
   onMapRightClick,
   onZoneRightClick,
-  onMapDoubleClick,
+  awaitingFirstPoint,
   previewPolygons,
   linesOfFire,
   selectedLineOfFireId,
@@ -96,6 +96,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       if (drawingLineOfFire && onLineOfFirePointAdd) {
         const imgPoint = getImgPoint(e.clientX, e.clientY);
         onLineOfFirePointAdd(imgPoint);
+        pendingDrawingAction.current = true;
+        return;
+      }
+
+      if (awaitingFirstPoint) {
+        const imgPoint = getImgPoint(e.clientX, e.clientY);
+        onPolygonPointAdded(imgPoint);
         pendingDrawingAction.current = true;
         return;
       }
@@ -148,8 +155,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       lofDragActiveRef.current = false;
       return;
     }
-    const target = e.target as SVGElement;
-    if (target === svgRef.current || target.tagName.toLowerCase() === "image") {
+    const tag = (e.target as SVGElement).tagName.toLowerCase();
+    if (tag !== "polygon" && tag !== "circle" && tag !== "line" && tag !== "path") {
       onBackgroundClick();
     }
   };
@@ -211,10 +218,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         className="svg-overlay"
         onMouseDown={handleMouseDown}
         onClick={handleSvgClick}
-        onDoubleClick={(e) => {
-          const imgPoint = getImgPoint(e.clientX, e.clientY);
-          onMapDoubleClick(imgPoint);
-        }}
         onContextMenu={handleContextMenu}
       >
         <image href={imageUrl} width={imageWidth} height={imageHeight} />

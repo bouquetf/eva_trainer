@@ -72,6 +72,7 @@ export const ZoneOverlay: React.FC<ZoneOverlayProps> = ({
                     points={pointsString}
                     fill={isZoneSelected ? "rgba(255,80,80,0.15)" : "rgba(255,80,80,0.08)"}
                     stroke="none"
+                    style={{ pointerEvents: "none" }}
                   />
                   <polygon
                     points={pointsString}

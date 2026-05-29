@@ -15,6 +15,7 @@ interface ZoneListProps {
   onDeleteLineOfFire?: (lofId: number) => void;
   onRenameLineOfFire?: (lofId: number, name: string) => void;
   readOnly?: boolean;
+  hideNewZoneInput?: boolean;
 }
 
 function nameInUse(zones: Zone[], name: string, excludeId?: number): boolean {
@@ -39,6 +40,7 @@ export const ZoneList: React.FC<ZoneListProps> = ({
   onDeleteLineOfFire,
   onRenameLineOfFire,
   readOnly = false,
+  hideNewZoneInput = false,
 }) => {
   const [newZoneName, setNewZoneName] = useState("");
   const [renamingZoneId, setRenamingZoneId] = useState<number | null>(null);
@@ -116,46 +118,6 @@ export const ZoneList: React.FC<ZoneListProps> = ({
   return (
     <div className="zone-list">
       <h3>Zones ({zones.length})</h3>
-
-      {!readOnly && (
-        <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
-          <div style={{ flex: 1, position: "relative" }}>
-            <input
-              type="text"
-              value={newZoneName}
-              onChange={(e) => setNewZoneName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-              }}
-              placeholder="Nouvelle zone..."
-              style={{
-                width: "100%",
-                padding: "6px 8px",
-                fontSize: "13px",
-                borderRadius: "4px",
-                border: `1px solid ${newNameDuplicate ? "#c62828" : "#555"}`,
-                background: "#2a2a2a",
-                color: "#e0e0e0",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-            {newNameDuplicate && (
-              <div style={{ fontSize: "11px", color: "#c62828", marginTop: "2px" }}>
-                Ce nom existe déjà
-              </div>
-            )}
-          </div>
-          <button
-            onClick={handleCreate}
-            disabled={!canCreate}
-            style={{ padding: "6px 12px", fontSize: "13px", alignSelf: "flex-start" }}
-          >
-            +
-          </button>
-        </div>
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: "5px", marginBottom: linesOfFire.length > 0 ? "16px" : 0 }}>
         {zones.map((zone) => {
           const isEditing = editingZoneId === zone.id;

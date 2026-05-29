@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useReducer } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { editorReducer, createInitialState } from "../../lib/editor";
 import type { LineOfFireVersion, Zone, Point, ZoneVersion, ZonePolygon } from "../../lib/api/types";
 import {
   listZones,
@@ -34,12 +35,9 @@ import {
 import { listLinesOfFire, createLineOfFire, deleteLineOfFire, addLineOfFireCone, setLineOfFireName, batchLinesOfFireActions } from "../../api/lines_of_fire";
 import type { LineOfFire, ConeData, BatchLineOfFireAction } from "../../lib/lines_of_fire/types";
 import { LineOfFireNameDialog } from "./LineOfFireNameDialog";
+import { ZoneNameDialog } from "./ZoneNameDialog";
 
-interface ContextMenuState {
-  x: number;
-  y: number;
-  items: ContextMenuItem[];
-}
+
 
 type PendingSwitch = {
   action: 'select';
@@ -72,12 +70,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const [editingZone, setEditingZone] = useState<Zone | null>(null);
   const [originalSnapshot, setOriginalSnapshot] = useState<string | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPolygonIndexes, setSelectedPolygonIndexes] = useState<Set<number>>(new Set());
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [contextMenuItems, setContextMenuItems] = useState<ContextMenuItem[]>([]);
   const [canEdit, setCanEdit] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [lockedByMe, setLockedByMe] = useState(false);
@@ -85,7 +81,6 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const [remainingSeconds, setRemainingSeconds] = useState<number | undefined>();
   const [showReacquireButton, setShowReacquireButton] = useState(false);
   // (showNameDialog removed - polygon completion adds directly)
-  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [versionRefreshKey, setVersionRefreshKey] = useState(0);
   const [browsingVersion, setBrowsingVersion] = useState<ZoneVersion | null>(null);
@@ -95,9 +90,9 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const [currentVersionSnapshot, setCurrentVersionSnapshot] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<ZoneVersion | null>(null);
   const [restoring, setRestoring] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const [clipboardPolygons, setClipboardPolygons] = useState<ZonePolygon[]>([]);
-  const [clipboardSourceZoneId, setClipboardSourceZoneId] = useState<number | null>(null);
+  const [awaitingFirstPoint, setAwaitingFirstPoint] = useState(false);
+
+  const [editorState, dispatch] = useReducer(editorReducer, undefined, createInitialState);
   const [linesOfFire, setLinesOfFire] = useState<LineOfFire[]>([]);
   const [selectedLineOfFireId, setSelectedLineOfFireId] = useState<number | null>(null);
   const [drawingLineOfFire, setDrawingLineOfFire] = useState(false);
@@ -115,6 +110,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const lockRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSaveRef = useRef<(() => Promise<boolean>) | null>(null);
 
   linesOfFireRef.current = linesOfFire;
   lofSnapshotRef.current = lofSnapshot;
@@ -328,6 +325,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         clearInterval(countdownRef.current);
         countdownRef.current = null;
       }
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
       releaseLockSync(teamId, mapId);
       releaseLock(teamId, mapId).catch(() => {});
     };
@@ -337,12 +338,12 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     const handleHelpKeyDown = (e: KeyboardEvent) => {
       if (e.key === "F1") {
         e.preventDefault();
-        setShowHelp((prev) => !prev);
+        dispatch({ type: "TOGGLE_HELP" });
         return;
       }
       if (e.key === "?" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        setShowHelp((prev) => !prev);
+        dispatch({ type: "TOGGLE_HELP" });
         return;
       }
     };
@@ -377,17 +378,23 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key === "v") {
-        if (!editingZone || clipboardPolygons.length === 0) return;
+        if (!editingZone || editorState.clipboard.polygons.length === 0) return;
         e.preventDefault();
         handlePaste();
         return;
       }
 
       if (e.key === "Escape") {
+        if (awaitingFirstPoint || tempPoints.length > 0) {
+          setTempPoints([]);
+          setAwaitingFirstPoint(false);
+          return;
+        }
         if (extendingConeLofId !== null || drawingLineOfFire) {
           setExtendingConeLofId(null);
           setDrawingLineOfFire(false);
           setTempConePoints([]);
+          dispatch({ type: "DESELECT_ALL" });
           return;
         }
       }
@@ -452,16 +459,16 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     const original = JSON.parse(originalSnapshot) as Zone;
     const actions = computeDiff(original, editingZone);
     if (actions.length === 0) {
-      setIsDirty(false);
+      dispatch({ type: "MARK_CLEAN" });
       return true;
     }
 
-    setIsSaving(true);
+    dispatch({ type: "START_SAVING" });
     try {
       await batchActions(teamId, mapId, actions);
       const fresh = JSON.stringify(editingZone);
       setOriginalSnapshot(fresh);
-      setIsDirty(false);
+      dispatch({ type: "MARK_CLEAN" });
       setUndoStack([]);
       setZones((prev) => prev.map((z) => (z.id === editingZone.id ? { ...editingZone } : z)));
       setVersionRefreshKey(k => k + 1);
@@ -470,45 +477,50 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       showError("Erreur lors de la sauvegarde.");
       return false;
     } finally {
-      setIsSaving(false);
+      dispatch({ type: "STOP_SAVING" });
     }
   };
+
+  handleSaveRef.current = handleSave;
 
   const handleDiscard = () => {
     if (!originalSnapshot) return;
     const original = JSON.parse(originalSnapshot) as Zone;
     setEditingZone(original);
     setZones((prev) => prev.map((z) => (z.id === original.id ? original : z)));
-    setIsDirty(false);
+    dispatch({ type: "MARK_CLEAN" });
     setUndoStack([]);
   };
 
   function startEditZone(zone: Zone) {
     setEditingZone(zone);
     setOriginalSnapshot(JSON.stringify(zone));
-    setIsDirty(false);
+    dispatch({ type: "MARK_CLEAN" });
     setSelectedZoneId(zone.id);
     setSelectedLineOfFireId(null);
-    setSelectedPolygonIndexes(new Set(zone.polygons.map((_, i) => i)));
+    setSelectedPolygonIndexes(new Set());
     setTempPoints([]);
     setUndoStack([]);
   }
 
   function handleSelectZone(zoneId: number) {
-    if (isDirty) {
+    if (editorState.isDirty) {
       pendingZoneSwitch.current = { action: 'select', zoneId };
-      setShowDiscardDialog(true);
+      dispatch({ type: "SHOW_DISCARD_DIALOG" });
       return;
     }
     const zone = zones.find((z) => z.id === zoneId) || editingZone;
-    if (zone) startEditZone(zone);
+    if (zone) {
+      dispatch({ type: "SELECT_ZONE", zoneId });
+      startEditZone(zone);
+    }
   }
 
   function handleCreateZone(name: string) {
     if (!name.trim()) return;
-    if (isDirty) {
+    if (editorState.isDirty) {
       pendingZoneSwitch.current = { action: 'create', name: name.trim() };
-      setShowDiscardDialog(true);
+      dispatch({ type: "SHOW_DISCARD_DIALOG" });
       return;
     }
     const newZone: Zone = {
@@ -524,7 +536,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     startEditZone(newZone);
   }
 
-  async function handleSaveNewZone(): Promise<boolean> {
+  async function handleSaveNewZone(name?: string): Promise<boolean> {
     if (!editingZone) return false;
     if (!(await ensureLock())) return false;
     if (editingZone.id !== 0) {
@@ -535,14 +547,15 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       return false;
     }
 
-    setIsSaving(true);
+    dispatch({ type: "START_SAVING" });
     try {
+      const zoneName = name ?? editingZone.name;
       const actions: BatchAction[] = [
         {
           type: "create_zone",
           temp_id: "new",
           polygons: editingZone.polygons.map(p => ({ points: p.points, floor: p.floor })),
-          name: editingZone.name,
+          name: zoneName,
         },
       ];
       const result = await batchActions(teamId, mapId, actions);
@@ -552,6 +565,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         const serverPolys = firstResult.polygons;
         const saved = {
           ...editingZone,
+          name: zoneName,
           id: newId,
           polygons: serverPolys && serverPolys.length > 0
             ? editingZone.polygons.map((local, i) => ({
@@ -561,10 +575,18 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
               }))
             : editingZone.polygons,
         };
-        setZones((prev) => prev.map((z) => (z.id === editingZone.id && z.id === 0 ? saved : z)));
+        setZones((prev) => {
+          const idx = prev.findIndex((z) => z.id === editingZone.id);
+          if (idx !== -1) {
+            const copy = [...prev];
+            copy[idx] = saved;
+            return copy;
+          }
+          return [...prev, saved];
+        });
         setEditingZone(saved);
         setOriginalSnapshot(JSON.stringify(saved));
-        setIsDirty(false);
+        dispatch({ type: "MARK_CLEAN" });
         setSelectedZoneId(newId);
         setVersionRefreshKey(k => k + 1);
         return true;
@@ -574,7 +596,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       showError("Erreur lors de la sauvegarde.");
       return false;
     } finally {
-      setIsSaving(false);
+      dispatch({ type: "STOP_SAVING" });
     }
   }
 
@@ -585,7 +607,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         setSelectedZoneId(null);
         setEditingZone(null);
         setOriginalSnapshot(null);
-        setIsDirty(false);
+        dispatch({ type: "MARK_CLEAN" });
       }
       return;
     }
@@ -597,7 +619,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         setSelectedZoneId(null);
         setEditingZone(null);
         setOriginalSnapshot(null);
-        setIsDirty(false);
+        dispatch({ type: "MARK_CLEAN" });
       }
     } catch {
       showError("Erreur lors de la suppression.");
@@ -623,19 +645,19 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      setZones((prev) => [...prev, newZone]);
-      startEditZone(newZone);
-    }
+    startEditZone(newZone);
+    setAwaitingFirstPoint(true);
+  }
   };
 
   const handleDiscardConfirm = () => {
-    setShowDiscardDialog(false);
+    dispatch({ type: "HIDE_DISCARD_DIALOG" });
     handleDiscard();
     executePending();
   };
 
   const handleDiscardSave = async () => {
-    setShowDiscardDialog(false);
+    dispatch({ type: "HIDE_DISCARD_DIALOG" });
     const ok = editingZone && editingZone.id === 0
       ? await handleSaveNewZone()
       : await handleSave();
@@ -645,7 +667,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   };
 
   const handleDiscardCancel = () => {
-    setShowDiscardDialog(false);
+    dispatch({ type: "HIDE_DISCARD_DIALOG" });
     pendingZoneSwitch.current = null;
   };
 
@@ -668,7 +690,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         setEditingZone(updated);
         setOriginalSnapshot(JSON.stringify(updated));
       }
-      setIsDirty(false);
+      dispatch({ type: "MARK_CLEAN" });
       setVersionRefreshKey(k => k + 1);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -692,6 +714,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       const z: Zone = zoneFromVersion(editingZone, version)
       setEditingZone(z)
       setBrowsingVersion(version)
+      dispatch({ type: "ENTER_VERSION_BROWSING" })
       setZones((prev) => prev.map((zone) =>
         zone.id === editingZone.id ? { ...zone, name: version.version_data.name } : zone
       ))
@@ -707,6 +730,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       setEditingZone(restored)
       setBrowsingVersion(null)
       setCurrentVersionSnapshot(null)
+      dispatch({ type: "EXIT_VERSION_BROWSING" })
       setZones((prev) => prev.map((zone) =>
         zone.id === restored.id ? { ...zone, name: restored.name } : zone
       ))
@@ -723,6 +747,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         l.id === version.line_of_fire_id ? reconstructed : l
       ));
       setBrowsingLoFVersion(version);
+      dispatch({ type: "ENTER_VERSION_BROWSING" });
     } else if (version && browsingLoFVersion !== null) {
       const target = linesOfFire.find((l) => l.id === version.line_of_fire_id);
       if (!target) return;
@@ -736,6 +761,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       setLinesOfFire(restored);
       setBrowsingLoFVersion(null);
       lofCurrentSnapshotRef.current = null;
+      dispatch({ type: "EXIT_VERSION_BROWSING" });
     }
   };
 
@@ -762,13 +788,26 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     }
   }
 
+  const queueAutoSave = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      handleSaveRef.current?.();
+    }, 500);
+  };
+
   function updateEditingPolygon(updater: (zone: Zone) => Zone | null) {
     pushUndo();
     setEditingZone((prev) => {
       if (!prev) return prev;
       return updater(prev) || prev;
     });
-    setIsDirty(true);
+    dispatch({ type: "MARK_DIRTY" });
+    if (editingZone && editingZone.id > 0) {
+      queueAutoSave();
+    }
   }
 
   function pushUndo() {
@@ -784,7 +823,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     setEditingZone(restored);
     setZones((z) => z.map((zone) => (zone.id === restored.id ? restored : zone)));
     setSelectedPolygonIndexes(new Set(restored.polygons.map((_, i) => i)));
-    setIsDirty(originalSnapshot !== null && prevSnapshot !== originalSnapshot);
+    dispatch(originalSnapshot !== null && prevSnapshot !== originalSnapshot ? { type: "MARK_DIRTY" } : { type: "MARK_CLEAN" });
   };
 
   const handlePointDrag = async (
@@ -839,12 +878,12 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         setOriginalSnapshot(JSON.stringify(zone));
         setEditingZone({ ...zone, name });
         setSelectedZoneId(id);
-        setSelectedPolygonIndexes(new Set(zone.polygons.map((_, i) => i)));
+        setSelectedPolygonIndexes(new Set());
         setTempPoints([]);
         setUndoStack([]);
       }
     }
-    setIsDirty(true);
+    dispatch({ type: "MARK_DIRTY" });
   };
 
   const handleSetFloor = useCallback(
@@ -865,7 +904,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
           z.id === editingZone.id ? updatedZone : z,
         ),
       );
-      setIsDirty(true);
+      dispatch({ type: "MARK_DIRTY" });
     },
     [editingZone, selectedPolygonIndexes],
   );
@@ -882,17 +921,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         points: poly.points.map((p) => ({ ...p })),
         created_at: new Date().toISOString(),
       }));
-    setClipboardPolygons(copied);
-    setClipboardSourceZoneId(editingZone.id);
-  }, [editingZone, selectedPolygonIndexes]);
+    dispatch({ type: "SET_CLIPBOARD", clipboard: { polygons: copied, sourceZoneId: editingZone.id } });
+  }, [editingZone, selectedPolygonIndexes, dispatch]);
 
   const handlePaste = useCallback(() => {
-    if (!editingZone || clipboardPolygons.length === 0 || clipboardSourceZoneId === null) return;
+    const { polygons: cbPolys, sourceZoneId: cbSourceZoneId } = editorState.clipboard;
+    if (!editingZone || cbPolys.length === 0 || cbSourceZoneId === null) return;
 
-    if (editingZone.id === clipboardSourceZoneId) {
+    if (editingZone.id === cbSourceZoneId) {
       updateEditingPolygon((z) => {
         const maxOrder = z.polygons.reduce((m, p) => Math.max(m, p.order_index), -1);
-        const newPolys = clipboardPolygons.map((poly, i) => {
+        const newPolys = cbPolys.map((poly, i) => {
           const offset = (i + 1) * PASTE_OFFSET;
           return {
             ...poly,
@@ -913,14 +952,14 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         return updated;
       });
       setSelectedPolygonIndexes(
-        new Set(clipboardPolygons.map((_, i) => editingZone.polygons.length + i)),
+        new Set(cbPolys.map((_, i) => editingZone.polygons.length + i)),
       );
     } else {
-      const sourceZone = zones.find((z) => z.id === clipboardSourceZoneId);
+      const sourceZone = zones.find((z) => z.id === cbSourceZoneId);
       if (!sourceZone) return;
 
       const maxOrder = sourceZone.polygons.reduce((m, p) => Math.max(m, p.order_index), -1);
-      const newPolys = clipboardPolygons.map((poly, i) => {
+      const newPolys = cbPolys.map((poly, i) => {
         const offset = (i + 1) * PASTE_OFFSET;
         return {
           ...poly,
@@ -941,7 +980,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       setEditingZone(updatedZone);
       setOriginalSnapshot(JSON.stringify(sourceZone));
       setZones((prev) => prev.map((z) => (z.id === updatedZone.id ? updatedZone : z)));
-      setIsDirty(true);
+      dispatch({ type: "MARK_DIRTY" });
       setSelectedZoneId(updatedZone.id);
       setSelectedPolygonIndexes(
         new Set(newPolys.map((_, i) => sourceZone.polygons.length + i)),
@@ -949,7 +988,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
       setTempPoints([]);
       setUndoStack([]);
     }
-  }, [editingZone, clipboardPolygons, clipboardSourceZoneId, zones]);
+  }, [editingZone, editorState.clipboard, zones, dispatch]);
 
   const handlePolygonClick = (zoneId: number, polygonIndex: number, e: React.MouseEvent) => {
     if (zoneId !== editingZone?.id) {
@@ -983,6 +1022,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   const handlePolygonCompleted = async () => {
     if (!(await ensureLock())) return;
     if (tempPoints.length < 3) return;
+    const isNewZone = editingZone?.id === 0;
+    const wasEmpty = (editingZone?.polygons.length ?? 0) === 0;
     pushUndo();
     const points = [...tempPoints];
     const newIndex = editingZone?.polygons.length ?? 0;
@@ -1002,29 +1043,31 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         polygons: [...prev.polygons, { ...newPoly, order_index: maxOrder + 1 }],
       };
     });
-    setIsDirty(true);
+    dispatch({ type: "MARK_DIRTY" });
     setSelectedPolygonIndexes(new Set([newIndex]));
+    dispatch({ type: "FINISH_DRAWING" });
+    if (isNewZone && wasEmpty) {
+      setAwaitingFirstPoint(false);
+    } else {
+      setAwaitingFirstPoint(false);
+      queueAutoSave();
+    }
   };
 
   const handlePolygonPointAdded = (p: Point) => {
+    const isFirst = tempPoints.length === 0;
     setTempPoints((prev) => [...prev, p]);
+    setAwaitingFirstPoint(false);
+    if (isFirst && editingZone) {
+      dispatch({ type: "FIRST_POLYGON_POINT", zoneId: editingZone.id });
+    } else if (!isFirst) {
+      dispatch({ type: "ADD_POLYGON_POINT" });
+    }
   };
 
   const handlePolygonLastPointRemoved = () => {
     setTempPoints((prev) => prev.slice(0, -1));
   };
-
-  const handleMapDoubleClick = useCallback(
-    async (point: Point) => {
-      if (!(await ensureLock())) return;
-      if (!editingZone) {
-        showError("Sélectionnez ou créez d'abord une zone.");
-        return;
-      }
-      handlePolygonPointAdded(point);
-    },
-    [editingZone, ensureLock],
-  );
 
   const handleLineOfFirePointAdd = useCallback(
     async (p: Point) => {
@@ -1039,6 +1082,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         if (extendingConeLofId !== null) {
           const lofId = extendingConeLofId;
           setExtendingConeLofId(null);
+          dispatch({ type: "SELECT_LOF", lofId });
           try {
             await addLineOfFireCone(teamId, lofId, {
               origin: newPoints[0],
@@ -1055,10 +1099,11 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
             cones: [{ origin: newPoints[0], left_end: newPoints[1], right_end: newPoints[2] }],
           };
           setPendingLineOfFireData(coneData);
+          dispatch({ type: "FINISH_LOF_DRAWING" });
         }
       }
     },
-    [ensureLock, tempConePoints, extendingConeLofId, teamId, mapId],
+    [ensureLock, tempConePoints, extendingConeLofId, teamId, mapId, dispatch],
   );
 
   const handleLineOfFireNameConfirm = useCallback(
@@ -1095,7 +1140,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     setEditingZone(null);
     setBrowsingVersion(null);
     setCurrentVersionSnapshot(null);
-  }, []);
+    dispatch({ type: "SELECT_LOF", lofId });
+  }, [dispatch]);
 
   const handleLineOfFireDelete = useCallback(async (lofId: number) => {
     if (!(await ensureLock())) return;
@@ -1136,9 +1182,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
     if (!cone) return;
     setTempConePoints([cone.origin]);
     setDrawingLineOfFire(true);
+    dispatch({ type: "SET_MODE", mode: { type: "lof_drawing", pointCount: 0 } });
     setExtendingConeLofId(lofId);
     setLofSnapshot(null);
-  }, [linesOfFire, browsingLoFVersion]);
+  }, [linesOfFire, browsingLoFVersion, dispatch]);
 
   const handleLineOfFireRename = useCallback(
     async (lofId: number, name: string) => {
@@ -1179,9 +1226,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
           action: () => handleLineOfFireDeleteCone(lofId, coneIndex),
         });
       }
-      setContextMenu({ x: clientX, y: clientY, items });
+      setContextMenuItems(items);
+      dispatch({ type: "OPEN_CONTEXT_MENU", x: clientX, y: clientY, itemsLabel: "lof" });
     },
-    [handleLineOfFireDelete, handleLineOfFireOriginDoubleClick, linesOfFire],
+    [handleLineOfFireDelete, handleLineOfFireOriginDoubleClick, linesOfFire, dispatch],
   );
 
   const handleRenameLineOfFireConfirm = useCallback(
@@ -1353,56 +1401,125 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
   }, [lofSnapshot]);
 
   const handleBackgroundClick = useCallback(() => {
-    setSelectedZoneId(null);
     setSelectedPolygonIndexes(new Set());
-    setSelectedLineOfFireId(null);
+    setTempPoints([]);
+    setUndoStack([]);
+    setAwaitingFirstPoint(false);
   }, []);
+
+  const handleContextNewZone = useCallback(() => {
+    if (editorState.isDirty) {
+      pendingZoneSwitch.current = { action: 'create', name: '' };
+      dispatch({ type: "SHOW_DISCARD_DIALOG" });
+      return;
+    }
+    const newZone: Zone = {
+      id: 0,
+      team_id: teamId,
+      map_id: mapId,
+      polygons: [],
+      name: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setEditingZone(newZone);
+    setOriginalSnapshot(JSON.stringify(newZone));
+    dispatch({ type: "MARK_CLEAN" });
+    setSelectedZoneId(newZone.id);
+    setSelectedLineOfFireId(null);
+    setSelectedPolygonIndexes(new Set());
+    setTempPoints([]);
+    setUndoStack([]);
+    setAwaitingFirstPoint(true);
+    dispatch({ type: "CREATE_NEW_ZONE" });
+  }, [teamId, mapId, setEditingZone, setOriginalSnapshot, setSelectedZoneId, setSelectedLineOfFireId, setSelectedPolygonIndexes, setTempPoints, setUndoStack, setAwaitingFirstPoint, dispatch, editorState.isDirty]);
 
   const handleMapRightClick = useCallback(
     (clientX: number, clientY: number) => {
       const items: ContextMenuItem[] = [];
 
-      if (tempPoints.length > 0) {
+      if (editorState.mode.type === "zone_drawing" && tempPoints.length > 0) {
+        if (tempPoints.length >= 3) {
+          items.push({
+            label: editorState.mode.zoneId === 0 ? "Terminer la zone" : "Terminer la forme",
+            action: () => handlePolygonCompleted(),
+          });
+        }
         items.push({
           label: "Annuler le point",
           action: () => handlePolygonLastPointRemoved(),
         });
         items.push({
-          label: "Terminer la forme",
-          action: () => handlePolygonCompleted(),
-        });
-      }
+            label: "Annuler la forme",
+            action: () => {
+              setTempPoints([]);
+              setAwaitingFirstPoint(false);
+              dispatch({ type: "SET_MODE", mode: { type: "zone_editing", zoneId: editingZone?.id ?? 0 } });
+            },
+          });
+        } else if (editorState.mode.type === "zone_drawing" && editorState.mode.awaitingFirst && editingZone) {
+          items.push({
+            label: "Annuler la forme",
+            action: () => {
+              if (editingZone.id === 0 && editingZone.polygons.length === 0) {
+                handleBackgroundClick();
+                setSelectedZoneId(null);
+                setEditingZone(null);
+                setOriginalSnapshot(null);
+                dispatch({ type: "MARK_CLEAN" });
+                dispatch({ type: "DESELECT_ALL" });
+              } else {
+                setTempPoints([]);
+                setAwaitingFirstPoint(false);
+                dispatch({ type: "SET_MODE", mode: { type: "zone_editing", zoneId: editingZone.id } });
+              }
+            },
+          });
+        } else {
+          items.push({
+            label: "Nouvelle zone",
+            action: handleContextNewZone,
+          });
 
-      items.push({
-        label: "Nouvelle forme",
-        action: () => {
-          setTempPoints([]);
-        },
-      });
+          if (editingZone) {
+            items.push({
+              label: "Nouvelle forme",
+              action: () => {
+                if (editingZone) {
+                  dispatch({ type: "START_DRAWING", zoneId: editingZone.id, awaitingFirst: true });
+                }
+                setTempPoints([]);
+                setAwaitingFirstPoint(true);
+              },
+            });
+        }
 
-      if (!drawingLineOfFire) {
-        items.push({
-          label: "Créer une ligne de tir",
-          action: () => {
-            setDrawingLineOfFire(true);
-            setTempConePoints([]);
-            setExtendingConeLofId(null);
-          },
-        });
-      }
+        if (!drawingLineOfFire) {
+          items.push({
+            label: "Nouvelle ligne de tir",
+            action: () => {
+              setDrawingLineOfFire(true);
+              setTempConePoints([]);
+              setExtendingConeLofId(null);
+              dispatch({ type: "CREATE_NEW_LOF" });
+            },
+          });
+        }
 
-      if (clipboardPolygons.length > 0) {
-        items.push({
-          label: "Coller",
-          action: () => handlePaste(),
-        });
+        if (editorState.clipboard.polygons.length > 0) {
+          items.push({
+            label: "Coller",
+            action: () => handlePaste(),
+          });
+        }
       }
 
       if (items.length > 0) {
-        setContextMenu({ x: clientX, y: clientY, items });
+        setContextMenuItems(items);
+        dispatch({ type: "OPEN_CONTEXT_MENU", x: clientX, y: clientY, itemsLabel: "map" });
       }
     },
-    [handlePaste, tempPoints.length, clipboardPolygons.length, drawingLineOfFire],
+    [handlePaste, tempPoints.length, editorState.clipboard.polygons.length, drawingLineOfFire, editingZone, handleContextNewZone, handleBackgroundClick, dispatch, editorState.mode.type, editorState.mode.awaitingFirst],
   );
 
   const handleZoneRightClick = useCallback(
@@ -1416,7 +1533,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         });
       }
 
-      if (clipboardPolygons.length > 0) {
+      if (editorState.clipboard.polygons.length > 0) {
         items.push({
           label: "Coller",
           action: () => handlePaste(),
@@ -1450,12 +1567,37 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         { label: "Flip V", action: () => handleFlipV() },
       );
 
-      setContextMenu({ x: clientX, y: clientY, items });
+      setContextMenuItems(items);
+      dispatch({ type: "OPEN_CONTEXT_MENU", x: clientX, y: clientY, itemsLabel: "zone" });
     },
-    [selectedPolygonIndexes, editingZone, handleCopy, handlePaste, handleSetFloor, clipboardPolygons.length],
+    [selectedPolygonIndexes, editingZone, handleCopy, handlePaste, handleSetFloor, editorState.clipboard.polygons.length, dispatch],
   );
 
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const handleNewZoneNameConfirm = (name: string) => {
+    setEditingZone((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, name };
+      setZones((z) => {
+        const exists = z.some((zone) => zone.id === prev.id);
+        if (exists) {
+          return z.map((zone) => (zone.id === prev.id ? updated : zone));
+        }
+        return [...z, updated];
+      });
+      return updated;
+    });
+    dispatch({ type: "MARK_DIRTY" });
+    void handleSaveNewZone(name);
+  };
+
+  const handleNewZoneNameCancel = useCallback(() => {
+    dispatch({ type: "HIDE_ZONE_NAME_DIALOG" });
+  }, [dispatch]);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenuItems([]);
+    dispatch({ type: "CLOSE_CONTEXT_MENU" });
+  }, [dispatch]);
 
   const handleRefreshLock = useCallback(async () => {
     try {
@@ -1519,7 +1661,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
           showReacquireButton={showReacquireButton}
           teamId={teamId}
           mapId={mapId}
-          onHelpClick={() => setShowHelp(true)}
+          onHelpClick={() => dispatch({ type: "SHOW_HELP" })}
         />
       )}
 
@@ -1543,7 +1685,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
             onPointInsert={readOnly ? () => {} : handlePointInsert}
             onMapRightClick={readOnly ? () => {} : handleMapRightClick}
             onZoneRightClick={readOnly ? () => {} : handleZoneRightClick}
-            onMapDoubleClick={readOnly ? () => {} : handleMapDoubleClick}
+            awaitingFirstPoint={readOnly ? false : awaitingFirstPoint}
             linesOfFire={readOnly && !browsingLoFVersion ? [] : linesOfFire}
             selectedLineOfFireId={selectedLineOfFireId}
             tempConePoints={tempConePoints}
@@ -1568,9 +1710,9 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
                 const targetMapId = Number(e.target.value);
                 if (readOnly) {
                   navigate(`/teams/${teamId}/zones/${targetMapId}`);
-                } else if (isDirty) {
+                } else if (editorState.isDirty) {
                   pendingZoneSwitch.current = { action: "navigate", mapId: targetMapId };
-                  setShowDiscardDialog(true);
+                  dispatch({ type: "SHOW_DISCARD_DIALOG" });
                 } else {
                   releaseLockSync(teamId, mapId);
                   navigate(`/teams/${teamId}/editor/${targetMapId}`);
@@ -1593,52 +1735,6 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
               </Link>
             )}
           </div>
-          {!readOnly && editingZone && (
-            <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
-              <button
-                className="btn-primary btn-small"
-                onClick={editingZone.id === 0 ? handleSaveNewZone : handleSave}
-                disabled={!isDirty || isSaving || browsingVersion !== null}
-                style={{ flex: 1 }}
-              >
-                {isSaving ? "Sauvegarde..." : "Sauvegarder"}
-              </button>
-              <button
-                className="btn-secondary btn-small"
-                onClick={() => {
-                  if (isDirty) {
-                    setShowDiscardDialog(true);
-                    pendingZoneSwitch.current = null;
-                  } else {
-                    handleDiscard();
-                  }
-                }}
-                disabled={!isDirty}
-                style={{ flex: 1 }}
-              >
-                Annuler
-              </button>
-            </div>
-          )}
-          {!readOnly && lofSnapshot !== null && (
-            <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
-              <button
-                className="btn-primary btn-small"
-                onClick={handleLofSave}
-                disabled={lofIsSaving}
-                style={{ flex: 1 }}
-              >
-                {lofIsSaving ? "Sauvegarde..." : "Sauv. lignes de tir"}
-              </button>
-              <button
-                className="btn-secondary btn-small"
-                onClick={handleLofDiscard}
-                style={{ flex: 1 }}
-              >
-                Annuler
-              </button>
-            </div>
-          )}
           <ZoneList
             zones={zones}
             linesOfFire={linesOfFire}
@@ -1649,7 +1745,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
               if (zone) {
                 setEditingZone(zone);
                 setSelectedZoneId(id);
-                setSelectedPolygonIndexes(new Set(zone.polygons.map((_, i) => i)));
+                setSelectedPolygonIndexes(new Set());
               }
             } : handleSelectZone}
             onDeleteZone={readOnly ? undefined : handleDeleteZone}
@@ -1659,6 +1755,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
             onDeleteLineOfFire={readOnly ? undefined : handleLineOfFireDelete}
             onRenameLineOfFire={readOnly ? undefined : handleLineOfFireRename}
             readOnly={readOnly}
+            hideNewZoneInput={editorState.mode.type === "zone_editing"}
           />
           {!readOnly && selectedLineOfFireId != null && !browsingVersion && (
             <LineOfFireVersionBrowser
@@ -1752,18 +1849,18 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         </div>
       )}
 
-      {!readOnly && contextMenu && (
+      {!readOnly && editorState.dialogs.contextMenu && (
         <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={contextMenu.items}
+          x={editorState.dialogs.contextMenu.x}
+          y={editorState.dialogs.contextMenu.y}
+          items={contextMenuItems}
           onClose={closeContextMenu}
         />
       )}
 
       {!readOnly && (
         <ConfirmDialog
-          open={showDiscardDialog}
+          open={editorState.dialogs.discardConfirm}
           title="Modifications non sauvegardées"
           message="Vous avez des modifications non sauvegardées. Que souhaitez-vous faire ?"
           confirmLabel="Annuler les modifications"
@@ -1796,7 +1893,13 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
         onConfirm={handleRenameLineOfFireConfirm}
         onCancel={handleRenameLineOfFireCancel}
       />
-      <EditorHelpPopup open={showHelp} onClose={() => setShowHelp(false)} />
+      <ZoneNameDialog
+        open={editorState.mode.type === "zone_naming"}
+        initialName={editingZone?.name ?? "Nouvelle zone"}
+        onConfirm={handleNewZoneNameConfirm}
+        onCancel={handleNewZoneNameCancel}
+      />
+      <EditorHelpPopup open={editorState.dialogs.helpVisible} onClose={() => dispatch({ type: "HIDE_HELP" })} />
     </div>
   );
 };
