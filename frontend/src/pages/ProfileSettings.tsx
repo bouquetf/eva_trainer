@@ -41,12 +41,16 @@ function ProfileSettings() {
   const [correctTimer, setCorrectTimer] = useState(3)
   const [incorrectTimer, setIncorrectTimer] = useState(5)
   const [questionCount, setQuestionCount] = useState(20)
+  const [reviewZones, setReviewZones] = useState(true)
+  const [reviewLines, setReviewLines] = useState(true)
 
   useEffect(() => {
     if (settings) {
       setCorrectTimer(settings.revision_correct_timer)
       setIncorrectTimer(settings.revision_incorrect_timer)
       setQuestionCount(settings.revision_question_count)
+      setReviewZones(settings.revision_review_zones)
+      setReviewLines(settings.revision_review_lines)
     }
   }, [settings])
 
@@ -69,6 +73,8 @@ function ProfileSettings() {
       revision_correct_timer: Math.max(1, correctTimer),
       revision_incorrect_timer: Math.max(1, incorrectTimer),
       revision_question_count: Math.max(1, questionCount),
+      revision_review_zones: reviewZones,
+      revision_review_lines: reviewLines,
     })
   }
 
@@ -148,6 +154,27 @@ function ProfileSettings() {
               disabled={settingsMutation.isPending}
             />
           </div>
+          <fieldset className="form-group" style={{ border: 'none', padding: 0, marginTop: 12 }}>
+            <legend style={{ marginBottom: 8, fontWeight: 600 }}>Types de révision</legend>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <input
+                type="checkbox"
+                checked={reviewZones}
+                onChange={e => setReviewZones(e.target.checked)}
+                disabled={settingsMutation.isPending}
+              />
+              Zones
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={reviewLines}
+                onChange={e => setReviewLines(e.target.checked)}
+                disabled={settingsMutation.isPending}
+              />
+              Lignes de tir
+            </label>
+          </fieldset>
           <button type="submit" className="btn-primary" disabled={settingsMutation.isPending}>
             {settingsMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
           </button>

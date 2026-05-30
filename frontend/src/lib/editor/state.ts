@@ -1,10 +1,60 @@
-import { describeTransition } from "./machine";
-import type { EditorState, EditorMode, LockState, ClipboardState } from "./types";
+import { describeTransition, getMenuOptions, getCanvasActions, getSidePanelActions } from "./machine";
+import type { EditorState, EditorMode, LockState, ClipboardState, AvailableActions, ContextMenuActionItem } from "./types";
+
+// ── Guard evaluator (state-only guards) ───────────────
+
+function evaluateGuard(guardName: string, state: EditorState): boolean {
+  switch (guardName) {
+    case "canCreateZone": return canCreateZone(state);
+    case "canDraw": return canDraw(state);
+    case "canPaste": return canPaste(state);
+    case "canSelectZone": return canSelectZone(state, 0);
+    case "canSelectLoF": return canSelectLoF(state, 0);
+    default: return true;
+  }
+}
+
+// ── Derived: available actions for the current mode ───
+
+export function deriveAvailableActions(state: EditorState): AvailableActions {
+  const id = state.mode.type;
+  const menuOptions = getMenuOptions(id).filter(
+    (o) => !o.guard || evaluateGuard(o.guard, state),
+  );
+  const sidePanelActions = getSidePanelActions(id).filter(
+    (a) => !a.guard || evaluateGuard(a.guard, state),
+  );
+  return {
+    menuOptions,
+    canvasActions: getCanvasActions(id),
+    sidePanelActions,
+  };
+}
+
+/** True when the current state machine includes a side-panel control by name. */
+export function hasSidePanelControl(state: EditorState, control: string): boolean {
+  return state.availableActions.sidePanelActions.some((a) => a.control === control);
+}
+
+/** True when the current state machine includes a side-panel action string. */
+export function hasSidePanelAction(state: EditorState, actionName: string): boolean {
+  return state.availableActions.sidePanelActions.some((a) => a.action === actionName);
+}
+
+/** True when the current state machine includes the action in its filtered menu options. */
+export function isMenuActionAvailable(state: EditorState, actionName: string): boolean {
+  return state.availableActions.menuOptions.some((o) => o.action === actionName);
+}
+
+/** True when the current state machine includes the action in its canvas actions. */
+export function isCanvasActionValid(state: EditorState, actionName: string): boolean {
+  return state.availableActions.canvasActions.some((a) => a.action === actionName);
+}
 
 // ── Factory: initial state ────────────────────────────
 
 export function createInitialState(): EditorState {
-  return {
+  const state: EditorState = {
     mode: { type: "neutral" },
     lock: { type: "unlocked" },
     isDirty: false,
@@ -13,11 +63,14 @@ export function createInitialState(): EditorState {
     dialogs: {
       contextMenu: null,
       contextMenuItems: "",
+      contextMenuActionItems: [],
       discardConfirm: false,
       helpVisible: false,
     },
     versionBrowsing: false,
+    availableActions: { menuOptions: [], canvasActions: [], sidePanelActions: [] },
   };
+  return { ...state, availableActions: deriveAvailableActions(state) };
 }
 
 // ── Actions ───────────────────────────────────────────
@@ -47,7 +100,7 @@ export type EditorAction =
   | { type: "SET_LOCK"; lock: LockState }
   | { type: "SET_CLIPBOARD"; clipboard: ClipboardState }
   | { type: "CLEAR_CLIPBOARD" }
-  | { type: "OPEN_CONTEXT_MENU"; x: number; y: number; itemsLabel: string }
+  | { type: "OPEN_CONTEXT_MENU"; x: number; y: number; itemsLabel: string; items: readonly ContextMenuActionItem[] }
   | { type: "CLOSE_CONTEXT_MENU" }
   | { type: "SHOW_DISCARD_DIALOG" }
   | { type: "HIDE_DISCARD_DIALOG" }
@@ -77,6 +130,16 @@ export function canSelectLoF(state: EditorState, _lofId: number): boolean {
   return !(state.mode.type === "zone_version" || state.mode.type === "lof_version");
 }
 
+export function canPaste(state: EditorState): boolean {
+  return state.clipboard.polygons.length > 0;
+}
+
+// ── Reducer helper: transition to a new mode ──────────
+
+function transitionTo(state: EditorState, mode: EditorMode): EditorState {
+  return { ...state, mode, availableActions: deriveAvailableActions({ ...state, mode }) };
+}
+
 // ── Reducer ───────────────────────────────────────────
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -85,37 +148,25 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "SELECT_ZONE":
       if (!canSelectZone(state, action.zoneId)) return state;
       return {
-        ...state,
-        mode: { type: "zone_editing", zoneId: action.zoneId },
+        ...transitionTo(state, { type: "zone_editing", zoneId: action.zoneId }),
         isDirty: false,
-        dialogs: { ...state.dialogs, contextMenu: null },
+        dialogs: { ...state.dialogs, contextMenu: null, contextMenuItems: "", contextMenuActionItems: [] },
       };
 
     case "DESELECT_ALL":
       return {
-        ...state,
-        mode: { type: "neutral" },
+        ...transitionTo(state, { type: "neutral" }),
         isDirty: false,
-        dialogs: { ...state.dialogs, contextMenu: null },
+        dialogs: { ...state.dialogs, contextMenu: null, contextMenuItems: "", contextMenuActionItems: [] },
       };
 
     case "CREATE_NEW_ZONE":
       if (!canCreateZone(state)) return state;
-      return {
-        ...state,
-        mode: { type: "zone_new" },
-        isDirty: false,
-        dialogs: { ...state.dialogs, contextMenu: null },
-      };
+      return transitionTo(state, { type: "zone_new" });
 
     case "CREATE_NEW_LOF":
       if (!canDraw(state)) return state;
-      return {
-        ...state,
-        mode: { type: "lof_new" },
-        isDirty: false,
-        dialogs: { ...state.dialogs, contextMenu: null },
-      };
+      return transitionTo(state, { type: "lof_new" });
 
     case "MARK_DIRTY":
       return { ...state, isDirty: true };
@@ -132,28 +183,22 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "FIRST_POLYGON_POINT": {
       if (state.mode.type === "zone_drawing" || state.mode.type === "lof_drawing") return state;
       if (!canDraw(state)) return state;
-      return {
-        ...state,
-        mode: {
-          type: "zone_drawing",
-          zoneId: action.zoneId,
-          pointCount: 1,
-          awaitingFirst: false,
-        },
-      };
+      return transitionTo(state, {
+        type: "zone_drawing",
+        zoneId: action.zoneId,
+        pointCount: 1,
+        awaitingFirst: false,
+      });
     }
 
     case "START_DRAWING":
       if (!canDraw(state)) return state;
-      return {
-        ...state,
-        mode: {
-          type: "zone_drawing",
-          zoneId: action.zoneId,
-          pointCount: 0,
-          awaitingFirst: action.awaitingFirst ?? false,
-        },
-      };
+      return transitionTo(state, {
+        type: "zone_drawing",
+        zoneId: action.zoneId,
+        pointCount: 0,
+        awaitingFirst: action.awaitingFirst ?? false,
+      });
 
     case "ADD_POLYGON_POINT": {
       const m = state.mode;
@@ -167,48 +212,29 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "FINISH_DRAWING": {
       const m = state.mode;
       if (m.type !== "zone_drawing") return state;
-      // First polygon of a brand new zone → open naming dialog
       if (!state.isDirty && m.zoneId === 0) {
-        return {
-          ...state,
-          mode: { type: "zone_naming" },
-        };
+        return transitionTo(state, { type: "zone_naming" });
       }
       return {
-        ...state,
-        mode: { type: "zone_editing", zoneId: m.zoneId },
+        ...transitionTo(state, { type: "zone_editing", zoneId: m.zoneId }),
         isDirty: true,
       };
     }
 
     case "SHOW_ZONE_NAME_DIALOG":
-      return {
-        ...state,
-        mode: { type: "zone_naming" },
-      };
+      return transitionTo(state, { type: "zone_naming" });
 
     case "HIDE_ZONE_NAME_DIALOG":
-      return {
-        ...state,
-        mode: { type: "zone_new" },
-      };
+      return transitionTo(state, { type: "zone_new" });
 
     // ── LoF lifecycle ──
     case "SELECT_LOF":
       if (!canSelectLoF(state, action.lofId)) return state;
-      return {
-        ...state,
-        mode: { type: "lof_viewing", lofId: action.lofId },
-        isDirty: false,
-        dialogs: { ...state.dialogs, contextMenu: null },
-      };
+      return transitionTo(state, { type: "lof_viewing", lofId: action.lofId });
 
     case "START_LOF_DRAWING":
       if (!canDraw(state)) return state;
-      return {
-        ...state,
-        mode: { type: "lof_drawing", pointCount: 0 },
-      };
+      return transitionTo(state, { type: "lof_drawing", pointCount: 0 });
 
     case "ADD_LOF_POINT": {
       const m = state.mode;
@@ -221,26 +247,19 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case "FINISH_LOF_DRAWING":
       return {
-        ...state,
-        mode: { type: "lof_naming" },
+        ...transitionTo(state, { type: "lof_naming" }),
         isDirty: true,
       };
 
     case "SHOW_LOF_NAME_DIALOG":
-      return {
-        ...state,
-        mode: { type: "lof_naming" },
-      };
+      return transitionTo(state, { type: "lof_naming" });
 
     case "HIDE_LOF_NAME_DIALOG":
-      return {
-        ...state,
-        mode: { type: "neutral" },
-      };
+      return transitionTo(state, { type: "neutral" });
 
     // ── Lock ──
     case "SET_LOCK":
-      return { ...state, lock: action.lock };
+      return { ...state, lock: action.lock, availableActions: deriveAvailableActions({ ...state, lock: action.lock }) };
 
     // ── Clipboard ──
     case "SET_CLIPBOARD":
@@ -257,13 +276,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           ...state.dialogs,
           contextMenu: { x: action.x, y: action.y },
           contextMenuItems: action.itemsLabel,
+          contextMenuActionItems: action.items,
         },
       };
 
     case "CLOSE_CONTEXT_MENU":
       return {
         ...state,
-        dialogs: { ...state.dialogs, contextMenu: null, contextMenuItems: "" },
+        dialogs: { ...state.dialogs, contextMenu: null, contextMenuItems: "", contextMenuActionItems: [] },
       };
 
     case "SHOW_DISCARD_DIALOG":
@@ -290,7 +310,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     // ── Direct mode override ──
     case "SET_MODE":
-      return { ...state, mode: action.mode };
+      return transitionTo(state, action.mode);
 
     default:
       return state;

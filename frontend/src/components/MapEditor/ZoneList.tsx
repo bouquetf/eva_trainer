@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import type { Zone } from "../../lib/api/types";
 import type { LineOfFire } from "../../lib/lines_of_fire/types";
+import type { AvailableActions } from "../../lib/editor";
 
 interface ZoneListProps {
   zones: Zone[];
   linesOfFire?: LineOfFire[];
   selectedLineOfFireId?: number | null;
   editingZoneId: number | null;
+  availableActions?: AvailableActions;
   onSelectZone: (id: number) => void;
   onDeleteZone?: (id: number) => void;
   onCreateZone?: (name: string) => void;
@@ -32,26 +34,23 @@ export const ZoneList: React.FC<ZoneListProps> = ({
   linesOfFire = [],
   selectedLineOfFireId,
   editingZoneId,
+  availableActions,
   onSelectZone,
   onDeleteZone,
-  onCreateZone,
+  onCreateZone: _onCreateZone,
   onRenameZone,
   onSelectLineOfFire,
   onDeleteLineOfFire,
   onRenameLineOfFire,
-  readOnly = false,
-  hideNewZoneInput = false,
-}) => {
-  const [newZoneName, setNewZoneName] = useState("");
+  readOnly = false}) => {
+  const canDeleteZone = availableActions?.sidePanelActions.some((a) => a.action === "DELETE_ZONE") ?? true;
+  const canDeleteLof = availableActions?.sidePanelActions.some((a) => a.action === "DELETE_LOF") ?? true;
   const [renamingZoneId, setRenamingZoneId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamingLofId, setRenamingLofId] = useState<number | null>(null);
   const [renameLofValue, setRenameLofValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  const trimmedNewName = newZoneName.trim();
-  const newNameDuplicate = trimmedNewName.length > 0 && nameInUse(zones, trimmedNewName);
-  const canCreate = trimmedNewName.length > 0 && !newNameDuplicate;
 
   const trimmedRename = renameValue.trim();
   const renameDuplicate = trimmedRename.length > 0 && nameInUse(zones, trimmedRename, renamingZoneId ?? undefined);
@@ -69,12 +68,6 @@ export const ZoneList: React.FC<ZoneListProps> = ({
       renameInputRef.current?.select();
     }
   }, [renamingLofId]);
-
-  const handleCreate = () => {
-    if (!canCreate || readOnly) return;
-    onCreateZone?.(trimmedNewName);
-    setNewZoneName("");
-  };
 
   const handleDoubleClick = (zone: Zone) => {
     if (zone.id !== editingZoneId || readOnly) return;
@@ -181,7 +174,7 @@ export const ZoneList: React.FC<ZoneListProps> = ({
                   {polygonCount} polygone{polygonCount > 1 ? "s" : ""}, {totalPoints} pts
                 </div>
               </div>
-              {!readOnly && (
+              {!readOnly && canDeleteZone && (
                 <div style={{ display: "flex", gap: "4px" }}>
                   <button
                     onClick={(e) => {
@@ -265,7 +258,7 @@ export const ZoneList: React.FC<ZoneListProps> = ({
                       {coneCount} cône{coneCount > 1 ? "s" : ""}
                     </div>
                   </div>
-                  {!readOnly && (
+                  {!readOnly && canDeleteLof && (
                     <div style={{ display: "flex", gap: "4px" }}>
                       <button
                         onClick={(e) => {

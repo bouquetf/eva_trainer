@@ -3,7 +3,7 @@ import { loginAsUser, generateJWT } from '../helpers/auth';
 import { seedTeam, seedMap, queryDB, createZoneWithLock } from '../helpers/db';
 
 test.describe('Feature: Copy/Paste in Editor', () => {
-  test('1.1: Ctrl+C / Ctrl+V duplique un polygone', async ({ page, adminUser }) => {
+  test('1.1: Copier/Coller via clic droit duplique un polygone', async ({ page, adminUser }) => {
     const team = await seedTeam('E2E CopyPaste Team ' + Date.now(), adminUser.id);
     const map = await seedMap('E2E-CopyPaste-Map-' + Date.now());
     const secret = process.env.JWT_SECRET || 'test-secret-key-for-manual-validation-32chars';
@@ -19,17 +19,25 @@ test.describe('Feature: Copy/Paste in Editor', () => {
     await loginAsUser(page, adminUser);
     await page.goto(`/teams/${team.id}/editor/${map.id}`);
 
-    // Attendre que la zone soit visible dans la liste
     await expect(page.getByText('Zone Test')).toBeVisible({ timeout: 15000 });
-    // Attendre que le nombre de polygones soit affiché
     await expect(page.getByText(/1 polygone/)).toBeVisible({ timeout: 5000 });
 
-    // Cliquer sur la zone pour l'éditer (sélectionne le polygone)
+    // Cliquer sur la zone pour l'éditer
     await page.click('text=Zone Test');
 
-    // Ctrl+C → Ctrl+V
-    await page.keyboard.press('Control+c');
-    await page.keyboard.press('Control+v');
+    // Sélectionner le polygone dans le canvas
+    const polygon = page.locator('[data-zone-id]').first();
+    await polygon.waitFor({ state: 'visible', timeout: 10000 });
+    await polygon.click();
+
+    // Clic droit → "Copier"
+    await polygon.click({ button: 'right' });
+    await page.getByText('Copier').click();
+
+    // Attendre que le menu se ferme, puis clic droit → "Coller"
+    await page.keyboard.press('Escape');
+    await polygon.click({ button: 'right' });
+    await page.getByText('Coller').click();
 
     // Vérifier que la zone a maintenant 2 polygones
     await expect(page.getByText(/2 polygones/)).toBeVisible({ timeout: 5000 });

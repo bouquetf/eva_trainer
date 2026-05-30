@@ -4,7 +4,13 @@ export {
   canCreateZone,
   canDraw,
   canSelectLoF,
+  canPaste,
   createInitialState,
+  deriveAvailableActions,
+  hasSidePanelControl,
+  hasSidePanelAction,
+  isMenuActionAvailable,
+  isCanvasActionValid,
   contextMenuKey,
   transitionLabel,
 } from "./state";
@@ -18,6 +24,8 @@ export type {
   ClipboardState,
   ContextMenuState,
   DialogsState,
+  AvailableActions,
+  ContextMenuActionItem,
 } from "./types";
 
 export {
@@ -35,9 +43,10 @@ export {
   isValidTransition,
   getMenuOptions,
   getCanvasActions,
+  getSidePanelActions,
   describeTransition,
   dumpMachine,
   dumpMermaid,
 } from "./machine";
 
-export type { StateSpec, TransitionSpec, MenuOption, CanvasAction } from "./machine";
+export type { StateSpec, MenuOption, CanvasAction, SidePanelAction } from "./machine";

@@ -47,6 +47,8 @@ export interface UserSettings {
   revision_correct_timer: number
   revision_incorrect_timer: number
   revision_question_count: number
+  revision_review_zones: boolean
+  revision_review_lines: boolean
 }
 
 export async function fetchSettings(): Promise<UserSettings> {

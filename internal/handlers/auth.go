@@ -253,6 +253,8 @@ func (h *AuthHandler) GetSettings(c *gin.Context) {
 		"revision_correct_timer":   settings.RevisionCorrectTimer,
 		"revision_incorrect_timer": settings.RevisionIncorrectTimer,
 		"revision_question_count":  settings.RevisionQuestionCount,
+		"revision_review_zones":    settings.RevisionReviewZones,
+		"revision_review_lines":    settings.RevisionReviewLines,
 	})
 }
 
@@ -263,9 +265,11 @@ func (h *AuthHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	var req struct {
-		RevisionCorrectTimer   *int `json:"revision_correct_timer"`
-		RevisionIncorrectTimer *int `json:"revision_incorrect_timer"`
-		RevisionQuestionCount  *int `json:"revision_question_count"`
+		RevisionCorrectTimer   *int  `json:"revision_correct_timer"`
+		RevisionIncorrectTimer *int  `json:"revision_incorrect_timer"`
+		RevisionQuestionCount  *int  `json:"revision_question_count"`
+		RevisionReviewZones    *bool `json:"revision_review_zones"`
+		RevisionReviewLines    *bool `json:"revision_review_lines"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -302,6 +306,12 @@ func (h *AuthHandler) UpdateSettings(c *gin.Context) {
 	if req.RevisionQuestionCount != nil {
 		merged.RevisionQuestionCount = *req.RevisionQuestionCount
 	}
+	if req.RevisionReviewZones != nil {
+		merged.RevisionReviewZones = *req.RevisionReviewZones
+	}
+	if req.RevisionReviewLines != nil {
+		merged.RevisionReviewLines = *req.RevisionReviewLines
+	}
 
 	if err := h.userRepo.UpdateUserSettings(user.ID, &merged); err != nil {
 		apierror.RespondWithError(c, apierror.NewAPIError(
@@ -314,6 +324,8 @@ func (h *AuthHandler) UpdateSettings(c *gin.Context) {
 		"revision_correct_timer":   merged.RevisionCorrectTimer,
 		"revision_incorrect_timer": merged.RevisionIncorrectTimer,
 		"revision_question_count":  merged.RevisionQuestionCount,
+		"revision_review_zones":    merged.RevisionReviewZones,
+		"revision_review_lines":    merged.RevisionReviewLines,
 	})
 }
 

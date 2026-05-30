@@ -1,4 +1,22 @@
 import type { ZonePolygon } from "../api/types";
+import type { MenuOption, CanvasAction, SidePanelAction } from "./machine";
+
+// ── Context menu action item ───────────────────────────
+export interface ContextMenuActionItem {
+  label: string;
+  action: string;
+  target?: string;
+  guard?: string;
+  description?: string;
+  children?: ContextMenuActionItem[];
+}
+
+// ── Available actions (derived from the mode machine) ─
+export interface AvailableActions {
+  readonly menuOptions: readonly MenuOption[];
+  readonly canvasActions: readonly CanvasAction[];
+  readonly sidePanelActions: readonly SidePanelAction[];
+}
 
 // ── Primary mode ──────────────────────────────────────
 // Mutually exclusive top-level state — exactly one is active.
@@ -38,6 +56,7 @@ export interface ContextMenuState {
 export interface DialogsState {
   readonly contextMenu: ContextMenuState | null;
   readonly contextMenuItems: string;
+  readonly contextMenuActionItems: readonly ContextMenuActionItem[];
   readonly discardConfirm: boolean;
   readonly helpVisible: boolean;
 }
@@ -51,6 +70,7 @@ export interface EditorState {
   readonly clipboard: ClipboardState;
   readonly dialogs: DialogsState;
   readonly versionBrowsing: boolean;
+  readonly availableActions: AvailableActions;
 }
 
 // ── Status flags (derived from mode) ──────────────────

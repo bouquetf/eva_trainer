@@ -111,7 +111,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func setupAuthHandler(t *testing.T) (*AuthHandler, models.UserRepository, models.RefreshTokenRepository, *services.JWTService) {
+func setupAuthHandler(t *testing.T) (*AuthHandler, models.UserRepository, models.RefreshTokenRepository, *services.JWTService, *sql.DB) {
 	t.Helper()
 
 	db := setupTestDB(t)
@@ -133,13 +133,13 @@ func setupAuthHandler(t *testing.T) (*AuthHandler, models.UserRepository, models
 
 	handler := NewAuthHandler(userRepo, refreshRepo, oauthCfg, jwtService, "http://localhost:5173", services.NewLogger(services.LogLevelError, services.LogFormatText))
 
-	return handler, userRepo, refreshRepo, jwtService
+	return handler, userRepo, refreshRepo, jwtService, db
 }
 
 func TestLoginRedirect_Returns302(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, _, _, _ := setupAuthHandler(t)
+	handler, _, _, _, _ := setupAuthHandler(t)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -166,7 +166,7 @@ func TestLoginRedirect_Returns302(t *testing.T) {
 func TestMe_WithoutToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -186,7 +186,7 @@ func TestMe_WithoutToken_Returns401(t *testing.T) {
 func TestMe_WithValidToken_Returns200(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("test-discord-id")
 	if err != nil {
@@ -226,7 +226,7 @@ func TestMe_WithValidToken_Returns200(t *testing.T) {
 func TestRefresh_WithValidToken_Returns200(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, refreshRepo, _ := setupAuthHandler(t)
+	handler, userRepo, refreshRepo, _, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("refresh-test-user")
 	if err != nil {
@@ -268,7 +268,7 @@ func TestRefresh_WithValidToken_Returns200(t *testing.T) {
 func TestRefresh_WithRevokedToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, refreshRepo, _ := setupAuthHandler(t)
+	handler, userRepo, refreshRepo, _, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("revoked-test-user")
 	if err != nil {
@@ -309,7 +309,7 @@ func TestRefresh_WithRevokedToken_Returns401(t *testing.T) {
 func TestGetSettings_NoSettings_ReturnsDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("settings-defaults")
 	if err != nil {
@@ -350,12 +350,18 @@ func TestGetSettings_NoSettings_ReturnsDefaults(t *testing.T) {
 	if v := resp["revision_question_count"]; v != float64(20) {
 		t.Errorf("expected question_count 20, got %v", v)
 	}
+	if v := resp["revision_review_zones"]; v != true {
+		t.Errorf("expected review_zones true, got %v", v)
+	}
+	if v := resp["revision_review_lines"]; v != true {
+		t.Errorf("expected review_lines true, got %v", v)
+	}
 }
 
 func TestGetSettings_WithoutToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -375,16 +381,20 @@ func TestGetSettings_WithoutToken_Returns401(t *testing.T) {
 func TestGetSettings_WithPartialSettings_ReturnsMerged(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, db := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("settings-partial")
 	if err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
-	// Stocker des settings où seuls certains champs sont > 0
-	// GetUserSettings fusionne avec les défauts (champs à 0 → defaults)
-	if err := userRepo.UpdateUserSettings(user.ID, &models.UserSettings{RevisionCorrectTimer: 2}); err != nil {
+	// Stocker du JSON brut sans les champs booléens pour simuler des settings
+	// créés avant l'ajout de revision_review_zones / revision_review_lines.
+	_, err = db.Exec(
+		`UPDATE users SET settings = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+		`{"revision_correct_timer": 2}`, user.ID,
+	)
+	if err != nil {
 		t.Fatalf("failed to set partial settings: %v", err)
 	}
 
@@ -419,12 +429,18 @@ func TestGetSettings_WithPartialSettings_ReturnsMerged(t *testing.T) {
 	if v := resp["revision_incorrect_timer"]; v != float64(5) {
 		t.Errorf("expected incorrect_timer 5 (default), got %v", v)
 	}
+	if v := resp["revision_review_zones"]; v != true {
+		t.Errorf("expected review_zones true (default), got %v", v)
+	}
+	if v := resp["revision_review_lines"]; v != true {
+		t.Errorf("expected review_lines true (default), got %v", v)
+	}
 }
 
 func TestUpdateSettings_StoresAndPersists(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("settings-store")
 	if err != nil {
@@ -483,12 +499,18 @@ func TestUpdateSettings_StoresAndPersists(t *testing.T) {
 	if v := resp["revision_question_count"]; v != float64(15) {
 		t.Errorf("expected question_count 15, got %v", v)
 	}
+	if v := resp["revision_review_zones"]; v != true {
+		t.Errorf("expected review_zones true (default), got %v", v)
+	}
+	if v := resp["revision_review_lines"]; v != true {
+		t.Errorf("expected review_lines true (default), got %v", v)
+	}
 }
 
 func TestUpdateSettings_PartialUpdate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("settings-partial-update")
 	if err != nil {
@@ -549,12 +571,94 @@ func TestUpdateSettings_PartialUpdate(t *testing.T) {
 	if v := resp["revision_question_count"]; v != float64(30) {
 		t.Errorf("expected question_count 30 (unchanged), got %v", v)
 	}
+	if v := resp["revision_review_zones"]; v != true {
+		t.Errorf("expected review_zones true (default), got %v", v)
+	}
+	if v := resp["revision_review_lines"]; v != true {
+		t.Errorf("expected review_lines true (default), got %v", v)
+	}
 }
 
+func TestUpdateSettings_WithReviewBooleans_StoresCorrectly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("settings-review-flags")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	// Désactiver zones, activer lignes de tir
+	body := `{"revision_review_zones": false, "revision_review_lines": true}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/auth/settings", strings.NewReader(body))
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c)
+	if !c.IsAborted() {
+		c.Next()
+		handler.UpdateSettings(c)
+	}
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if v := resp["revision_review_zones"]; v != false {
+		t.Errorf("expected review_zones false, got %v", v)
+	}
+	if v := resp["revision_review_lines"]; v != true {
+		t.Errorf("expected review_lines true, got %v", v)
+	}
+	if v := resp["revision_correct_timer"]; v != float64(3) {
+		t.Errorf("expected correct_timer 3 (default), got %v", v)
+	}
+
+	// Vérifier la persistance
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/settings", nil)
+	c2.Request.Header.Set("Authorization", "Bearer "+token)
+
+	middleware.RequireAuth(nil, userRepo, jwtService)(c2)
+	if !c2.IsAborted() {
+		c2.Next()
+		handler.GetSettings(c2)
+	}
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 from GET, got %d", w2.Code)
+	}
+
+	var persisted map[string]interface{}
+	if err := json.Unmarshal(w2.Body.Bytes(), &persisted); err != nil {
+		t.Fatalf("failed to parse GET response: %v", err)
+	}
+
+	if v := persisted["revision_review_zones"]; v != false {
+		t.Errorf("persisted: expected review_zones false, got %v", v)
+	}
+	if v := persisted["revision_review_lines"]; v != true {
+		t.Errorf("persisted: expected review_lines true, got %v", v)
+	}
+}
 func TestUpdateSettings_InvalidValues_Returns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, _, jwtService := setupAuthHandler(t)
+	handler, userRepo, _, jwtService, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("settings-invalid")
 	if err != nil {
@@ -599,7 +703,7 @@ func TestUpdateSettings_InvalidValues_Returns400(t *testing.T) {
 func TestRefresh_WithExpiredToken_Returns401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler, userRepo, refreshRepo, _ := setupAuthHandler(t)
+	handler, userRepo, refreshRepo, _, _ := setupAuthHandler(t)
 
 	user, _, err := userRepo.FindOrCreateByDiscordID("expired-test-user")
 	if err != nil {

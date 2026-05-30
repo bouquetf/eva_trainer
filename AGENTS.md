@@ -88,3 +88,15 @@ go test -tags=integration ./internal/models/ ./internal/handlers/
       - `roles.spec.ts` 8.1, 8.2, 8.3, 8.4 : ouvrir Membres avant d'interagir avec les rôles.
       - `roles.spec.ts` 8.1 : remplacer `getByRole('button', /éditeur/).first()` par `.member-action-btn` pour éviter le bouton "Éditeur" de la section Cartes.
       - `transfer.spec.ts` 9.1 : ouvrir Zone de danger avant transfert.
+
+### Fixes appliqués cette session (chronologique)
+
+1. **Lock sync avant CREATE_NEW_ZONE** — `handleContextNewZone` : dispatch `SET_LOCK` avant `CREATE_NEW_ZONE` pour que le reducer voie le lock au moment de la transition.
+2. **`ensureLock()` garanti dans `handleContextNewZone`** : `acquireLock` est appelé dans `handleContextNewZone` (pas seulement dans `ensureLock` appelé par `handlePolygonPointAdded`).
+3. **Dépendances `useCallback` de `onContextMenuAction`** (`frontend/src/components/MapEditor/MapEditor.tsx:1438`) — `handlePolygonCompleted`, `handlePolygonLastPointRemoved`, `handleFlipH`, `handleFlipV`, `handleLineOfFireDeleteCone` étaient manquants dans le tableau de dépendances. `handlePolygonCompleted` étant une `const` simple (pas `useCallback`), il capturait `tempPoints` et `editingZone` de la première création de `onContextMenuAction` (render de création de zone). Lors du clic "Terminer la forme", la stale closure lisait `tempPoints = []`, court-circuitait par `tempPoints.length < 3`, et abandonnait sans compléter le polygone.
+4. **Tests reducer** — 7 tests dans `frontend/src/lib/editor/state.test.ts` dont 2 nouveaux pour `FINISH_DRAWING` (transition vers `zone_editing` si dirty, `zone_naming` si clean + new).
+
+### Anti-patterns identifiés
+- **Fonctions non-`useCallback` dans les déps** : toutes les fonctions appelées dans un `useCallback` doivent figurer dans ses dépendances **quelle que soit leur nature** (useCallback ou non). Oublier une fonction non-mémoïsée (constante de composant) produit une stale closure qui utilise les valeurs d'un render antérieur.
+- **`contextMenuActionItems`** : les items du menu contextuel sont générés par `handleMapRightClick` à partir de `getMenuOptions(modeType)` (non filtré par guards). Les actions asynchrones (`handlePolygonCompleted`, `handleContextNewZone`) doivent être `await`ed dans `onContextMenuAction`.
+

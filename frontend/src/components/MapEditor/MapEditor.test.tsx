@@ -331,4 +331,5 @@ describe('MapEditor copy/paste', () => {
 
     expect(screen.getByText('Empty Zone')).toBeInTheDocument()
   })
+
 })

@@ -9,9 +9,11 @@ import (
 )
 
 type UserSettings struct {
-	RevisionCorrectTimer   int `json:"revision_correct_timer"`
-	RevisionIncorrectTimer int `json:"revision_incorrect_timer"`
-	RevisionQuestionCount  int `json:"revision_question_count"`
+	RevisionCorrectTimer   int  `json:"revision_correct_timer"`
+	RevisionIncorrectTimer int  `json:"revision_incorrect_timer"`
+	RevisionQuestionCount  int  `json:"revision_question_count"`
+	RevisionReviewZones    bool `json:"revision_review_zones"`
+	RevisionReviewLines    bool `json:"revision_review_lines"`
 }
 
 func DefaultUserSettings() UserSettings {
@@ -19,6 +21,8 @@ func DefaultUserSettings() UserSettings {
 		RevisionCorrectTimer:   3,
 		RevisionIncorrectTimer: 5,
 		RevisionQuestionCount:  20,
+		RevisionReviewZones:    true,
+		RevisionReviewLines:    true,
 	}
 }
 
@@ -301,6 +305,23 @@ func (r *userRepo) GetUserSettings(userID int) (*UserSettings, error) {
 	}
 
 	merged := MergeUserSettings(&settings)
+
+	// For bool fields, only apply if present in raw JSON (avoids overriding defaults
+	// when the stored JSON predates the new fields).
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal([]byte(rawSettings.String), &rawMap); err == nil {
+		if v, ok := rawMap["revision_review_zones"]; ok {
+			if b, ok := v.(bool); ok {
+				merged.RevisionReviewZones = b
+			}
+		}
+		if v, ok := rawMap["revision_review_lines"]; ok {
+			if b, ok := v.(bool); ok {
+				merged.RevisionReviewLines = b
+			}
+		}
+	}
+
 	return &merged, nil
 }
 

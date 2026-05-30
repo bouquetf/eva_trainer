@@ -363,6 +363,12 @@ func TestMergeUserSettings_Nil_ReturnsDefaults(t *testing.T) {
 	if result.RevisionQuestionCount != 20 {
 		t.Errorf("expected question count 20, got %d", result.RevisionQuestionCount)
 	}
+	if !result.RevisionReviewZones {
+		t.Errorf("expected review zones true (default), got false")
+	}
+	if !result.RevisionReviewLines {
+		t.Errorf("expected review lines true (default), got false")
+	}
 }
 
 func TestMergeUserSettings_Partial_MergesCorrectly(t *testing.T) {
@@ -377,6 +383,12 @@ func TestMergeUserSettings_Partial_MergesCorrectly(t *testing.T) {
 	if result.RevisionQuestionCount != 20 {
 		t.Errorf("expected question count 20 (default), got %d", result.RevisionQuestionCount)
 	}
+	if !result.RevisionReviewZones {
+		t.Errorf("expected review zones true (default), got false")
+	}
+	if !result.RevisionReviewLines {
+		t.Errorf("expected review lines true (default), got false")
+	}
 }
 
 func TestMergeUserSettings_Full_ReturnsExact(t *testing.T) {
@@ -384,6 +396,8 @@ func TestMergeUserSettings_Full_ReturnsExact(t *testing.T) {
 		RevisionCorrectTimer:   1,
 		RevisionIncorrectTimer: 2,
 		RevisionQuestionCount:  10,
+		RevisionReviewZones:    false,
+		RevisionReviewLines:    false,
 	})
 
 	if result.RevisionCorrectTimer != 1 {
@@ -394,6 +408,15 @@ func TestMergeUserSettings_Full_ReturnsExact(t *testing.T) {
 	}
 	if result.RevisionQuestionCount != 10 {
 		t.Errorf("expected question count 10, got %d", result.RevisionQuestionCount)
+	}
+	// MergeUserSettings only handles int fields (non-zero guard). Bool fields are
+	// handled separately in GetUserSettings via raw JSON key detection, so they
+	// retain the defaults here.
+	if !result.RevisionReviewZones {
+		t.Errorf("expected review zones true (default), got false")
+	}
+	if !result.RevisionReviewLines {
+		t.Errorf("expected review lines true (default), got false")
 	}
 }
 
@@ -420,6 +443,12 @@ func TestUserRepository_GetUserSettings_NoSettings_ReturnsDefaults(t *testing.T)
 	}
 	if settings.RevisionQuestionCount != 20 {
 		t.Errorf("expected default question count 20, got %d", settings.RevisionQuestionCount)
+	}
+	if !settings.RevisionReviewZones {
+		t.Errorf("expected default review zones true, got false")
+	}
+	if !settings.RevisionReviewLines {
+		t.Errorf("expected default review lines true, got false")
 	}
 }
 
@@ -450,6 +479,8 @@ func TestUserRepository_UpdateUserSettings_StoresAndReturns(t *testing.T) {
 		RevisionCorrectTimer:   4,
 		RevisionIncorrectTimer: 6,
 		RevisionQuestionCount:  15,
+		RevisionReviewZones:    false,
+		RevisionReviewLines:    true,
 	}
 	if err := repo.UpdateUserSettings(user.ID, input); err != nil {
 		t.Fatalf("UpdateUserSettings returned error: %v", err)
@@ -467,6 +498,12 @@ func TestUserRepository_UpdateUserSettings_StoresAndReturns(t *testing.T) {
 	}
 	if settings.RevisionQuestionCount != 15 {
 		t.Errorf("expected question count 15, got %d", settings.RevisionQuestionCount)
+	}
+	if settings.RevisionReviewZones {
+		t.Errorf("expected review zones false, got true")
+	}
+	if !settings.RevisionReviewLines {
+		t.Errorf("expected review lines true, got false")
 	}
 }
 

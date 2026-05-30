@@ -13,13 +13,6 @@
  *     └ ACTION ───→ target                 // unguarded
  */
 
-export interface TransitionSpec {
-  readonly action: string;
-  readonly target: string;
-  readonly guard?: string;
-  readonly label: string;
-}
-
 export interface MenuOption {
   readonly label: string;
   readonly action: string;
@@ -36,13 +29,21 @@ export interface CanvasAction {
   readonly description: string;
 }
 
+export interface SidePanelAction {
+  readonly control: string;
+  readonly action: string;
+  readonly target?: string;
+  readonly guard?: string;
+  readonly description: string;
+}
+
 export interface StateSpec {
   readonly id: string;
   readonly label: string;
   readonly description: string;
-  readonly transitions: readonly TransitionSpec[];
   readonly menuOptions: readonly MenuOption[];
   readonly canvasActions: readonly CanvasAction[];
+  readonly sidePanelActions: readonly SidePanelAction[];
 }
 
 // ── Machine table ──────────────────────────────────────────────
@@ -55,20 +56,16 @@ export const machineStates: readonly StateSpec[] = [
     id: "neutral",
     label: "Neutral",
     description: "Nothing selected, nothing in progress.",
-    transitions: [
-      { action: "SELECT_ZONE",       target: "zone_editing", guard: "canSelectZone", label: "Select existing zone" },
-      { action: "SELECT_LOF",        target: "lof_viewing",  guard: "canSelectLoF",  label: "Select existing line of fire" },
-      { action: "CREATE_NEW_ZONE",   target: "zone_new",     guard: "canCreateZone", label: "Create new zone" },
-      { action: "CREATE_NEW_LOF",    target: "lof_new",      guard: "canDraw",       label: "Create new line of fire" },
-    ],
     menuOptions: [
       { label: "Nouvelle zone",         action: "CREATE_NEW_ZONE", target: "zone_new",    guard: "canCreateZone", description: "Create a brand new zone" },
       { label: "Nouvelle ligne de tir", action: "CREATE_NEW_LOF",  target: "lof_new",     guard: "canDraw",       description: "Create a new line of fire" },
-      { label: "Coller",                action: "PASTE_POLYGONS",  target: "zone_editing",                           description: "Paste copied polygons" },
     ],
     canvasActions: [
-      { trigger: "Left-click on existing zone polygon", action: "SELECT_ZONE", target: "zone_editing", description: "Select and enter editing for the clicked zone" },
-      { trigger: "Right-click on map",                  action: "(context menu)",                    description: "Show map context menu" },
+      { trigger: "Right-click on map", action: "OPEN_CONTEXT_MENU", description: "Show map context menu" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item", action: "SELECT_ZONE", target: "zone_editing", guard: "canSelectZone", description: "Click a zone in the list to edit it" },
+      { control: "LoF list item",  action: "SELECT_LOF",  target: "lof_viewing",  guard: "canSelectLoF",  description: "Click a line of fire in the list to view it" },
     ],
   },
 
@@ -79,24 +76,27 @@ export const machineStates: readonly StateSpec[] = [
     id: "zone_editing",
     label: "Zone editing",
     description: "A zone is selected and being edited.",
-    transitions: [
-      { action: "START_DRAWING",     target: "zone_drawing",  guard: "canDraw",           label: "Add / edit polygon shape" },
-      { action: "DESELECT_ALL",      target: "neutral",                                   label: "Deselect zone" },
-    ],
     menuOptions: [
       { label: "Nouvelle zone",         action: "CREATE_NEW_ZONE", target: "zone_new",    guard: "canCreateZone", description: "Create a brand new zone" },
       { label: "Nouvelle forme",        action: "START_DRAWING",   target: "zone_drawing", guard: "canDraw",       description: "Start drawing a new polygon on the current zone" },
       { label: "Nouvelle ligne de tir", action: "CREATE_NEW_LOF",  target: "lof_new",     guard: "canDraw",       description: "Create a new line of fire" },
-      { label: "Coller",                action: "PASTE_POLYGONS",  target: "zone_editing",                           description: "Paste copied polygons" },
+      { label: "Coller",                action: "PASTE_POLYGONS",  target: "zone_editing",  guard: "canPaste",       description: "Paste copied polygons" },
     ],
     canvasActions: [
       { trigger: "Left-click on background",   action: "DESELECT_POLYGONS",                description: "Deselect all polygons, clear temp points and undo stack" },
       { trigger: "Left-click on polygon",      action: "SELECT_POLYGON",                   description: "Select a polygon (replaces selection)" },
       { trigger: "Ctrl+click on polygon",      action: "TOGGLE_POLYGON_SELECTION",         description: "Add/remove polygon from multi-selection" },
-      { trigger: "Right-click on polygon",     action: "(zone context menu)",              description: "Show polygon editing context menu (copy, paste, floor, flip)" },
-      { trigger: "Right-click on map",         action: "(map context menu)",               description: "Show map context menu" },
+      { trigger: "Right-click on polygon",     action: "OPEN_CONTEXT_MENU",              description: "Show polygon editing context menu (copy, paste, floor, flip)" },
+      { trigger: "Right-click on map",         action: "OPEN_CONTEXT_MENU",               description: "Show map context menu" },
       { trigger: "Drag zone",                  action: "DRAG_ZONE",                        description: "Move the selected zone to a new position" },
       { trigger: "Double-click on point handle", action: "DELETE_POINT",                   description: "Delete a vertex from the polygon" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item",         action: "SELECT_ZONE",            target: "zone_editing",  guard: "canSelectZone", description: "Switch to a different zone" },
+      { control: "LoF list item",          action: "SELECT_LOF",             target: "lof_viewing",   guard: "canSelectLoF",  description: "Switch to a line of fire" },
+      { control: "Delete zone button",     action: "DELETE_ZONE",                                                    description: "Delete the currently selected zone" },
+      { control: "Rename zone (double-click)", action: "RENAME_ZONE",                                              description: "Rename the currently selected zone" },
+      { control: "Version browser toggle", action: "ENTER_VERSION_BROWSING", target: "zone_version", guard: "canSelectZone", description: "Open version history for the selected zone" },
     ],
   },
 
@@ -107,16 +107,16 @@ export const machineStates: readonly StateSpec[] = [
     id: "zone_new",
     label: "New zone – awaiting first polygon",
     description: "A new zone is being created. Click the map to place the first polygon vertex.",
-    transitions: [
-      { action: "FIRST_POLYGON_POINT",  target: "zone_drawing", guard: "canDraw",         label: "Place first vertex" },
-      { action: "SHOW_ZONE_NAME_DIALOG", target: "zone_naming",                           label: "Rename immediately (no polygon)" },
-      { action: "DESELECT_ALL",         target: "neutral",                                label: "Cancel new zone" },
-    ],
     menuOptions: [
       { label: "Annuler", action: "DESELECT_ALL", target: "neutral", description: "Cancel creating the new zone" },
     ],
     canvasActions: [
       { trigger: "Left-click on background", action: "FIRST_POLYGON_POINT", target: "zone_drawing", condition: "canDraw", description: "Place the first polygon vertex on the map" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item",     action: "SELECT_ZONE",     target: "zone_editing", guard: "canSelectZone", description: "Switch to a different zone (discards new zone)" },
+      { control: "LoF list item",      action: "SELECT_LOF",      target: "lof_viewing",  guard: "canSelectLoF",  description: "Switch to a line of fire (cancels new zone)" },
+      { control: "Cancel zone button", action: "DESELECT_ALL",    target: "neutral",                                 description: "Cancel creating the new zone" },
     ],
   },
 
@@ -127,14 +127,8 @@ export const machineStates: readonly StateSpec[] = [
     id: "zone_drawing",
     label: "Drawing polygon",
     description: "A polygon is being drawn on the map.",
-    transitions: [
-      { action: "ADD_POLYGON_POINT", target: "zone_drawing",                              label: "Add vertex to current polygon" },
-      { action: "FIRST_POLYGON_POINT", target: "zone_drawing", guard: "canDraw",          label: "Start next polygon (new shape)" },
-      { action: "FINISH_DRAWING",    target: "zone_editing",                              label: "Complete polygon (existing zone)" },
-      { action: "FINISH_DRAWING",    target: "zone_naming",                               label: "Complete polygon (new zone – name it)" },
-    ],
     menuOptions: [
-      { label: "Terminer la zone / Terminer la forme", action: "FINISH_DRAWING", target: "zone_editing", description: "Complete the polygon being drawn (3+ vertices)" },
+      { label: "Terminer la forme", action: "FINISH_DRAWING", target: "zone_editing", description: "Complete the polygon being drawn (3+ vertices)" },
       { label: "Annuler le point",                    action: "REMOVE_LAST_POINT",                          description: "Remove the last placed vertex" },
       { label: "Annuler la forme",                    action: "SET_MODE",         target: "zone_editing",  description: "Cancel drawing and discard the incomplete polygon" },
       { label: "Annuler la forme (premier point)",    action: "DESELECT_ALL",     target: "neutral",       description: "Cancel the new zone entirely" },
@@ -144,7 +138,11 @@ export const machineStates: readonly StateSpec[] = [
       { trigger: "Left-click on background (drawing in progress)",  action: "ADD_POLYGON_POINT",   target: "zone_drawing", description: "Add a vertex to the current polygon" },
       { trigger: "Ctrl+click on background (drawing in progress)",  action: "REMOVE_LAST_POINT",                            description: "Remove the last placed vertex" },
       { trigger: "Left-click on first point",                      action: "FINISH_DRAWING",      target: "zone_editing", description: "Close the polygon back to the first vertex" },
-      { trigger: "Right-click",                                    action: "(context menu)",                                description: "Show drawing context menu (finish, undo point, cancel shape)" },
+      { trigger: "Right-click",                                    action: "OPEN_CONTEXT_MENU",                                description: "Show drawing context menu (finish, undo point, cancel shape)" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item", action: "SELECT_ZONE", target: "zone_editing", guard: "canSelectZone", description: "Switch to a different zone (cancels drawing)" },
+      { control: "Cancel drawing", action: "DESELECT_ALL", target: "neutral",                           description: "Cancel drawing and discard the incomplete polygon" },
     ],
   },
 
@@ -155,12 +153,12 @@ export const machineStates: readonly StateSpec[] = [
     id: "zone_naming",
     label: "Naming new zone",
     description: "A naming dialog is open for the new zone.",
-    transitions: [
-      { action: "HIDE_ZONE_NAME_DIALOG", target: "zone_new",                              label: "Close naming dialog" },
-    ],
     menuOptions: [],
     canvasActions: [
-      { trigger: "(dialog)", action: "CONFIRM_NAME / HIDE_ZONE_NAME_DIALOG", target: "zone_new", description: "Confirm or cancel the zone name in the dialog" },
+      { trigger: "(dialog)", action: "HIDE_ZONE_NAME_DIALOG", target: "zone_new", description: "Confirm or cancel the zone name in the dialog" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item", action: "SELECT_ZONE", target: "zone_editing", description: "Switch to a different zone (closes naming dialog)" },
     ],
   },
 
@@ -171,15 +169,16 @@ export const machineStates: readonly StateSpec[] = [
     id: "lof_new",
     label: "New line of fire – awaiting first cone",
     description: "A new line of fire is being created. Click the map to place the first cone.",
-    transitions: [
-      { action: "START_LOF_DRAWING", target: "lof_drawing", guard: "canDraw",             label: "Start drawing cones" },
-      { action: "DESELECT_ALL",      target: "neutral",                                   label: "Cancel new LoF" },
-    ],
     menuOptions: [
       { label: "Annuler", action: "DESELECT_ALL", target: "neutral", description: "Cancel creating the new line of fire" },
     ],
     canvasActions: [
       { trigger: "Left-click on background", action: "START_LOF_DRAWING", target: "lof_drawing", condition: "canDraw", description: "Place the first cone point on the map" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item", action: "SELECT_ZONE", target: "zone_editing", guard: "canSelectZone", description: "Switch to a zone (cancels new LoF)" },
+      { control: "LoF list item",  action: "SELECT_LOF",  target: "lof_viewing",  guard: "canSelectLoF",  description: "Switch to an existing LoF" },
+      { control: "Cancel LoF",     action: "DESELECT_ALL", target: "neutral",                             description: "Cancel creating the new line of fire" },
     ],
   },
 
@@ -190,14 +189,14 @@ export const machineStates: readonly StateSpec[] = [
     id: "lof_drawing",
     label: "Drawing line-of-fire cones",
     description: "Line-of-fire cones are being placed on the map.",
-    transitions: [
-      { action: "ADD_LOF_POINT",       target: "lof_drawing",                             label: "Add cone vertex" },
-      { action: "FINISH_LOF_DRAWING",  target: "lof_naming",                              label: "Complete LoF – name it" },
-    ],
     menuOptions: [],
     canvasActions: [
       { trigger: "Left-click on background", action: "ADD_LOF_POINT", target: "lof_drawing", description: "Add a cone vertex to the line of fire" },
       { trigger: "Double-click",             action: "FINISH_LOF_DRAWING", target: "lof_naming", description: "Complete the line of fire and open naming dialog" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item", action: "SELECT_ZONE", target: "zone_editing", guard: "canSelectZone", description: "Switch to a zone (cancels LoF drawing)" },
+      { control: "Cancel drawing", action: "DESELECT_ALL", target: "neutral",                           description: "Cancel the current LoF drawing" },
     ],
   },
 
@@ -208,12 +207,12 @@ export const machineStates: readonly StateSpec[] = [
     id: "lof_naming",
     label: "Naming new line of fire",
     description: "A naming dialog is open for the new line of fire.",
-    transitions: [
-      { action: "HIDE_LOF_NAME_DIALOG", target: "neutral",                                label: "Save / cancel LoF" },
-    ],
     menuOptions: [],
     canvasActions: [
-      { trigger: "(dialog)", action: "CONFIRM_NAME / HIDE_LOF_NAME_DIALOG", target: "neutral", description: "Confirm or cancel the LoF name in the dialog" },
+      { trigger: "(dialog)", action: "HIDE_LOF_NAME_DIALOG", target: "neutral", description: "Confirm or cancel the LoF name in the dialog" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item", action: "SELECT_ZONE", target: "zone_editing", description: "Switch to a zone (closes naming dialog)" },
     ],
   },
 
@@ -224,18 +223,21 @@ export const machineStates: readonly StateSpec[] = [
     id: "lof_viewing",
     label: "Line of fire – viewing",
     description: "A line of fire is selected and displayed on the map.",
-    transitions: [
-      { action: "SELECT_LOF",          target: "lof_viewing",                             label: "Switch to different LoF" },
-      { action: "DESELECT_ALL",        target: "neutral",                                 label: "Deselect LoF" },
-    ],
     menuOptions: [
       { label: "Nouvelle zone",         action: "CREATE_NEW_ZONE", target: "zone_new",    guard: "canCreateZone", description: "Create a brand new zone" },
       { label: "Nouvelle ligne de tir", action: "CREATE_NEW_LOF",  target: "lof_new",     guard: "canDraw",       description: "Create a new line of fire" },
-      { label: "Coller",                action: "PASTE_POLYGONS",  target: "zone_editing",                           description: "Paste copied polygons" },
+      { label: "Coller",                action: "PASTE_POLYGONS",  target: "zone_editing",  guard: "canPaste",       description: "Paste copied polygons" },
     ],
     canvasActions: [
       { trigger: "Left-click on background", action: "DESELECT_ALL", target: "neutral", description: "Deselect the line of fire" },
-      { trigger: "Right-click on map",       action: "(context menu)",                  description: "Show map context menu" },
+      { trigger: "Right-click on map",       action: "OPEN_CONTEXT_MENU",                  description: "Show map context menu" },
+    ],
+    sidePanelActions: [
+      { control: "Zone list item",         action: "SELECT_ZONE",            target: "zone_editing",  guard: "canSelectZone", description: "Switch to a zone" },
+      { control: "LoF list item (different)", action: "SELECT_LOF",          target: "lof_viewing",                            description: "Switch to a different line of fire" },
+      { control: "Delete LoF button",      action: "DELETE_LOF",                                                  description: "Delete the currently selected line of fire" },
+      { control: "Rename LoF (double-click)", action: "RENAME_LOF",                                              description: "Rename the currently selected line of fire" },
+      { control: "Version browser toggle", action: "ENTER_VERSION_BROWSING", target: "lof_version", guard: "canSelectLoF", description: "Open version history for the selected LoF" },
     ],
   },
 
@@ -246,12 +248,12 @@ export const machineStates: readonly StateSpec[] = [
     id: "zone_version",
     label: "Browsing zone version history",
     description: "The version history browser is open for a zone.",
-    transitions: [
-      { action: "EXIT_VERSION_BROWSING", target: "neutral",                               label: "Exit version browser" },
-    ],
     menuOptions: [],
     canvasActions: [
       { trigger: "(version browser UI)", action: "EXIT_VERSION_BROWSING", target: "neutral", description: "Close the version browser" },
+    ],
+    sidePanelActions: [
+      { control: "Version browser back button", action: "EXIT_VERSION_BROWSING", target: "neutral", description: "Return to editing mode from version browser" },
     ],
   },
 
@@ -262,12 +264,12 @@ export const machineStates: readonly StateSpec[] = [
     id: "lof_version",
     label: "Browsing LoF version history",
     description: "The version history browser is open for a line of fire.",
-    transitions: [
-      { action: "EXIT_VERSION_BROWSING", target: "neutral",                               label: "Exit version browser" },
-    ],
     menuOptions: [],
     canvasActions: [
       { trigger: "(version browser UI)", action: "EXIT_VERSION_BROWSING", target: "neutral", description: "Close the version browser" },
+    ],
+    sidePanelActions: [
+      { control: "Version browser back button", action: "EXIT_VERSION_BROWSING", target: "neutral", description: "Return to editing mode from version browser" },
     ],
   },
 ] as const;
@@ -278,6 +280,27 @@ const stateMap = new Map<string, StateSpec>(
   machineStates.map((s) => [s.id, s]),
 );
 
+type TransitionInfo = { action: string; target?: string; guard?: string };
+
+function collectTransitions(spec: StateSpec): TransitionInfo[] {
+  const seen = new Set<string>();
+  const result: TransitionInfo[] = [];
+  const add = (t: TransitionInfo) => {
+    const key = t.action + "|" + (t.target ?? "") + "|" + (t.guard ?? "");
+    if (!seen.has(key)) { seen.add(key); result.push(t); }
+  };
+  for (const m of spec.menuOptions) {
+    add({ action: m.action, target: m.target, guard: m.guard });
+  }
+  for (const c of spec.canvasActions) {
+    add({ action: c.action, target: c.target });
+  }
+  for (const s of spec.sidePanelActions) {
+    add({ action: s.action, target: s.target, guard: s.guard });
+  }
+  return result;
+}
+
 /** Return the spec for a given state id, or undefined. */
 export function getStateSpec(id: string): StateSpec | undefined {
   return stateMap.get(id);
@@ -287,11 +310,13 @@ export function getStateSpec(id: string): StateSpec | undefined {
 export function findTransition(
   stateId: string,
   action: string,
-): TransitionSpec | undefined {
-  return stateMap.get(stateId)?.transitions.find((t) => t.action === action);
+): TransitionInfo | undefined {
+  const spec = stateMap.get(stateId);
+  if (!spec) return undefined;
+  return collectTransitions(spec).find((t) => t.action === action);
 }
 
-/** True if the transition is listed in the machine table. */
+/** True if the action is listed for the state (in any UI list). */
 export function isValidTransition(stateId: string, action: string): boolean {
   return findTransition(stateId, action) !== undefined;
 }
@@ -306,6 +331,11 @@ export function getCanvasActions(stateId: string): readonly CanvasAction[] {
   return stateMap.get(stateId)?.canvasActions ?? [];
 }
 
+/** Return the side-panel actions for a given state. */
+export function getSidePanelActions(stateId: string): readonly SidePanelAction[] {
+  return stateMap.get(stateId)?.sidePanelActions ?? [];
+}
+
 // ── Debug / logging ────────────────────────────────────────────
 
 /**
@@ -315,7 +345,7 @@ export function getCanvasActions(stateId: string): readonly CanvasAction[] {
 export function describeTransition(stateId: string, action: string): string {
   const transition = findTransition(stateId, action);
   if (!transition) return `${stateId} ⚠ cannot handle ${action}`;
-  return `${stateId} ──${action}──→ ${transition.target}`;
+  return `${stateId} ──${action}──→ ${transition.target ?? "(stay)"}`;
 }
 
 /**
@@ -324,10 +354,12 @@ export function describeTransition(stateId: string, action: string): string {
 export function dumpMachine(): string {
   const lines: string[] = [];
   for (const state of machineStates) {
+    const transitions = collectTransitions(state);
     lines.push(`${state.id}  (${state.description})`);
-    for (const t of state.transitions) {
+    for (const t of transitions) {
       const guard = t.guard ? `  (${t.guard})` : "";
-      lines.push(`  ├ ${t.action.padEnd(24)} ──→ ${t.target.padEnd(16)} ${guard}   ${t.label}`);
+      const target = t.target ? `──→ ${t.target}` : "(stay)";
+      lines.push(`  ├ ${t.action.padEnd(24)} ${target.padEnd(16)} ${guard}`);
     }
     if (state.menuOptions.length > 0) {
       lines.push(`  ── menu ──`);
@@ -345,6 +377,14 @@ export function dumpMachine(): string {
         lines.push(`  • ${c.trigger.padEnd(50)} ${c.action}${target}${cond}`);
       }
     }
+    if (state.sidePanelActions.length > 0) {
+      lines.push(`  ── side panel ──`);
+      for (const s of state.sidePanelActions) {
+        const guard = s.guard ? ` (${s.guard})` : "";
+        const target = s.target ? ` ──→ ${s.target}` : "";
+        lines.push(`  • ${s.control.padEnd(40)} ${s.action}${target}${guard}`);
+      }
+    }
     lines.push("");
   }
   return lines.join("\n");
@@ -356,7 +396,8 @@ export function dumpMachine(): string {
 export function dumpMermaid(): string {
   const lines: string[] = ["stateDiagram-v2"];
   for (const state of machineStates) {
-    for (const t of state.transitions) {
+    for (const t of collectTransitions(state)) {
+      if (!t.target) continue;
       const guard = t.guard ? ` |${t.guard}|` : "";
       lines.push(`  ${state.id} --> ${t.target} : ${t.action}${guard}`);
     }

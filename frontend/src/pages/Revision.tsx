@@ -27,6 +27,7 @@ export default function Revision() {
   const [settings, setSettings] = useState<UserSettings | null>(null)
   const settingsLoaded = useRef(false)
   const [filterMode, setFilterMode] = useState<'zones' | 'lines' | 'both'>('zones')
+  const filterModeInitialized = useRef(false)
 
   const {
     currentQuestion,
@@ -75,9 +76,19 @@ export default function Revision() {
           revision_correct_timer: 3,
           revision_incorrect_timer: 5,
           revision_question_count: 20,
+          revision_review_zones: true,
+          revision_review_lines: true,
         })
       })
   }, [])
+
+  useEffect(() => {
+    if (!settings || filterModeInitialized.current) return
+    filterModeInitialized.current = true
+    const zones = settings.revision_review_zones ?? true
+    const lines = settings.revision_review_lines ?? true
+    setFilterMode(zones && lines ? 'both' : zones ? 'zones' : lines ? 'lines' : 'zones')
+  }, [settings])
 
   useEffect(() => {
     if (!mapId || autoStarted.current || loading || error || maps.length === 0 || !settings) return
@@ -88,9 +99,11 @@ export default function Revision() {
       setError(null)
       try {
         const parsedMapId = Number(mapId)
+        const filterZones = settings.revision_review_zones ?? true
+        const filterLines = settings.revision_review_lines ?? true
         const result = await fetchRevisionItems(teamId, parsedMapId, {
-          zones: filterMode === 'zones' || filterMode === 'both',
-          lines: filterMode === 'lines' || filterMode === 'both',
+          zones: filterZones,
+          lines: filterLines,
         })
         const items: RevisionItem[] = [
           ...result.zones.map(z => ({ ...z, type: 'zone' as const })),
@@ -110,7 +123,7 @@ export default function Revision() {
           teamId,
           correctTimerSeconds: settings.revision_correct_timer,
           incorrectTimerSeconds: settings.revision_incorrect_timer,
-          filterMode,
+          filterMode: filterZones && filterLines ? 'both' : filterZones ? 'zones' : 'lines',
         }, items)
       } catch {
         setError('Erreur lors du chargement des éléments de révision.')
@@ -119,7 +132,7 @@ export default function Revision() {
       }
     }
     start()
-  }, [mapId, loading, error, maps, teamId, startSession, settings, filterMode])
+  }, [mapId, loading, error, maps, teamId, startSession, settings])
 
   const handleMapClick = (mapId: number) => {
     setSelectedMapId((prev) => prev === mapId ? 0 : mapId)
