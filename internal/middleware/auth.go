@@ -57,6 +57,18 @@ func extractAndValidateUser(c *gin.Context, logger services.Logger, userRepo mod
 	return user, nil
 }
 
+func OptionalAuth(logger services.Logger, userRepo models.UserRepository, jwtService *services.JWTService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, err := extractAndValidateUser(c, logger, userRepo, jwtService)
+		if err != nil {
+			c.Next()
+			return
+		}
+		c.Set("user", user)
+		c.Next()
+	}
+}
+
 func GetUser(c *gin.Context) (*models.User, bool) {
 	user, exists := c.Get("user")
 	if !exists {

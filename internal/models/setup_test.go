@@ -34,6 +34,7 @@ var migrationFiles = []string{
 	"000022_create_line_of_fire_edit_history.up.sql",
 	"000023_create_line_of_fire_versions.up.sql",
 	"000024_add_line_of_fire_permissions.up.sql",
+	"000025_add_archive_roles.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

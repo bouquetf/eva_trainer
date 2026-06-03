@@ -842,6 +842,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ teamId, mapId, readOnly = 
             ),
         );
         dispatch({ type: "MARK_DIRTY" });
+        if (editingZone.id > 0) queueAutoSave();
       },
       [editingZone, selectedPolygonIndexes],
   );

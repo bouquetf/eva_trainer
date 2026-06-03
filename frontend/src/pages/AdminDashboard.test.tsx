@@ -25,6 +25,12 @@ vi.mock('../api/admin', () => ({
   updateUserRole: vi.fn(),
   addUserToTeam: vi.fn(),
   removeUserFromTeam: vi.fn(),
+  listArchivists: vi.fn(),
+  addArchivist: vi.fn(),
+  removeArchivist: vi.fn(),
+  listReaderTeams: vi.fn(),
+  addReaderTeam: vi.fn(),
+  removeReaderTeam: vi.fn(),
 }))
 
 vi.mock('../api/maps', () => ({
@@ -50,7 +56,7 @@ vi.mock('../api/map-catalog', () => ({
 }))
 
 import { useAuthStore } from '../store/auth'
-import { listAdminUsers, listAdminPermissions, listAdminTeams } from '../api/admin'
+import { listAdminUsers, listAdminPermissions, listAdminTeams, listArchivists, listReaderTeams } from '../api/admin'
 import { listAdminMaps } from '../api/maps'
 import { listSplits } from '../api/splits'
 import { listCatalog } from '../api/map-catalog'
@@ -89,6 +95,8 @@ describe('AdminDashboard', () => {
     ;(listSplits as any).mockResolvedValue({ splits: [] })
     ;(listCatalog as any).mockResolvedValue({ entries: [] })
     ;(listAdminTeams as any).mockResolvedValue({ teams: [] })
+    ;(listArchivists as any).mockResolvedValue({ archivists: [] })
+    ;(listReaderTeams as any).mockResolvedValue({ teams: [] })
   })
 
   it('renders admin dashboard with tabs', async () => {

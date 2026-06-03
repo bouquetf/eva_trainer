@@ -151,6 +151,26 @@ export async function seedLineOfFire(
   return { id: rows[0].id, name };
 }
 
+export async function seedGlobalRole(userId: number, role: string): Promise<void> {
+  await queryDB(
+    `INSERT INTO global_roles (user_id, role) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [userId, role],
+  );
+}
+
+export interface TestTeamRole {
+  teamId: number;
+  role: string;
+}
+
+export async function seedTeamRole(teamId: number, role: string): Promise<TestTeamRole> {
+  await queryDB(
+    `INSERT INTO team_roles (team_id, role) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [teamId, role],
+  );
+  return { teamId, role };
+}
+
 export async function seedJoinRequest(teamId: number, userId: number): Promise<{ id: number } | null> {
   const rows = await queryDB<{ id: number }[]>(
     `INSERT INTO team_join_requests (team_id, user_id, status)

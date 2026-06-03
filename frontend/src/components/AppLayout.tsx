@@ -1,10 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import AuthGuard from './AuthGuard'
 import { useAuthStore } from '../store/auth'
+import { useArchiveAccess } from '../hooks/useArchiveAccess'
 import '../styles/teams.css'
 
 function AppLayout() {
   const { user, logout } = useAuthStore()
+  const { canRead: canArchiveRead } = useArchiveAccess()
 
   return (
     <AuthGuard>
@@ -12,6 +14,7 @@ function AppLayout() {
         <aside className="teams-sidebar">
           <nav>
             <NavLink to="/teams" end>Mes équipes</NavLink>
+            {canArchiveRead && <NavLink to="/archives">Archives</NavLink>}
             {user?.is_admin && <NavLink to="/admin">Administration</NavLink>}
           </nav>
           <nav className="sidebar-secondary">

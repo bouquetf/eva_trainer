@@ -52,8 +52,8 @@ test.describe('Feature: Indicateur d\'étage (Haut/Bas)', () => {
     const indicator = page.locator('g[style*="pointer-events: none"]');
     await expect(indicator.first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Sauvegarder' }).click();
-    await page.waitForTimeout(500);
+    await page.keyboard.press('Control+S');
+    await page.waitForTimeout(1000);
 
     await page.reload();
     await page.getByText('Floor Zone').click();

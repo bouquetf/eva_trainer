@@ -211,6 +211,21 @@ type LineOfFireVersionRepository interface {
 	DeleteNewerThan(lineOfFireID int, olderThan time.Time) error
 }
 
+type GlobalRoleRepository interface {
+	Add(userID int, role string) error
+	Remove(userID int, role string) error
+	UserHasRole(userID int, role string) (bool, error)
+	FindUsersByRole(role string) ([]*UserGlobalRole, error)
+}
+
+type TeamRoleRepository interface {
+	Add(teamID int, role string) error
+	Remove(teamID int, role string) error
+	TeamHasRole(teamID int, role string) (bool, error)
+	FindTeamsByRole(role string) ([]*TeamWithRole, error)
+	UserIsMemberOfTeamWithRole(userID int, role string) (bool, error)
+}
+
 type EditHistoryRepository interface {
 	Log(zoneID int, editorID *int, action string, oldData, newData json.RawMessage) (*EditHistory, error)
 	FindByZone(zoneID int) ([]*EditHistory, error)

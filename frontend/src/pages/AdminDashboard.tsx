@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -14,6 +14,12 @@ import {
   exportTeamMap,
   exportAllTeamMaps,
   importTeamZones,
+  listArchivists,
+  addArchivist,
+  removeArchivist,
+  listReaderTeams,
+  addReaderTeam,
+  removeReaderTeam,
 } from '../api/admin'
 import type { ImportMapPayload } from '../api/admin'
 import type { Team } from '../api/admin'
@@ -34,10 +40,11 @@ import {
   deleteCatalogEntry,
 } from '../api/map-catalog'
 import type { MapCatalogEntry } from '../api/map-catalog'
+import { searchUsers } from '../api/invitations'
 import { useAuthStore } from '../store/auth'
 import '../styles/admin.css'
 
-type Tab = 'users' | 'permissions' | 'maps' | 'splits' | 'catalog' | 'import-export'
+type Tab = 'users' | 'permissions' | 'maps' | 'splits' | 'catalog' | 'import-export' | 'archives'
 
 const VALID_ROLES = ['member', 'editor', 'cocaptain', 'captain']
 
@@ -72,6 +79,82 @@ function AdminDashboard() {
   const [exportMapId, setExportMapId] = useState<number>(0)
   const [importTeamId, setImportTeamId] = useState<number>(0)
   const [importFile, setImportFile] = useState<File | null>(null)
+
+  const [archivistSearch, setArchivistSearch] = useState('')
+  const [archivistSearchResults, setArchivistSearchResults] = useState<{ id: number; display_name: string; discord_username: string }[]>([])
+  const [showArchivistSuggestions, setShowArchivistSuggestions] = useState(false)
+  const [selectedArchivistUserId, setSelectedArchivistUserId] = useState<number | null>(null)
+  const [readerTeamId, setReaderTeamId] = useState<number>(0)
+  const archivistSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const { data: archivistsData, isLoading: archivistsLoading } = useQuery({
+    queryKey: ['admin-archivists'],
+    queryFn: listArchivists,
+  })
+
+  const { data: readerTeamsData, isLoading: readerTeamsLoading } = useQuery({
+    queryKey: ['admin-reader-teams'],
+    queryFn: listReaderTeams,
+  })
+
+  const archivists = archivistsData?.archivists ?? []
+  const readerTeams = readerTeamsData?.teams ?? []
+
+  const addArchivistMutation = useMutation({
+    mutationFn: (userId: number) => addArchivist(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archivists'] })
+      setArchivistSearch('')
+      setArchivistSearchResults([])
+      setSelectedArchivistUserId(null)
+      setError(null)
+      setSuccess('Archiviste ajouté')
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Erreur lors de l'ajout de l'archiviste")
+    },
+  })
+
+  const removeArchivistMutation = useMutation({
+    mutationFn: (userId: number) => removeArchivist(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archivists'] })
+      setError(null)
+      setSuccess('Archiviste retiré')
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? 'Erreur lors du retrait de l\'archiviste')
+    },
+  })
+
+  const addReaderTeamMutation = useMutation({
+    mutationFn: (teamId: number) => addReaderTeam(teamId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reader-teams'] })
+      setReaderTeamId(0)
+      setError(null)
+      setSuccess('Équipe lectrice ajoutée')
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Erreur lors de l'ajout de l'équipe lectrice")
+    },
+  })
+
+  const removeReaderTeamMutation = useMutation({
+    mutationFn: (teamId: number) => removeReaderTeam(teamId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reader-teams'] })
+      setError(null)
+      setSuccess('Équipe lectrice retirée')
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? 'Erreur lors du retrait de l\'équipe lectrice')
+    },
+  })
 
   const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -374,6 +457,9 @@ function AdminDashboard() {
         </button>
         <button className={tab === 'import-export' ? 'active' : ''} onClick={() => { setTab('import-export'); setError(null); setSuccess(null) }}>
           Import/Export
+        </button>
+        <button className={tab === 'archives' ? 'active' : ''} onClick={() => { setTab('archives'); setError(null); setSuccess(null) }}>
+          Archives
         </button>
       </div>
 
@@ -1251,6 +1337,186 @@ function AdminDashboard() {
               </table>
             </div>
           )}
+        </>
+      )}
+
+      {tab === 'archives' && (
+        <>
+          <div className="section">
+            <h2 className="section-title">Archivistes</h2>
+            <p className="text-muted" style={{ marginBottom: 12 }}>
+              Les archivistes ont un accès complet en lecture et écriture aux archives.
+            </p>
+            {archivistsLoading ? (
+              <div className="empty-state"><p>Chargement...</p></div>
+            ) : (
+              <>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Utilisateur</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {archivists.length === 0 ? (
+                      <tr><td colSpan={2}><p className="text-muted">Aucun archiviste</p></td></tr>
+                    ) : (
+                      archivists.map((a) => (
+                        <tr key={a.user_id}>
+                          <td>{a.display_name || `#${a.user_id}`}</td>
+                          <td>
+                            <button
+                              className="btn-small btn-danger"
+                              onClick={() => {
+                                if (window.confirm(`Retirer ${a.display_name || `#${a.user_id}`} des archivistes ?`)) {
+                                  removeArchivistMutation.mutate(a.user_id)
+                                }
+                              }}
+                              disabled={removeArchivistMutation.isPending}
+                            >
+                              Retirer
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                <div className="add-membership-form" style={{ marginTop: 12 }}>
+                  <h4>Ajouter un archiviste</h4>
+                  <div className="add-membership-row">
+                    <div className="invite-input-wrapper" style={{ flex: 1, position: 'relative' }}>
+                      <input
+                        type="text"
+                        placeholder="Rechercher un utilisateur..."
+                        value={archivistSearch}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setArchivistSearch(value)
+                          setSelectedArchivistUserId(null)
+                          if (archivistSearchTimeoutRef.current) clearTimeout(archivistSearchTimeoutRef.current)
+                          if (value.trim().length < 2) {
+                            setArchivistSearchResults([])
+                            return
+                          }
+                          archivistSearchTimeoutRef.current = setTimeout(async () => {
+                            try {
+                              const res = await searchUsers(value.trim())
+                              setArchivistSearchResults(res.users)
+                              setShowArchivistSuggestions(true)
+                            } catch {
+                              setArchivistSearchResults([])
+                            }
+                          }, 300)
+                        }}
+                        onFocus={() => {
+                          if (archivistSearchResults.length > 0) setShowArchivistSuggestions(true)
+                        }}
+                        onBlur={() => setTimeout(() => setShowArchivistSuggestions(false), 200)}
+                      />
+                      {showArchivistSuggestions && archivistSearchResults.length > 0 && (
+                        <ul className="suggestions-dropdown">
+                          {archivistSearchResults.map((u) => (
+                            <li
+                              key={u.id}
+                              onMouseDown={() => {
+                                setArchivistSearch(u.display_name || u.discord_username || `#${u.id}`)
+                                setSelectedArchivistUserId(u.id)
+                                setArchivistSearchResults([])
+                                setShowArchivistSuggestions(false)
+                              }}
+                            >
+                              {u.display_name || 'Sans nom'} <span className="text-muted">{u.discord_username ? `(${u.discord_username})` : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <button
+                      className="btn-primary btn-small"
+                      onClick={() => {
+                        if (!selectedArchivistUserId) { setError('Veuillez sélectionner un utilisateur'); return }
+                        addArchivistMutation.mutate(selectedArchivistUserId)
+                      }}
+                      disabled={!selectedArchivistUserId || addArchivistMutation.isPending}
+                    >
+                      {addArchivistMutation.isPending ? 'Ajout...' : 'Ajouter'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="section">
+            <h2 className="section-title">Équipes lectrices</h2>
+            <p className="text-muted" style={{ marginBottom: 12 }}>
+              Les membres des équipes lectrices ont un accès en lecture aux archives.
+            </p>
+            {readerTeamsLoading ? (
+              <div className="empty-state"><p>Chargement...</p></div>
+            ) : (
+              <>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Équipe</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {readerTeams.length === 0 ? (
+                      <tr><td colSpan={2}><p className="text-muted">Aucune équipe lectrice</p></td></tr>
+                    ) : (
+                      readerTeams.map((t) => (
+                        <tr key={t.team_id}>
+                          <td>{t.team_name || `#${t.team_id}`}</td>
+                          <td>
+                            <button
+                              className="btn-small btn-danger"
+                              onClick={() => {
+                                if (window.confirm(`Retirer le rôle lecteur de l'équipe "${t.team_name || `#${t.team_id}`}" ?`)) {
+                                  removeReaderTeamMutation.mutate(t.team_id)
+                                }
+                              }}
+                              disabled={removeReaderTeamMutation.isPending}
+                            >
+                              Retirer
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                <div className="add-membership-form" style={{ marginTop: 12 }}>
+                  <h4>Ajouter une équipe lectrice</h4>
+                  <div className="add-membership-row">
+                    <select
+                      value={readerTeamId}
+                      onChange={(e) => setReaderTeamId(Number(e.target.value))}
+                    >
+                      <option value={0}>Choisir une équipe</option>
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn-primary btn-small"
+                      onClick={() => {
+                        if (!readerTeamId) { setError('Veuillez sélectionner une équipe'); return }
+                        addReaderTeamMutation.mutate(readerTeamId)
+                      }}
+                      disabled={!readerTeamId || addReaderTeamMutation.isPending}
+                    >
+                      {addReaderTeamMutation.isPending ? 'Ajout...' : 'Ajouter'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </>
       )}
 

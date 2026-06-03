@@ -26,6 +26,8 @@ const (
 	RoleCocaptain = "cocaptain"
 	RoleEditor    = "editor"
 	RoleMember    = "member"
+	RoleArchivist = "archivist"
+	RoleReader    = "reader"
 )
 
 var ValidRoles = map[string]bool{

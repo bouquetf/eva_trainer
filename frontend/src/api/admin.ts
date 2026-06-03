@@ -169,3 +169,57 @@ export async function importTeamZones(teamId: number, data: ImportMapPayload[]):
   const api = getApiClient()
   return api.post<ImportResponse>(`${ADMIN_BASE}/teams/${teamId}/import`, data)
 }
+
+// --- Archives ---
+
+export interface Archivist {
+  user_id: number
+  role: string
+  display_name: string
+}
+
+export interface ReaderTeam {
+  team_id: number
+  role: string
+  team_name: string
+}
+
+export interface ArchivePermissions {
+  can_read: boolean
+  can_write: boolean
+}
+
+export async function listArchivists(): Promise<{ archivists: Archivist[] }> {
+  const api = getApiClient()
+  return api.get<{ archivists: Archivist[] }>('/api/v1/admin/archive/archivists')
+}
+
+export async function addArchivist(userId: number): Promise<void> {
+  const api = getApiClient()
+  return api.post('/api/v1/admin/archive/archivists', { user_id: userId })
+}
+
+export async function removeArchivist(userId: number): Promise<void> {
+  const api = getApiClient()
+  return api.del(`/api/v1/admin/archive/archivists/${userId}`)
+}
+
+export async function listReaderTeams(): Promise<{ teams: ReaderTeam[] }> {
+  const api = getApiClient()
+  return api.get<{ teams: ReaderTeam[] }>('/api/v1/admin/archive/reader-teams')
+}
+
+export async function addReaderTeam(teamId: number): Promise<void> {
+  const api = getApiClient()
+  return api.post('/api/v1/admin/archive/reader-teams', { team_id: teamId })
+}
+
+export async function removeReaderTeam(teamId: number): Promise<void> {
+  const api = getApiClient()
+  return api.del(`/api/v1/admin/archive/reader-teams/${teamId}`)
+}
+
+export async function getArchivePermissions(): Promise<ArchivePermissions> {
+  const api = getApiClient()
+  return api.get<ArchivePermissions>('/api/v1/archive/permissions')
+}

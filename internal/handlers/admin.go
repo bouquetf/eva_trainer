@@ -17,6 +17,8 @@ type AdminHandler struct {
 	rolePermRepo   models.RolePermissionRepository
 	teamRepo       models.TeamRepository
 	teamMemberRepo models.TeamMemberRepository
+	globalRoleRepo models.GlobalRoleRepository
+	teamRoleRepo   models.TeamRoleRepository
 	logger         services.Logger
 }
 
@@ -26,6 +28,8 @@ func NewAdminHandler(
 	rolePermRepo models.RolePermissionRepository,
 	teamRepo models.TeamRepository,
 	teamMemberRepo models.TeamMemberRepository,
+	globalRoleRepo models.GlobalRoleRepository,
+	teamRoleRepo models.TeamRoleRepository,
 	logger services.Logger,
 ) *AdminHandler {
 	return &AdminHandler{
@@ -34,6 +38,8 @@ func NewAdminHandler(
 		rolePermRepo:   rolePermRepo,
 		teamRepo:       teamRepo,
 		teamMemberRepo: teamMemberRepo,
+		globalRoleRepo: globalRoleRepo,
+		teamRoleRepo:   teamRoleRepo,
 		logger:         logger,
 	}
 }
@@ -293,4 +299,102 @@ func (h *AdminHandler) PromoteToAdmin(c *gin.Context) {
 		"user_id":  userID,
 		"is_admin": true,
 	})
+}
+
+func (h *AdminHandler) ListArchivists(c *gin.Context) {
+	users, err := h.globalRoleRepo.FindUsersByRole(models.RoleArchivist)
+	if err != nil {
+		h.logger.Error("failed to list archivists", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list archivists", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"archivists": users})
+}
+
+func (h *AdminHandler) AddArchivist(c *gin.Context) {
+	var req struct {
+		UserID int `json:"user_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.UserID == 0 {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_body", "user_id is required", http.StatusBadRequest))
+		return
+	}
+
+	if err := h.globalRoleRepo.Add(req.UserID, models.RoleArchivist); err != nil {
+		h.logger.Error("failed to add archivist", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("add_archivist_failed", "failed to add archivist", http.StatusBadRequest))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Archivist added"})
+}
+
+func (h *AdminHandler) RemoveArchivist(c *gin.Context) {
+	userID, err := strconv.Atoi(c.Param("userId"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
+		return
+	}
+
+	if err := h.globalRoleRepo.Remove(userID, models.RoleArchivist); err != nil {
+		if err == models.ErrRoleNotFound {
+			apierror.RespondWithError(c, apierror.NewAPIError("archivist_not_found", "user is not an archivist", http.StatusNotFound))
+			return
+		}
+		h.logger.Error("failed to remove archivist", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to remove archivist", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Archivist removed"})
+}
+
+func (h *AdminHandler) ListReaderTeams(c *gin.Context) {
+	teams, err := h.teamRoleRepo.FindTeamsByRole(models.RoleReader)
+	if err != nil {
+		h.logger.Error("failed to list reader teams", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to list reader teams", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"teams": teams})
+}
+
+func (h *AdminHandler) AddReaderTeam(c *gin.Context) {
+	var req struct {
+		TeamID int `json:"team_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.TeamID == 0 {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_body", "team_id is required", http.StatusBadRequest))
+		return
+	}
+
+	if err := h.teamRoleRepo.Add(req.TeamID, models.RoleReader); err != nil {
+		h.logger.Error("failed to add reader team", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("add_reader_team_failed", "failed to add reader role to team", http.StatusBadRequest))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Reader role added to team"})
+}
+
+func (h *AdminHandler) RemoveReaderTeam(c *gin.Context) {
+	teamID, err := strconv.Atoi(c.Param("teamId"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
+		return
+	}
+
+	if err := h.teamRoleRepo.Remove(teamID, models.RoleReader); err != nil {
+		if err == models.ErrRoleNotFound {
+			apierror.RespondWithError(c, apierror.NewAPIError("reader_team_not_found", "team does not have reader role", http.StatusNotFound))
+			return
+		}
+		h.logger.Error("failed to remove reader team", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "failed to remove reader role from team", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Reader role removed from team"})
 }

@@ -7,12 +7,12 @@ En tant qu'administrateur, je veux pouvoir attribuer les rôles "archiviste" (gl
 Spécification `docs/specification/features/feedback-archives-matchs.md` (section 1).
 
 ## Critères d'acceptation
-- [ ] Le rôle global "archiviste" est ajouté au système de rôles (attribuable par l'admin uniquement)
-- [ ] Le rôle "lecteur" est ajouté, attribuable par l'admin à une équipe eva-trainer
-- [ ] Un archiviste a automatiquement le rôle lecteur
-- [ ] Les utilisateurs sans rôle archiviste ni rôle lecteur ne voient pas les fonctionnalités d'archives dans l'interface
-- [ ] Les admins du site ont automatiquement accès à toutes les archives
-- [ ] Les endpoints API des archives vérifient les permissions (archiviste pour écriture, lecteur ou archiviste ou admin pour lecture)
+- [x] Le rôle global "archiviste" est ajouté au système de rôles (attribuable par l'admin uniquement)
+- [x] Le rôle "lecteur" est ajouté, attribuable par l'admin à une équipe eva-trainer
+- [x] Un archiviste a automatiquement le rôle lecteur
+- [x] Les utilisateurs sans rôle archiviste ni rôle lecteur ne voient pas les fonctionnalités d'archives dans l'interface
+- [x] Les admins du site ont automatiquement accès à toutes les archives
+- [x] Les endpoints API des archives vérifient les permissions (archiviste pour écriture, lecteur ou archiviste ou admin pour lecture)
 
 ## Tests automatisés
 - Test unitaire : vérification des permissions archiviste/lecteur dans le système de rôles

@@ -80,6 +80,7 @@ func setupAdminHandler(t *testing.T) (*AdminHandler, models.UserRepository, *sql
 		"000002_add_refresh_tokens.up.sql",
 		"000003_add_display_name.up.sql",
 		"000004_add_discord_username.up.sql",
+		"000025_add_archive_roles.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -105,8 +106,10 @@ func setupAdminHandler(t *testing.T) (*AdminHandler, models.UserRepository, *sql
 	rolePermRepo := models.NewRolePermissionRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
+	globalRoleRepo := models.NewGlobalRoleRepository(db)
+	teamRoleRepo := models.NewTeamRoleRepository(db)
 
-	handler := NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	handler := NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo, globalRoleRepo, teamRoleRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return handler, userRepo, db
 }
@@ -466,5 +469,235 @@ func TestAdminHandler_Middleware_NonAdminPromote_Returns403(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["error"] != "forbidden" {
 		t.Errorf("expected error 'forbidden', got '%v'", resp["error"])
+	}
+}
+
+// --- Archive management ---
+
+func executeAdminRequest(t *testing.T, handler gin.HandlerFunc, method, path string, body string, user *models.User, token string, params ...gin.Param) *httptest.ResponseRecorder {
+	t.Helper()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	req := httptest.NewRequest(method, path, nil)
+	if body != "" {
+		req = httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	c.Request = req
+
+	c.Set("user", user)
+	c.Params = append(c.Params, params...)
+
+	handler(c)
+
+	return w
+}
+
+func TestAdminHandler_ListArchivists_Empty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _ := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	w := executeAdminRequest(t, handler.ListArchivists, http.MethodGet, "/api/v1/admin/archive/archivists", "", admin, adminToken)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Archivists []*models.UserGlobalRole `json:"archivists"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Archivists) != 0 {
+		t.Errorf("expected empty list, got %d", len(resp.Archivists))
+	}
+}
+
+func TestAdminHandler_AddAndRemoveArchivist(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _ := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	targetUser, _, err := userRepo.FindOrCreateByDiscordID("archivist-target-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create target user: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"user_id": %d}`, targetUser.ID)
+	w := executeAdminRequest(t, handler.AddArchivist, http.MethodPost, "/api/v1/admin/archive/archivists", body, admin, adminToken)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 on add, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	listW := executeAdminRequest(t, handler.ListArchivists, http.MethodGet, "/api/v1/admin/archive/archivists", "", admin, adminToken)
+	var listResp struct {
+		Archivists []*models.UserGlobalRole `json:"archivists"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("failed to parse list response: %v", err)
+	}
+
+	found := false
+	for _, a := range listResp.Archivists {
+		if a.UserID == targetUser.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected to find target user in archivists list")
+	}
+
+	removeW := executeAdminRequest(t, handler.RemoveArchivist, http.MethodDelete, "/api/v1/admin/archive/archivists/99999", "", admin, adminToken, gin.Param{Key: "userId", Value: strconv.Itoa(targetUser.ID)})
+	if removeW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on remove, got %d. Body: %s", removeW.Code, removeW.Body.String())
+	}
+}
+
+func TestAdminHandler_AddArchivist_InvalidBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _ := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	w := executeAdminRequest(t, handler.AddArchivist, http.MethodPost, "/api/v1/admin/archive/archivists", `{}`, admin, adminToken)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Error string `json:"error"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Error != "invalid_body" {
+		t.Errorf("expected 'invalid_body', got '%s'", resp.Error)
+	}
+}
+
+func TestAdminHandler_RemoveArchivist_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _ := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	w := executeAdminRequest(t, handler.RemoveArchivist, http.MethodDelete, "/api/v1/admin/archive/archivists/99999", "", admin, adminToken, gin.Param{Key: "userId", Value: "99999"})
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminHandler_ListReaderTeams_Empty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _ := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	w := executeAdminRequest(t, handler.ListReaderTeams, http.MethodGet, "/api/v1/admin/archive/reader-teams", "", admin, adminToken)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Teams []*models.TeamWithRole `json:"teams"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Teams) != 0 {
+		t.Errorf("expected empty list, got %d", len(resp.Teams))
+	}
+}
+
+func TestAdminHandler_AddAndRemoveReaderTeam(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, db := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	targetUser, _, err := userRepo.FindOrCreateByDiscordID("reader-team-cap-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create captain: %v", err)
+	}
+
+	teamRepo := models.NewTeamRepository(db)
+	team, err := teamRepo.Create("ReaderTeam-Test-"+t.Name(), targetUser.ID)
+	if err != nil {
+		t.Fatalf("failed to create team: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"team_id": %d}`, team.ID)
+	w := executeAdminRequest(t, handler.AddReaderTeam, http.MethodPost, "/api/v1/admin/archive/reader-teams", body, admin, adminToken)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 on add, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	listW := executeAdminRequest(t, handler.ListReaderTeams, http.MethodGet, "/api/v1/admin/archive/reader-teams", "", admin, adminToken)
+	var listResp struct {
+		Teams []*models.TeamWithRole `json:"teams"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("failed to parse list response: %v", err)
+	}
+
+	found := false
+	for _, rt := range listResp.Teams {
+		if rt.TeamID == team.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected to find team in reader teams list")
+	}
+
+	removeW := executeAdminRequest(t, handler.RemoveReaderTeam, http.MethodDelete, "/api/v1/admin/archive/reader-teams/99999", "", admin, adminToken, gin.Param{Key: "teamId", Value: strconv.Itoa(team.ID)})
+	if removeW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on remove, got %d. Body: %s", removeW.Code, removeW.Body.String())
+	}
+}
+
+func TestAdminHandler_AddReaderTeam_InvalidBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _ := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	w := executeAdminRequest(t, handler.AddReaderTeam, http.MethodPost, "/api/v1/admin/archive/reader-teams", `{}`, admin, adminToken)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Error string `json:"error"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Error != "invalid_body" {
+		t.Errorf("expected 'invalid_body', got '%s'", resp.Error)
+	}
+}
+
+func TestAdminHandler_RemoveReaderTeam_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, _ := setupAdminHandler(t)
+	admin, adminToken := createAdminUserForTest(t, userRepo)
+
+	w := executeAdminRequest(t, handler.RemoveReaderTeam, http.MethodDelete, "/api/v1/admin/archive/reader-teams/99999", "", admin, adminToken, gin.Param{Key: "teamId", Value: "99999"})
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }

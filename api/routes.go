@@ -73,6 +73,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.AppConfig, logger services.Logger, f
 	setupAuthRoutes(apiV1, cfg, logger)
 	setupTeamRoutes(apiV1, cfg, logger, templateHandler)
 	setupAdminRoutes(apiV1, cfg, logger)
+	setupArchiveRoutes(apiV1, cfg, logger)
 
 	apiV1.GET("/maps/:id/image", handlers.NewMapHandler(models.NewMapRepository(database.DB()), logger).ServeImage)
 
@@ -414,10 +415,12 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger service
 	rolePermRepo := models.NewRolePermissionRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	teamMemberRepo := models.NewTeamMemberRepository(db)
+	globalRoleRepo := models.NewGlobalRoleRepository(db)
+	teamRoleRepo := models.NewTeamRoleRepository(db)
 	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
 	mapRepo := models.NewMapRepository(db)
 	mapHandler := handlers.NewMapHandler(mapRepo, logger)
-	adminHandler := handlers.NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo, logger)
+	adminHandler := handlers.NewAdminHandler(userRepo, permRepo, rolePermRepo, teamRepo, teamMemberRepo, globalRoleRepo, teamRoleRepo, logger)
 
 	lockRepoAdmin := models.NewEditLockRepository(db)
 	lockHandlerAdmin := handlers.NewEditLockHandler(lockRepoAdmin, userRepo, logger)
@@ -476,6 +479,56 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger service
 		admin.GET("/teams/:id/export", importExportHandler.ExportTeamMaps)
 		admin.GET("/teams/:id/export/:mapId", importExportHandler.ExportTeamMap)
 		admin.POST("/teams/:id/import", importExportHandler.ImportTeamZones)
+
+		archiveGroup := admin.Group("/archive")
+		{
+			archiveGroup.GET("/archivists", adminHandler.ListArchivists)
+			archiveGroup.POST("/archivists", adminHandler.AddArchivist)
+			archiveGroup.DELETE("/archivists/:userId", adminHandler.RemoveArchivist)
+			archiveGroup.GET("/reader-teams", adminHandler.ListReaderTeams)
+			archiveGroup.POST("/reader-teams", adminHandler.AddReaderTeam)
+			archiveGroup.DELETE("/reader-teams/:teamId", adminHandler.RemoveReaderTeam)
+		}
+	}
+}
+
+func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services.Logger) {
+	db := database.DB()
+	userRepo := models.NewUserRepository(db)
+	globalRoleRepo := models.NewGlobalRoleRepository(db)
+	teamRoleRepo := models.NewTeamRoleRepository(db)
+	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
+
+	archivePermissionsHandler := handlers.NewArchivePermissionsHandler(globalRoleRepo, teamRoleRepo, logger)
+	archiveHandler := handlers.NewArchiveHandler(logger)
+
+	archive := rg.Group("/archive")
+	{
+		archive.GET("/permissions",
+			middleware.OptionalAuth(logger, userRepo, jwtService),
+			archivePermissionsHandler.GetPermissions,
+		)
+
+		archive.GET("/leagues",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.ListLeagues,
+		)
+		archive.POST("/leagues",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.CreateLeague,
+		)
+		archive.GET("/teams",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.ListEvaTeams,
+		)
+		archive.POST("/teams",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.CreateEvaTeam,
+		)
 	}
 }
 

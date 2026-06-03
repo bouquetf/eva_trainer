@@ -12,6 +12,10 @@ vi.mock('../store/auth', () => ({
   useAuthStore: vi.fn(),
 }))
 
+vi.mock('../hooks/useArchiveAccess', () => ({
+  useArchiveAccess: () => ({ canRead: false, isLoading: false, canWrite: false, permissions: undefined }),
+}))
+
 vi.mock('./AuthGuard', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
