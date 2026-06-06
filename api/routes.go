@@ -489,6 +489,19 @@ func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger service
 			archiveGroup.POST("/reader-teams", adminHandler.AddReaderTeam)
 			archiveGroup.DELETE("/reader-teams/:teamId", adminHandler.RemoveReaderTeam)
 		}
+
+		ligueRepoAdmin := models.NewLigueRepository(db)
+		ligueLocaleRepoAdmin := models.NewLigueLocaleRepository(db)
+		adminLigueHandler := handlers.NewAdminLigueHandler(ligueRepoAdmin, ligueLocaleRepoAdmin, logger)
+
+		adminLigues := admin.Group("/ligues")
+		{
+			adminLigues.GET("", adminLigueHandler.ListLigues)
+			adminLigues.GET("/:id", adminLigueHandler.GetLigue)
+			adminLigues.POST("", adminLigueHandler.CreateLigue)
+			adminLigues.PUT("/:id", adminLigueHandler.UpdateLigue)
+			adminLigues.DELETE("/:id", adminLigueHandler.DeleteLigue)
+		}
 	}
 }
 
@@ -499,8 +512,11 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 	teamRoleRepo := models.NewTeamRoleRepository(db)
 	jwtService := services.NewJWTService(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTokenExpiry)
 
+	ligueLocaleRepo := models.NewLigueLocaleRepository(db)
+	ligueRepo := models.NewLigueRepository(db)
+	splitRepo := models.NewSplitRepository(db)
 	archivePermissionsHandler := handlers.NewArchivePermissionsHandler(globalRoleRepo, teamRoleRepo, logger)
-	archiveHandler := handlers.NewArchiveHandler(logger)
+	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, logger)
 
 	archive := rg.Group("/archive")
 	{
@@ -509,15 +525,60 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			archivePermissionsHandler.GetPermissions,
 		)
 
-		archive.GET("/leagues",
+		archive.GET("/leagues-locales",
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
-			archiveHandler.ListLeagues,
+			archiveHandler.ListLiguesLocales,
 		)
-		archive.POST("/leagues",
+		archive.GET("/leagues-locales/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetLigueLocale,
+		)
+		archive.POST("/leagues-locales",
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
-			archiveHandler.CreateLeague,
+			archiveHandler.CreateLigueLocale,
+		)
+		archive.PUT("/leagues-locales/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.UpdateLigueLocale,
+		)
+		archive.DELETE("/leagues-locales/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.DeleteLigueLocale,
+		)
+		archive.POST("/leagues-locales/:id/import-ligue",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.ImportLigue,
+		)
+		archive.GET("/ligues",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.ListLigues,
+		)
+		archive.POST("/ligues",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.CreateLigue,
+		)
+		archive.PUT("/ligues/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.UpdateLigue,
+		)
+		archive.DELETE("/ligues/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.DeleteLigue,
+		)
+		archive.POST("/ligues/:id/refresh",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.RefreshLigue,
 		)
 		archive.GET("/teams",
 			middleware.RequireAuth(logger, userRepo, jwtService),

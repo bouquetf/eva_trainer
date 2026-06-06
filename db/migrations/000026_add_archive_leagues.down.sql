@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS ligue_locale;
+DROP TABLE IF EXISTS ligue;

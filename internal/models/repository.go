@@ -99,6 +99,28 @@ type MapRepository interface {
 	GetBlob(mapID int) ([]byte, error)
 }
 
+type LigueLocaleRepository interface {
+	Create(nom string, emplacement string) (*LigueLocale, error)
+	FindByID(id int) (*LigueLocale, error)
+	FindAll(emplacement string) ([]*LigueLocale, error)
+	FindByLigueID(ligueID int, page, perPage int) ([]*LigueLocale, int, error)
+	Update(id int, nom string, emplacement string) (*LigueLocale, error)
+	AssociateLigue(localeID, ligueID int) error
+	DisassociateLigue(localeID, ligueID int) error
+	FindLiguesByLocaleID(localeID int) ([]*Ligue, error)
+	Delete(id int) error
+}
+
+type LigueRepository interface {
+	Create(dateDebut, dateFin time.Time, splitID int) (*Ligue, error)
+	FindByID(id int) (*Ligue, error)
+	FindAll() ([]*Ligue, error)
+	FindAllPaginated(page, perPage int) ([]*Ligue, int, error)
+	Update(id int, dateDebut, dateFin time.Time, splitID int) (*Ligue, error)
+	Delete(id int) error
+	AssociateAllLocales(ligueID int) (int64, error)
+}
+
 type SplitRepository interface {
 	Create(name string, mapNames []string) (*Split, error)
 	FindByID(id int) (*Split, error)

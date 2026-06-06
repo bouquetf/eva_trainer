@@ -181,3 +181,55 @@ export async function seedJoinRequest(teamId: number, userId: number): Promise<{
   );
   return rows[0] || null;
 }
+
+export interface TestSplit {
+  id: number;
+  name: string;
+}
+
+export async function seedSplit(name: string, mapNames?: string[]): Promise<TestSplit> {
+  const uniqueName = `${name}_${Math.random().toString(36).slice(2, 8)}`;
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO splits (name, map_names) VALUES ($1, $2) RETURNING id`,
+    [uniqueName, mapNames ?? []],
+  );
+  return { id: rows[0].id, name: uniqueName };
+}
+
+export interface TestLigueLocale {
+  id: number;
+  nom: string;
+  emplacement: string;
+}
+
+export async function seedLigueLocale(
+  nom: string,
+  emplacement: string,
+): Promise<TestLigueLocale> {
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO ligue_locale (nom, emplacement)
+     VALUES ($1, $2) RETURNING id`,
+    [nom, emplacement],
+  );
+  return { id: rows[0].id, nom, emplacement };
+}
+
+export interface TestLigue {
+  id: number;
+  date_debut: string;
+  date_fin: string;
+  split_id: number;
+}
+
+export async function seedLigue(
+  date_debut: string,
+  date_fin: string,
+  split_id: number,
+): Promise<TestLigue> {
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO ligue (date_debut, date_fin, split_id)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [date_debut, date_fin, split_id],
+  );
+  return { id: rows[0].id, date_debut, date_fin, split_id };
+}

@@ -31,5 +31,5 @@ Spécification `docs/specification/features/feedback-archives-matchs.md` (sectio
 Organise les équipes en divisions avec un classement automatique, offrant une vue structurée de la saison régulière.
 
 ## Dépendances
-- Story #035 (Gestion des ligues locales)
+- Story #035 (Gestion des ligues locales) — entité `Ligue` (périodes de compétition), pas `LigueLocale`
 - Story #036 (Gestion des équipes eva)

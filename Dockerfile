@@ -3,8 +3,9 @@ FROM node:22-alpine AS frontend
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 WORKDIR /app
+RUN npm install -g npm@latest
 COPY frontend/package*.json ./
-RUN npm install -g npm@latest && npm ci
+RUN npm ci
 COPY frontend/ .
 RUN npm run build
 

@@ -44,6 +44,18 @@ var (
 )
 
 var (
+	ErrLigueLocaleNameRequired      = errors.New("ligue locale name is required")
+	ErrLigueLocaleNotFound          = errors.New("ligue locale not found")
+	ErrLigueLocaleEmplacementExists = errors.New("a ligue locale with this emplacement already exists")
+)
+
+var (
+	ErrLigueNameRequired = errors.New("ligue name is required")
+	ErrLigueNotFound     = errors.New("ligue not found")
+	ErrLigueInvalidDates = errors.New("ligue start date must be before end date")
+)
+
+var (
 	ErrSplitNameRequired     = errors.New("split name is required")
 	ErrSplitMapNamesRequired = errors.New("split must have at least one map name")
 	ErrSplitNotFound         = errors.New("split not found")

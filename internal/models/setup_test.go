@@ -35,6 +35,10 @@ var migrationFiles = []string{
 	"000023_create_line_of_fire_versions.up.sql",
 	"000024_add_line_of_fire_permissions.up.sql",
 	"000025_add_archive_roles.up.sql",
+	"000026_add_archive_leagues.up.sql",
+	"000027_fix_ligue_locale_table.up.sql",
+	"000028_add_ligue_locale_emplacement_unique.up.sql",
+	"000029_add_ligue_locale_junction.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

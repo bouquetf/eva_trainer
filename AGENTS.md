@@ -100,3 +100,11 @@ go test -tags=integration ./internal/models/ ./internal/handlers/
 - **Fonctions non-`useCallback` dans les déps** : toutes les fonctions appelées dans un `useCallback` doivent figurer dans ses dépendances **quelle que soit leur nature** (useCallback ou non). Oublier une fonction non-mémoïsée (constante de composant) produit une stale closure qui utilise les valeurs d'un render antérieur.
 - **`contextMenuActionItems`** : les items du menu contextuel sont générés par `handleMapRightClick` à partir de `getMenuOptions(modeType)` (non filtré par guards). Les actions asynchrones (`handlePolygonCompleted`, `handleContextNewZone`) doivent être `await`ed dans `onContextMenuAction`.
 
+### ArchivePage CSS refactoring (cette session)
+1. **Suppression du CSS module `ArchivePage.module.css`** — remplacé par les classes globales `admin.css` :
+   - Onglets underline → `.admin-tabs` avec classe `active`
+   - Section "Importer dans une ligue" → `.add-membership-form`
+   - `<select>` → `.role-select`, conteneur flex → `.add-membership-row`
+   - Import `admin.css` explicite (route standalone `/archives`)
+2. **Fix tests E2E `leagues.spec.ts`** — remplacement de `tr:has(td:text(...))` par `getByRole('row').filter({ hasText: ... })` (plus robuste, compatible `fullyParallel: true`)
+

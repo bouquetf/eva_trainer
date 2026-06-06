@@ -24,6 +24,7 @@ import {
 import type { ImportMapPayload } from '../api/admin'
 import type { Team } from '../api/admin'
 import { uploadMap, listAdminMaps, purgeObsoleteMaps, getMapImageUrl } from '../api/maps'
+
 import {
   createSplit,
   listSplits,
@@ -42,9 +43,10 @@ import {
 import type { MapCatalogEntry } from '../api/map-catalog'
 import { searchUsers } from '../api/invitations'
 import { useAuthStore } from '../store/auth'
+import AdminMenu from '../components/AdminMenu'
+import AdminLiguesTab from '../components/AdminLiguesTab'
+import type { AdminTab } from '../components/AdminMenu'
 import '../styles/admin.css'
-
-type Tab = 'users' | 'permissions' | 'maps' | 'splits' | 'catalog' | 'import-export' | 'archives'
 
 const VALID_ROLES = ['member', 'editor', 'cocaptain', 'captain']
 
@@ -52,7 +54,7 @@ function AdminDashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.user)
-  const [tab, setTab] = useState<Tab>('users')
+  const [tab, setTab] = useState<AdminTab>('users')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null)
@@ -423,6 +425,15 @@ function AdminDashboard() {
     (t) => !memberships.some((m) => m.team_id === t.id)
   )
 
+  function handleTabChange(newTab: AdminTab) {
+    setTab(newTab)
+    setSelectedRole(null)
+    setExpandedUserId(null)
+    setEditingSplit(null)
+    setError(null)
+    setSuccess(null)
+  }
+
   const handleToggleExpand = (userId: number) => {
     setExpandedUserId(expandedUserId === userId ? null : userId)
     setShowAddForm(false)
@@ -439,29 +450,14 @@ function AdminDashboard() {
         </button>
       </div>
 
-      <div className="admin-tabs">
-        <button className={tab === 'users' ? 'active' : ''} onClick={() => { setTab('users'); setSelectedRole(null) }}>
-          Utilisateurs ({users.length})
-        </button>
-        <button className={tab === 'permissions' ? 'active' : ''} onClick={() => { setTab('permissions'); setExpandedUserId(null) }}>
-          Permissions
-        </button>
-        <button className={tab === 'maps' ? 'active' : ''} onClick={() => { setTab('maps'); setError(null); setSuccess(null) }}>
-          Cartes ({maps.length})
-        </button>
-        <button className={tab === 'splits' ? 'active' : ''} onClick={() => { setTab('splits'); setError(null); setSuccess(null); setEditingSplit(null) }}>
-          Splits ({splits.length})
-        </button>
-        <button className={tab === 'catalog' ? 'active' : ''} onClick={() => { setTab('catalog'); setError(null); setSuccess(null) }}>
-          Catalogue ({catalogEntries.length})
-        </button>
-        <button className={tab === 'import-export' ? 'active' : ''} onClick={() => { setTab('import-export'); setError(null); setSuccess(null) }}>
-          Import/Export
-        </button>
-        <button className={tab === 'archives' ? 'active' : ''} onClick={() => { setTab('archives'); setError(null); setSuccess(null) }}>
-          Archives
-        </button>
-      </div>
+      <AdminMenu
+        activeTab={tab}
+        onTabChange={handleTabChange}
+        usersCount={users.length}
+        mapsCount={maps.length}
+        splitsCount={splits.length}
+        catalogCount={catalogEntries.length}
+      />
 
       {error && <div className="error-message">{error}</div>}
       {success && <div className="success-message">{success}</div>}
@@ -1338,6 +1334,13 @@ function AdminDashboard() {
             </div>
           )}
         </>
+      )}
+
+      {tab === 'ligues' && (
+        <AdminLiguesTab
+          onSuccess={(msg) => setSuccess(msg)}
+          onError={(msg) => setError(msg)}
+        />
       )}
 
       {tab === 'archives' && (

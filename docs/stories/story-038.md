@@ -33,6 +33,6 @@ Spécification `docs/specification/features/feedback-archives-matchs.md` (sectio
 Permet l'enregistrement et la consultation de l'historique complet des rencontres, incluant bans, picks et scores détaillés.
 
 ## Dépendances
-- Story #035 (Gestion des ligues locales)
+- Story #035 (Gestion des ligues locales) — entité `Ligue` (périodes de compétition), pas `LigueLocale`
 - Story #036 (Gestion des équipes eva)
 - Story #037 (Divs, assignation et classement)

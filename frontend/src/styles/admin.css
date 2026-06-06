@@ -321,3 +321,43 @@
   font-size: 14px;
   color: #666;
 }
+
+.link {
+  color: var(--primary-color);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link:hover {
+  color: var(--primary-hover-color, #9f7aea);
+}
+
+.header-right {
+  display: inline-flex;
+  align-items: center;
+}
+
+.back-arrow {
+  font-size: 22px;
+  text-decoration: none;
+  display: inline-block;
+  color: var(--primary-color);
+  margin-right: 8px;
+}
+
+.back-arrow:hover {
+  color: var(--primary-hover-color, #9f7aea);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: #888;
+}
