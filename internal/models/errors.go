@@ -89,6 +89,14 @@ var (
 )
 
 var (
+	ErrEvaTeamNameRequired  = errors.New("eva team name is required")
+	ErrEvaTeamTagRequired   = errors.New("eva team tag is required")
+	ErrEvaTeamTagTooLong    = errors.New("eva team tag exceeds maximum length of 50 characters")
+	ErrEvaTeamNotFound      = errors.New("eva team not found")
+	ErrEvaTeamHasReferences = errors.New("cannot delete eva team: it has associated leagues or matches")
+)
+
+var (
 	ErrDiscordUnavailable  = errors.New("discord API is unavailable")
 	ErrDatabaseUnavailable = errors.New("database is unavailable")
 	ErrInternalServer      = errors.New("internal server error")

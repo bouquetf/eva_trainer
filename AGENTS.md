@@ -20,6 +20,7 @@ Les skills se trouvent dans le répertoire `ia/skills/`.
 | Stories | `ia/skills/story-fr/` | Découpage de spécifications en User Stories | Français |
 | Stories | `ia/skills/story-en/` | Breaking down specs into User Stories | English |
 | Tasks | `ia/skills/tasks/` | Découpage de Story en tâches de code exploitables | Français |
+| Commit message | `ia/skills/commit-en/` | Proposes a commit message from a story + local git changes | English |
 | Feedback → Stories | `ia/skills/feedback-fr/` | Génération de stories à partir de feedbacks utilisateur | Français |
 
 ## Convention

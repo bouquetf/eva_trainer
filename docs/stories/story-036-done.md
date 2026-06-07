@@ -7,13 +7,14 @@ En tant qu'archiviste, je veux créer, modifier et consulter les équipes "eva" 
 Spécification `docs/specification/features/feedback-archives-matchs.md` (sections 2, 8 étape 2).
 
 ## Critères d'acceptation
-- [ ] L'archiviste peut créer une équipe eva avec : nom (obligatoire), tag (optionnel), logo_url (optionnel)
+- [ ] L'archiviste peut créer une équipe eva avec : nom (obligatoire), tag (obligatoire)
 - [ ] L'archiviste peut associer une équipe eva à 0 ou 1 équipe eva-trainer (relation 1:1 optionnelle)
 - [ ] L'archiviste peut modifier les informations d'une équipe eva
 - [ ] L'archiviste peut supprimer une équipe eva (bloqué si ligues/matchs associés)
 - [ ] Consultation : fiche détaillée d'une équipe eva avec ses informations
 - [ ] L'API REST expose les endpoints CRUD
-- [ ] Les utilisateurs sans droits ne voient pas la fonctionnalité
+- [ ] Les utilisateurs sans droits archiviste ou Lecteur ne voient pas la fonctionnalité. 
+- [ ] Le rôle lecteur ne peut que consulter les différentes équipes eva sans pouvoir les créer ou modifier.
 
 ## Tests automatisés
 - Test unitaire : CRUD équipe eva + contrainte association 1:1

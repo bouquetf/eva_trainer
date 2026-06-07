@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"eva_trainer/internal/models"
@@ -17,6 +18,8 @@ type ArchiveHandler struct {
 	ligueLocaleRepo models.LigueLocaleRepository
 	ligueRepo       models.LigueRepository
 	splitRepo       models.SplitRepository
+	evaTeamRepo     models.EvaTeamRepository
+	teamRepo        models.TeamRepository
 	logger          services.Logger
 }
 
@@ -24,12 +27,16 @@ func NewArchiveHandler(
 	ligueLocaleRepo models.LigueLocaleRepository,
 	ligueRepo models.LigueRepository,
 	splitRepo models.SplitRepository,
+	evaTeamRepo models.EvaTeamRepository,
+	teamRepo models.TeamRepository,
 	logger services.Logger,
 ) *ArchiveHandler {
 	return &ArchiveHandler{
 		ligueLocaleRepo: ligueLocaleRepo,
 		ligueRepo:       ligueRepo,
 		splitRepo:       splitRepo,
+		evaTeamRepo:     evaTeamRepo,
+		teamRepo:        teamRepo,
 		logger:          logger,
 	}
 }
@@ -466,10 +473,168 @@ func (h *ArchiveHandler) firstSplitID() (int, error) {
 	return splits[0].ID, nil
 }
 
+type createEvaTeamRequest struct {
+	Name             string `json:"name" binding:"required"`
+	Tag              string `json:"tag" binding:"required"`
+	EvaTrainerTeamID *int   `json:"eva_trainer_team_id,omitempty"`
+}
+
+type updateEvaTeamRequest struct {
+	Name             string `json:"name" binding:"required"`
+	Tag              string `json:"tag" binding:"required"`
+	EvaTrainerTeamID *int   `json:"eva_trainer_team_id,omitempty"`
+}
+
 func (h *ArchiveHandler) ListEvaTeams(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "not implemented yet"})
+	teams, err := h.evaTeamRepo.FindAll()
+	if err != nil {
+		h.logger.Error("failed to list eva teams", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"teams": teams})
+}
+
+func (h *ArchiveHandler) GetEvaTeam(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_eva_team_id", "invalid eva team id", http.StatusBadRequest))
+		return
+	}
+
+	team, err := h.evaTeamRepo.FindByID(id)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("eva_team_not_found", "Équipe eva non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find eva team", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"team": team})
 }
 
 func (h *ArchiveHandler) CreateEvaTeam(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "not implemented yet"})
+	var req createEvaTeamRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	if req.EvaTrainerTeamID != nil {
+		_, err := h.teamRepo.FindByID(*req.EvaTrainerTeamID)
+		if errors.Is(err, models.ErrTeamNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_trainer_team_not_found", "Équipe eva-trainer non trouvée", http.StatusNotFound))
+			return
+		}
+		if err != nil {
+			h.logger.Error("failed to verify trainer team", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+			return
+		}
+	}
+
+	team, err := h.evaTeamRepo.Create(req.Name, req.Tag, req.EvaTrainerTeamID)
+	if err != nil {
+		switch {
+		case errors.Is(err, models.ErrEvaTeamNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_name_required", "Le nom est requis", http.StatusBadRequest))
+		case errors.Is(err, models.ErrEvaTeamTagRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_tag_required", "Le tag est requis", http.StatusBadRequest))
+		case errors.Is(err, models.ErrEvaTeamTagTooLong):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_tag_too_long", "Le tag ne peut pas dépasser 50 caractères", http.StatusBadRequest))
+		case strings.Contains(err.Error(), "23505"):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_duplicate_association", "Cette équipe eva-trainer est déjà associée à une autre équipe eva", http.StatusConflict))
+		default:
+			h.logger.Error("failed to create eva team", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		}
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"team": team})
+}
+
+func (h *ArchiveHandler) UpdateEvaTeam(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_eva_team_id", "invalid eva team id", http.StatusBadRequest))
+		return
+	}
+
+	var req updateEvaTeamRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	if req.EvaTrainerTeamID != nil {
+		_, err := h.teamRepo.FindByID(*req.EvaTrainerTeamID)
+		if errors.Is(err, models.ErrTeamNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_trainer_team_not_found", "Équipe eva-trainer non trouvée", http.StatusNotFound))
+			return
+		}
+		if err != nil {
+			h.logger.Error("failed to verify trainer team", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+			return
+		}
+	}
+
+	team, err := h.evaTeamRepo.Update(id, req.Name, req.Tag, req.EvaTrainerTeamID)
+	if err != nil {
+		switch {
+		case errors.Is(err, models.ErrEvaTeamNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_name_required", "Le nom est requis", http.StatusBadRequest))
+		case errors.Is(err, models.ErrEvaTeamTagRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_tag_required", "Le tag est requis", http.StatusBadRequest))
+		case errors.Is(err, models.ErrEvaTeamTagTooLong):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_tag_too_long", "Le tag ne peut pas dépasser 50 caractères", http.StatusBadRequest))
+		case errors.Is(err, models.ErrEvaTeamNotFound):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_not_found", "Équipe eva non trouvée", http.StatusNotFound))
+		case strings.Contains(err.Error(), "23505"):
+			apierror.RespondWithError(c, apierror.NewAPIError("eva_team_duplicate_association", "Cette équipe eva-trainer est déjà associée à une autre équipe eva", http.StatusConflict))
+		default:
+			h.logger.Error("failed to update eva team", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		}
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"team": team})
+}
+
+func (h *ArchiveHandler) DeleteEvaTeam(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_eva_team_id", "invalid eva team id", http.StatusBadRequest))
+		return
+	}
+
+	hasRefs, err := h.evaTeamRepo.HasReferences(id)
+	if err != nil {
+		h.logger.Error("failed to check eva team references", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+	if hasRefs {
+		apierror.RespondWithError(c, apierror.NewAPIError("eva_team_has_references", "Impossible de supprimer cette équipe eva : elle est référencée par des ligues ou matchs", http.StatusConflict))
+		return
+	}
+
+	err = h.evaTeamRepo.Delete(id)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("eva_team_not_found", "Équipe eva non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to delete eva team", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Équipe eva supprimée"})
 }

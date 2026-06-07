@@ -21,7 +21,6 @@ frontend/dist/
 
 # IDE
 .idea/
-.opencode/
 
 # OS
 .DS_Store

@@ -233,3 +233,25 @@ export async function seedLigue(
   );
   return { id: rows[0].id, date_debut, date_fin, split_id };
 }
+
+// --- Eva Team helpers ---
+
+export interface TestEvaTeam {
+  id: number;
+  name: string;
+  tag: string;
+}
+
+export async function seedEvaTeam(name: string, tag: string, evaTrainerTeamId?: number): Promise<TestEvaTeam> {
+  const uniqueName = `${name}_${Math.random().toString(36).slice(2, 8)}`;
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO eva_teams (name, tag, eva_trainer_team_id)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [uniqueName, tag, evaTrainerTeamId ?? null],
+  );
+  return { id: rows[0].id, name: uniqueName, tag };
+}
+
+export async function removeEvaTeam(id: number): Promise<void> {
+  await queryDB(`DELETE FROM eva_teams WHERE id = $1`, [id]);
+}

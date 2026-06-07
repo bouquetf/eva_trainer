@@ -115,3 +115,77 @@ export async function deleteLigue(id: number): Promise<{ message: string }> {
   const api = getApiClient()
   return api.del<{ message: string }>(`${LIGUES_BASE}/${id}`)
 }
+
+// --- Eva Teams ---
+
+export interface EvaTeam {
+  id: number
+  name: string
+  tag: string
+  eva_trainer_team_id: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EvaTeamListResponse {
+  teams: EvaTeam[]
+}
+
+export interface EvaTeamResponse {
+  team: EvaTeam
+}
+
+export interface CreateEvaTeamPayload {
+  name: string
+  tag: string
+  eva_trainer_team_id?: number | null
+}
+
+export type UpdateEvaTeamPayload = CreateEvaTeamPayload
+
+// --- Trainer Teams (from GET /api/v1/teams for association dropdown) ---
+
+export interface TrainerTeam {
+  id: number
+  name: string
+  captain_id: number
+}
+
+export interface TrainerTeamItem {
+  team: TrainerTeam
+  member_count: number
+}
+
+export interface TrainerTeamsResponse {
+  teams: TrainerTeamItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
+const EVA_TEAMS_BASE = '/api/v1/archive/teams'
+
+export async function listEvaTeams(): Promise<EvaTeamListResponse> {
+  const api = getApiClient()
+  return api.get<EvaTeamListResponse>(EVA_TEAMS_BASE)
+}
+
+export async function createEvaTeam(data: CreateEvaTeamPayload): Promise<EvaTeamResponse> {
+  const api = getApiClient()
+  return api.post<EvaTeamResponse>(EVA_TEAMS_BASE, data)
+}
+
+export async function updateEvaTeam(id: number, data: UpdateEvaTeamPayload): Promise<EvaTeamResponse> {
+  const api = getApiClient()
+  return api.put<EvaTeamResponse>(`${EVA_TEAMS_BASE}/${id}`, data)
+}
+
+export async function deleteEvaTeam(id: number): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.del<{ message: string }>(`${EVA_TEAMS_BASE}/${id}`)
+}
+
+export async function listTrainerTeams(): Promise<TrainerTeamsResponse> {
+  const api = getApiClient()
+  return api.get<TrainerTeamsResponse>('/api/v1/teams?per_page=100')
+}

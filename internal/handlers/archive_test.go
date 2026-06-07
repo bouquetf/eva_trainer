@@ -91,6 +91,7 @@ func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTServic
 		"000027_fix_ligue_locale_table.up.sql",
 		"000028_add_ligue_locale_emplacement_unique.up.sql",
 		"000029_add_ligue_locale_junction.up.sql",
+		"000030_add_eva_teams.up.sql",
 	}
 
 	for _, mf := range migrationFiles {
@@ -118,9 +119,11 @@ func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTServic
 	ligueLocaleRepo := models.NewLigueLocaleRepository(db)
 	ligueRepo := models.NewLigueRepository(db)
 	splitRepoModels := models.NewSplitRepository(db)
+	evaTeamRepo := models.NewEvaTeamRepository(db)
+	teamRepo := models.NewTeamRepository(db)
 	userRepo := models.NewUserRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return archiveHandler, jwtService, userRepo, db
 }
@@ -570,5 +573,327 @@ func TestArchiveHandler_DeleteLigueLocale_NotFound(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["error"] != "ligue_locale_not_found" {
 		t.Errorf("expected error 'league_locale_not_found', got '%v'", resp["error"])
+	}
+}
+
+// --- Eva Teams ---
+
+func TestArchiveHandler_ListEvaTeams_Empty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/teams", nil)
+
+	handler.ListEvaTeams(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	teams, ok := resp["teams"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'teams' array")
+	}
+	if len(teams) != 0 {
+		t.Errorf("expected empty teams, got %d", len(teams))
+	}
+}
+
+func TestArchiveHandler_ListEvaTeams_WithData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	evaRepo := models.NewEvaTeamRepository(db)
+
+	evaRepo.Create("Alpha", "AL", nil)
+	evaRepo.Create("Beta", "BE", nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/teams", nil)
+
+	handler.ListEvaTeams(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	teams, ok := resp["teams"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'teams' array")
+	}
+	if len(teams) != 2 {
+		t.Errorf("expected 2 teams, got %d", len(teams))
+	}
+}
+
+func TestArchiveHandler_GetEvaTeam_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	evaRepo := models.NewEvaTeamRepository(db)
+	created, err := evaRepo.Create("Team A", "TA", nil)
+	if err != nil {
+		t.Fatalf("failed to create eva team: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/archive/teams/%d", created.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", created.ID)}}
+
+	handler.GetEvaTeam(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	team, ok := resp["team"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'team' object")
+	}
+	if team["name"] != "Team A" {
+		t.Errorf("expected name 'Team A', got '%v'", team["name"])
+	}
+}
+
+func TestArchiveHandler_GetEvaTeam_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/teams/99999", nil)
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.GetEvaTeam(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_CreateEvaTeam_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	body := `{"name":"New Team","tag":"NT"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/teams", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateEvaTeam(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	team, ok := resp["team"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'team' object")
+	}
+	if team["name"] != "New Team" {
+		t.Errorf("expected name 'New Team', got '%v'", team["name"])
+	}
+	if team["tag"] != "NT" {
+		t.Errorf("expected tag 'NT', got '%v'", team["tag"])
+	}
+
+	// Verify it was persisted
+	evaRepo := models.NewEvaTeamRepository(db)
+	found, err := evaRepo.FindByID(int(team["id"].(float64)))
+	if err != nil {
+		t.Fatalf("failed to find created team: %v", err)
+	}
+	if found.Name != "New Team" {
+		t.Errorf("expected persisted name 'New Team', got %q", found.Name)
+	}
+}
+
+func TestArchiveHandler_CreateEvaTeam_EmptyName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	body := `{"name":"","tag":"NT"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/teams", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateEvaTeam(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_CreateEvaTeam_EmptyTag(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	body := `{"name":"Team A","tag":""}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/teams", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateEvaTeam(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpdateEvaTeam_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	evaRepo := models.NewEvaTeamRepository(db)
+	created, err := evaRepo.Create("Team A", "TA", nil)
+	if err != nil {
+		t.Fatalf("failed to create eva team: %v", err)
+	}
+
+	body := `{"name":"Updated Team","tag":"UT"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/archive/teams/%d", created.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", created.ID)}}
+
+	handler.UpdateEvaTeam(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	team, ok := resp["team"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'team' object")
+	}
+	if team["name"] != "Updated Team" {
+		t.Errorf("expected name 'Updated Team', got '%v'", team["name"])
+	}
+}
+
+func TestArchiveHandler_UpdateEvaTeam_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	body := `{"name":"Updated","tag":"UP"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/teams/99999", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.UpdateEvaTeam(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_DeleteEvaTeam_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	evaRepo := models.NewEvaTeamRepository(db)
+	created, err := evaRepo.Create("Team A", "TA", nil)
+	if err != nil {
+		t.Fatalf("failed to create eva team: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/archive/teams/%d", created.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", created.ID)}}
+
+	handler.DeleteEvaTeam(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["message"] != "Équipe eva supprimée" {
+		t.Errorf("expected 'Équipe eva supprimée', got '%v'", resp["message"])
+	}
+}
+
+func TestArchiveHandler_DeleteEvaTeam_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/archive/teams/99999", nil)
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.DeleteEvaTeam(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_CreateEvaTeam_WithAssociation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	userRepo := models.NewUserRepository(db)
+	user, _, err := userRepo.FindOrCreateByDiscordID("discord_handler_assoc")
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	teamRepo := models.NewTeamRepository(db)
+	trainerTeam, err := teamRepo.Create("Handler Trainer Team", user.ID)
+	if err != nil {
+		t.Fatalf("failed to create trainer team: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"name":"Eva Assoc Team","tag":"EAT","eva_trainer_team_id":%d}`, trainerTeam.ID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/teams", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateEvaTeam(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	team, ok := resp["team"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'team' object")
+	}
+	if team["eva_trainer_team_id"] == nil {
+		t.Fatal("expected non-nil eva_trainer_team_id")
+	}
+	if team["eva_trainer_team_id"].(float64) != float64(trainerTeam.ID) {
+		t.Errorf("expected eva_trainer_team_id %d, got %v", trainerTeam.ID, team["eva_trainer_team_id"])
 	}
 }

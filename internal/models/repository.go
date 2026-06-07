@@ -248,6 +248,15 @@ type TeamRoleRepository interface {
 	UserIsMemberOfTeamWithRole(userID int, role string) (bool, error)
 }
 
+type EvaTeamRepository interface {
+	Create(name, tag string, evaTrainerTeamID *int) (*EvaTeam, error)
+	FindByID(id int) (*EvaTeam, error)
+	FindAll() ([]*EvaTeam, error)
+	Update(id int, name, tag string, evaTrainerTeamID *int) (*EvaTeam, error)
+	Delete(id int) error
+	HasReferences(id int) (bool, error)
+}
+
 type EditHistoryRepository interface {
 	Log(zoneID int, editorID *int, action string, oldData, newData json.RawMessage) (*EditHistory, error)
 	FindByZone(zoneID int) ([]*EditHistory, error)

@@ -515,8 +515,10 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 	ligueLocaleRepo := models.NewLigueLocaleRepository(db)
 	ligueRepo := models.NewLigueRepository(db)
 	splitRepo := models.NewSplitRepository(db)
+	evaTeamRepo := models.NewEvaTeamRepository(db)
+	teamRepo := models.NewTeamRepository(db)
 	archivePermissionsHandler := handlers.NewArchivePermissionsHandler(globalRoleRepo, teamRoleRepo, logger)
-	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, logger)
+	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, logger)
 
 	archive := rg.Group("/archive")
 	{
@@ -585,10 +587,25 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
 			archiveHandler.ListEvaTeams,
 		)
+		archive.GET("/teams/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetEvaTeam,
+		)
 		archive.POST("/teams",
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
 			archiveHandler.CreateEvaTeam,
+		)
+		archive.PUT("/teams/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.UpdateEvaTeam,
+		)
+		archive.DELETE("/teams/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.DeleteEvaTeam,
 		)
 	}
 }
