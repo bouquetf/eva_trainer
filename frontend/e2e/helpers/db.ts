@@ -255,3 +255,47 @@ export async function seedEvaTeam(name: string, tag: string, evaTrainerTeamId?: 
 export async function removeEvaTeam(id: number): Promise<void> {
   await queryDB(`DELETE FROM eva_teams WHERE id = $1`, [id]);
 }
+
+// --- Div / EquipeEvaDiv / BO / Match helpers ---
+
+export interface TestDiv {
+  id: number;
+  ligue_id: number;
+  nom: string;
+}
+
+export async function seedDiv(ligueId: number, nom: string): Promise<TestDiv> {
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO divs (ligue_id, nom) VALUES ($1, $2) RETURNING id`,
+    [ligueId, nom],
+  );
+  return { id: rows[0].id, ligue_id: ligueId, nom };
+}
+
+export async function seedEquipeEvaDiv(equipeEvaId: number, divId: number, ligueId: number): Promise<void> {
+  await queryDB(
+    `INSERT INTO equipe_eva_div (equipe_eva_id, div_id, ligue_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+    [equipeEvaId, divId, ligueId],
+  );
+}
+
+export interface TestBO {
+  id: number;
+}
+
+export async function seedBO(ligueId: number, equipe1Id: number, equipe2Id: number, vainqueurId: number, format = 'BO3'): Promise<TestBO> {
+  const rows = await queryDB<{ id: number }[]>(
+    `INSERT INTO bos (ligue_id, equipe1_id, equipe2_id, vainqueur_id, format)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [ligueId, equipe1Id, equipe2Id, vainqueurId, format],
+  );
+  return { id: rows[0].id };
+}
+
+export async function seedMatch(boId: number, mapId: number, score1: number, score2: number, vainqueurId: number): Promise<void> {
+  await queryDB(
+    `INSERT INTO matchs (bo_id, map_id, score_equipe1, score_equipe2, vainqueur_id)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [boId, mapId, score1, score2, vainqueurId],
+  );
+}

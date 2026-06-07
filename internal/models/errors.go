@@ -97,6 +97,18 @@ var (
 )
 
 var (
+	ErrDivNameRequired        = errors.New("div name is required")
+	ErrDivNotFound            = errors.New("div not found")
+	ErrDivNameExists          = errors.New("a div with this name already exists in this league")
+	ErrDivTeamAlreadyAssigned = errors.New("team is already assigned to another div in this league")
+	ErrDivNotEnoughTeams      = errors.New("div must have at least 2 teams to generate a round-robin schedule")
+)
+
+var (
+	ErrBONotFound = errors.New("BO not found")
+)
+
+var (
 	ErrDiscordUnavailable  = errors.New("discord API is unavailable")
 	ErrDatabaseUnavailable = errors.New("database is unavailable")
 	ErrInternalServer      = errors.New("internal server error")

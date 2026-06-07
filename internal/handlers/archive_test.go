@@ -3,14 +3,11 @@
 package handlers
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,99 +15,36 @@ import (
 	"eva_trainer/db/seed"
 	"eva_trainer/internal/models"
 	"eva_trainer/internal/services"
+	"eva_trainer/internal/testutil"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const leaguesMigration = "000026_add_archive_leagues.up.sql"
 
+var archiveMigrationFiles = []string{
+	"000001_initial_schema.up.sql",
+	"000002_add_refresh_tokens.up.sql",
+	"000003_add_display_name.up.sql",
+	"000004_add_discord_username.up.sql",
+	"000005_seed_permissions.up.sql",
+	"000006_drop_current_version_id.up.sql",
+	"000008_add_split_permission.up.sql",
+	"000010_drop_split_dates.up.sql",
+	"000025_add_archive_roles.up.sql",
+	leaguesMigration,
+	"000027_fix_ligue_locale_table.up.sql",
+	"000028_add_ligue_locale_emplacement_unique.up.sql",
+	"000029_add_ligue_locale_junction.up.sql",
+	"000030_add_eva_teams.up.sql",
+	"000031_add_archive_divs_and_bos.up.sql",
+}
+
 func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTService, models.UserRepository, *sql.DB) {
 	t.Helper()
 
-	ctx := context.Background()
-
-	req := testcontainers.ContainerRequest{
-		Image: "postgres:16-alpine",
-		Env: map[string]string{
-			"POSTGRES_USER":     "test",
-			"POSTGRES_PASSWORD": "test",
-			"POSTGRES_DB":       "testdb",
-		},
-		ExposedPorts: []string{"5432/tcp"},
-		WaitingFor:   wait.ForAll(wait.ForLog("database system is ready to accept connections"), wait.ForListeningPort("5432/tcp")),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start postgres container: %v", err)
-	}
-
-	t.Cleanup(func() {
-		container.Terminate(context.Background())
-	})
-
-	mappedPort, err := container.MappedPort(ctx, "5432")
-	if err != nil {
-		t.Fatalf("failed to get mapped port: %v", err)
-	}
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get container host: %v", err)
-	}
-
-	connStr := fmt.Sprintf("postgres://test:test@%s:%s/testdb?sslmode=disable", host, mappedPort.Port())
-
-	db, err := sql.Open("pgx", connStr)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-
-	if err := db.PingContext(ctx); err != nil {
-		t.Fatalf("failed to ping database: %v", err)
-	}
-
-	migrationsDir := "../../db/migrations"
-	migrationFiles := []string{
-		"000001_initial_schema.up.sql",
-		"000002_add_refresh_tokens.up.sql",
-		"000003_add_display_name.up.sql",
-		"000004_add_discord_username.up.sql",
-		"000005_seed_permissions.up.sql",
-		"000006_drop_current_version_id.up.sql",
-		"000008_add_split_permission.up.sql",
-		"000010_drop_split_dates.up.sql",
-		"000025_add_archive_roles.up.sql",
-		leaguesMigration,
-		"000027_fix_ligue_locale_table.up.sql",
-		"000028_add_ligue_locale_emplacement_unique.up.sql",
-		"000029_add_ligue_locale_junction.up.sql",
-		"000030_add_eva_teams.up.sql",
-	}
-
-	for _, mf := range migrationFiles {
-		path := filepath.Join(migrationsDir, mf)
-		content, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("failed to read migration %s: %v", mf, err)
-		}
-		statements := strings.Split(string(content), ";")
-		for _, stmt := range statements {
-			stmt = strings.TrimSpace(stmt)
-			if stmt == "" {
-				continue
-			}
-			if _, err := db.Exec(stmt); err != nil {
-				t.Fatalf("failed to execute migration %s: %v\nSQL: %s", mf, err, stmt)
-			}
-		}
-	}
+	db, cleanup := testutil.SetupTestDB(t, archiveMigrationFiles)
+	t.Cleanup(cleanup)
 
 	if err := seed.SeedRolePermissions(db); err != nil {
 		t.Fatalf("failed to seed role permissions: %v", err)
@@ -121,11 +55,38 @@ func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTServic
 	splitRepoModels := models.NewSplitRepository(db)
 	evaTeamRepo := models.NewEvaTeamRepository(db)
 	teamRepo := models.NewTeamRepository(db)
+	divRepo := models.NewDivRepository(db)
 	userRepo := models.NewUserRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return archiveHandler, jwtService, userRepo, db
+}
+
+func createTestLigue(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	splitRepo := models.NewSplitRepository(db)
+	split, err := splitRepo.Create("Test Split", []string{"cp", "mistral"})
+	if err != nil {
+		t.Fatalf("failed to create split: %v", err)
+	}
+	ligueRepo := models.NewLigueRepository(db)
+	now := time.Now().Truncate(24 * time.Hour)
+	ligue, err := ligueRepo.Create(now, now.Add(30*24*time.Hour), split.ID)
+	if err != nil {
+		t.Fatalf("failed to create ligue: %v", err)
+	}
+	return ligue.ID
+}
+
+func createTestEvaTeam(t *testing.T, db *sql.DB, name, tag string) int {
+	t.Helper()
+	evaRepo := models.NewEvaTeamRepository(db)
+	team, err := evaRepo.Create(name, tag, nil)
+	if err != nil {
+		t.Fatalf("failed to create eva team: %v", err)
+	}
+	return team.ID
 }
 
 // --- ListLiguesLocales ---
@@ -895,5 +856,423 @@ func TestArchiveHandler_CreateEvaTeam_WithAssociation(t *testing.T) {
 	}
 	if team["eva_trainer_team_id"].(float64) != float64(trainerTeam.ID) {
 		t.Errorf("expected eva_trainer_team_id %d, got %v", trainerTeam.ID, team["eva_trainer_team_id"])
+	}
+}
+
+// --- Divs ---
+
+func TestArchiveHandler_ListDivs_Empty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/divisions?ligue_id=%d", ligueID), nil)
+
+	handler.ListDivs(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	divs, ok := resp["divs"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'divs' array")
+	}
+	if len(divs) != 0 {
+		t.Errorf("expected empty divs, got %d", len(divs))
+	}
+}
+
+func TestArchiveHandler_ListDivs_WithData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+
+	divRepo.Create(ligueID, "Groupe A")
+	divRepo.Create(ligueID, "Groupe B")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/divisions?ligue_id=%d", ligueID), nil)
+
+	handler.ListDivs(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	divs, ok := resp["divs"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'divs' array")
+	}
+	if len(divs) != 2 {
+		t.Errorf("expected 2 divs, got %d", len(divs))
+	}
+}
+
+func TestArchiveHandler_ListDivs_MissingLigueID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/divisions", nil)
+
+	handler.ListDivs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "missing_ligue_id" {
+		t.Errorf("expected error 'missing_ligue_id', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_CreateDiv_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+
+	body := fmt.Sprintf(`{"ligue_id":%d,"nom":"Groupe A"}`, ligueID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/divisions", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateDiv(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	div, ok := resp["div"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'div' object")
+	}
+	if div["nom"] != "Groupe A" {
+		t.Errorf("expected nom 'Groupe A', got '%v'", div["nom"])
+	}
+	if div["id"].(float64) <= 0 {
+		t.Errorf("expected valid id, got %v", div["id"])
+	}
+}
+
+func TestArchiveHandler_CreateDiv_DuplicateName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	_, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create initial div: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"ligue_id":%d,"nom":"Groupe A"}`, ligueID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/divisions", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateDiv(c)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_GetDiv_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/divisions/99999", nil)
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.GetDiv(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "div_not_found" {
+		t.Errorf("expected error 'div_not_found', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_UpdateDiv_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	body := `{"nom":"Poule Haute"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/divisions/%d", div.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.UpdateDiv(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	updated, ok := resp["div"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'div' object")
+	}
+	if updated["nom"] != "Poule Haute" {
+		t.Errorf("expected nom 'Poule Haute', got '%v'", updated["nom"])
+	}
+}
+
+func TestArchiveHandler_DeleteDiv_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/archive/divisions/%d", div.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.DeleteDiv(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify it was deleted
+	_, err = divRepo.FindByID(div.ID)
+	if err != models.ErrDivNotFound {
+		t.Fatal("expected div to be deleted")
+	}
+}
+
+func TestArchiveHandler_AssignTeamToDiv_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamID := createTestEvaTeam(t, db, "Team A", "TA")
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"equipe_eva_id":%d}`, teamID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/archive/divisions/%d/assign", div.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.AssignTeamToDiv(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify via GetDiv
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/divisions/%d", div.ID), nil)
+	c2.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+	handler.GetDiv(c2)
+
+	var resp2 map[string]interface{}
+	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	teams, _ := resp2["teams"].([]interface{})
+	if len(teams) != 1 {
+		t.Errorf("expected 1 team in div, got %d", len(teams))
+	}
+}
+
+func TestArchiveHandler_RemoveTeamFromDiv(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamID := createTestEvaTeam(t, db, "Team A", "TA")
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	err = divRepo.AssignTeam(div.ID, teamID)
+	if err != nil {
+		t.Fatalf("failed to assign team: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/archive/divisions/%d/teams/%d", div.ID, teamID), nil)
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", div.ID)},
+		{Key: "teamId", Value: fmt.Sprintf("%d", teamID)},
+	}
+
+	handler.RemoveTeamFromDiv(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify teams list is empty
+	teams, err := divRepo.FindTeamsByDivID(div.ID)
+	if err != nil {
+		t.Fatalf("failed to list teams: %v", err)
+	}
+	if len(teams) != 0 {
+		t.Errorf("expected empty teams, got %d", len(teams))
+	}
+}
+
+func TestArchiveHandler_GetDivStandings_Empty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamID := createTestEvaTeam(t, db, "Team A", "TA")
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+	err = divRepo.AssignTeam(div.ID, teamID)
+	if err != nil {
+		t.Fatalf("failed to assign team: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/divisions/%d/standings", div.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.GetDivStandings(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	standings, ok := resp["standings"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'standings' array")
+	}
+	if len(standings) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(standings))
+	}
+	entry := standings[0].(map[string]interface{})
+	if entry["bos_played"].(float64) != 0 {
+		t.Errorf("expected bos_played 0, got %v", entry["bos_played"])
+	}
+}
+
+func TestArchiveHandler_GetDivStandings_WithBOs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+	err = divRepo.AssignTeam(div.ID, teamAID)
+	if err != nil {
+		t.Fatalf("failed to assign team A: %v", err)
+	}
+	err = divRepo.AssignTeam(div.ID, teamBID)
+	if err != nil {
+		t.Fatalf("failed to assign team B: %v", err)
+	}
+
+	// Create a BO: Team A beats Team B
+	_, err = db.Exec(
+		`INSERT INTO bos (ligue_id, equipe1_id, equipe2_id, vainqueur_id, format)
+		 VALUES ($1, $2, $3, $4, 'BO3')`,
+		ligueID, teamAID, teamBID, teamAID,
+	)
+	if err != nil {
+		t.Fatalf("failed to create bo: %v", err)
+	}
+
+	// Seed a map for matchs (maps are from earlier migrations)
+	var mapID int
+	err = db.QueryRow(`INSERT INTO maps (name)
+		VALUES ('Test Map') RETURNING id`).Scan(&mapID)
+	if err != nil {
+		t.Fatalf("failed to seed map: %v", err)
+	}
+
+	// Create a match in that BO: Team A wins 16-10
+	_, err = db.Exec(
+		`INSERT INTO matchs (bo_id, map_id, score_equipe1, score_equipe2, vainqueur_id)
+		 VALUES (1, $1, 16, 10, $2)`,
+		mapID, teamAID,
+	)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/divisions/%d/standings", div.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.GetDivStandings(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	standings, ok := resp["standings"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'standings' array")
+	}
+	if len(standings) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(standings))
+	}
+
+	entryA := standings[0].(map[string]interface{}) // Team A should be first (won the BO)
+	if entryA["team_name"] != "Team A" {
+		t.Errorf("expected Team A first, got '%v'", entryA["team_name"])
+	}
+	if entryA["bo_won"].(float64) != 1 {
+		t.Errorf("expected bo_won 1, got %v", entryA["bo_won"])
+	}
+	if entryA["bo_points"].(float64) != 1 {
+		t.Errorf("expected bo_points 1, got %v", entryA["bo_points"])
 	}
 }

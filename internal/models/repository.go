@@ -257,6 +257,26 @@ type EvaTeamRepository interface {
 	HasReferences(id int) (bool, error)
 }
 
+type DivRepository interface {
+	Create(ligueID int, nom string) (*Div, error)
+	FindByID(id int) (*Div, error)
+	FindByLigueID(ligueID int) ([]*Div, error)
+	Update(id int, nom string) (*Div, error)
+	Delete(id int) error
+	AssignTeam(divID, equipeEvaID int) error
+	RemoveTeam(divID, equipeEvaID int) error
+	FindTeamsByDivID(divID int) ([]*EvaTeam, error)
+	FindTeamsByLigueID(ligueID int) (map[int][]*EvaTeam, error)
+	GetStandings(divID int) ([]*StandingEntry, error)
+	GenerateRoundRobin(divID int) ([]*BO, error)
+}
+
+type BORepository interface {
+	Create(ligueID, equipe1ID, equipe2ID int) (*BO, error)
+	Delete(id int) error
+	FindByLigueID(ligueID int) ([]*BO, error)
+}
+
 type EditHistoryRepository interface {
 	Log(zoneID int, editorID *int, action string, oldData, newData json.RawMessage) (*EditHistory, error)
 	FindByZone(zoneID int) ([]*EditHistory, error)

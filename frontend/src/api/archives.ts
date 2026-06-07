@@ -189,3 +189,108 @@ export async function listTrainerTeams(): Promise<TrainerTeamsResponse> {
   const api = getApiClient()
   return api.get<TrainerTeamsResponse>('/api/v1/teams?per_page=100')
 }
+
+// --- Divisions ---
+
+export interface Div {
+  id: number
+  ligue_id: number
+  nom: string
+  teams?: EvaTeam[]
+}
+
+export interface DivListResponse {
+  divs: Div[]
+}
+
+export interface DivDetailResponse {
+  div: Div
+  teams: EvaTeam[]
+}
+
+export interface CreateDivPayload {
+  ligue_id: number
+  nom: string
+}
+
+export interface StandingEntry {
+  team_id: number
+  team_name: string
+  team_tag: string
+  bos_played: number
+  bo_won: number
+  bo_drawn: number
+  bo_lost: number
+  bo_points: number
+  matches_played: number
+  match_won: number
+  match_drawn: number
+  match_lost: number
+  match_points: number
+}
+
+export interface StandingsResponse {
+  standings: StandingEntry[]
+}
+
+const DIVISIONS_BASE = '/api/v1/archive/divisions'
+
+export async function listDivs(ligueId: number): Promise<DivListResponse> {
+  const api = getApiClient()
+  return api.get<DivListResponse>(`${DIVISIONS_BASE}?ligue_id=${ligueId}`)
+}
+
+export async function getDiv(id: number): Promise<DivDetailResponse> {
+  const api = getApiClient()
+  return api.get<DivDetailResponse>(`${DIVISIONS_BASE}/${id}`)
+}
+
+export async function createDiv(data: CreateDivPayload): Promise<{ div: Div }> {
+  const api = getApiClient()
+  return api.post<{ div: Div }>(DIVISIONS_BASE, data)
+}
+
+export async function updateDiv(id: number, data: { nom: string }): Promise<{ div: Div }> {
+  const api = getApiClient()
+  return api.put<{ div: Div }>(`${DIVISIONS_BASE}/${id}`, data)
+}
+
+export async function deleteDiv(id: number): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.del<{ message: string }>(`${DIVISIONS_BASE}/${id}`)
+}
+
+export async function assignTeamToDiv(divId: number, equipeEvaId: number): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.post<{ message: string }>(`${DIVISIONS_BASE}/${divId}/assign`, { equipe_eva_id: equipeEvaId })
+}
+
+export async function removeTeamFromDiv(divId: number, teamId: number): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.del<{ message: string }>(`${DIVISIONS_BASE}/${divId}/teams/${teamId}`)
+}
+
+export async function getDivStandings(divId: number): Promise<StandingsResponse> {
+  const api = getApiClient()
+  return api.get<StandingsResponse>(`${DIVISIONS_BASE}/${divId}/standings`)
+}
+
+export interface BO {
+  id: number
+  ligue_id: number
+  equipe1_id: number
+  equipe2_id: number
+  vainqueur_id: number | null
+  format: string
+  created_at: string
+  updated_at: string
+}
+
+export interface GenerateRoundRobinResponse {
+  bos: BO[]
+}
+
+export async function generateRoundRobin(divId: number): Promise<GenerateRoundRobinResponse> {
+  const api = getApiClient()
+  return api.post<GenerateRoundRobinResponse>(`${DIVISIONS_BASE}/${divId}/generate-round-robin`)
+}

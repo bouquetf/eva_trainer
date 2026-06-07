@@ -20,6 +20,7 @@ type ArchiveHandler struct {
 	splitRepo       models.SplitRepository
 	evaTeamRepo     models.EvaTeamRepository
 	teamRepo        models.TeamRepository
+	divRepo         models.DivRepository
 	logger          services.Logger
 }
 
@@ -29,6 +30,7 @@ func NewArchiveHandler(
 	splitRepo models.SplitRepository,
 	evaTeamRepo models.EvaTeamRepository,
 	teamRepo models.TeamRepository,
+	divRepo models.DivRepository,
 	logger services.Logger,
 ) *ArchiveHandler {
 	return &ArchiveHandler{
@@ -37,6 +39,7 @@ func NewArchiveHandler(
 		splitRepo:       splitRepo,
 		evaTeamRepo:     evaTeamRepo,
 		teamRepo:        teamRepo,
+		divRepo:         divRepo,
 		logger:          logger,
 	}
 }
@@ -637,4 +640,311 @@ func (h *ArchiveHandler) DeleteEvaTeam(c *gin.Context) {
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Équipe eva supprimée"})
+}
+
+type createDivRequest struct {
+	LigueID int    `json:"ligue_id" binding:"required"`
+	Nom     string `json:"nom" binding:"required"`
+}
+
+type updateDivRequest struct {
+	Nom string `json:"nom" binding:"required"`
+}
+
+type assignTeamRequest struct {
+	EquipeEvaID int `json:"equipe_eva_id" binding:"required"`
+}
+
+type divWithTeams struct {
+	ID      int               `json:"id"`
+	LigueID int               `json:"ligue_id"`
+	Nom     string            `json:"nom"`
+	Teams   []*models.EvaTeam `json:"teams"`
+}
+
+func (h *ArchiveHandler) ListDivs(c *gin.Context) {
+	ligueIDStr := c.Query("ligue_id")
+	if ligueIDStr == "" {
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_ligue_id", "ligue_id query parameter is required", http.StatusBadRequest))
+		return
+	}
+	ligueID, err := strconv.Atoi(ligueIDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_ligue_id", "invalid ligue_id", http.StatusBadRequest))
+		return
+	}
+
+	divs, err := h.divRepo.FindByLigueID(ligueID)
+	if err != nil {
+		h.logger.Error("failed to list divs", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	teamsByDiv, err := h.divRepo.FindTeamsByLigueID(ligueID)
+	if err != nil {
+		h.logger.Error("failed to list teams by ligue", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	result := make([]divWithTeams, 0, len(divs))
+	for _, d := range divs {
+		teams := teamsByDiv[d.ID]
+		if teams == nil {
+			teams = []*models.EvaTeam{}
+		}
+		result = append(result, divWithTeams{
+			ID:      d.ID,
+			LigueID: d.LigueID,
+			Nom:     d.Nom,
+			Teams:   teams,
+		})
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"divs": result})
+}
+
+func (h *ArchiveHandler) GetDiv(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	div, err := h.divRepo.FindByID(id)
+	if errors.Is(err, models.ErrDivNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	teams, err := h.divRepo.FindTeamsByDivID(id)
+	if err != nil {
+		h.logger.Error("failed to find teams for div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
+		"div":   div,
+		"teams": teams,
+	})
+}
+
+func (h *ArchiveHandler) CreateDiv(c *gin.Context) {
+	var req createDivRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	div, err := h.divRepo.Create(req.LigueID, req.Nom)
+	if err != nil {
+		switch {
+		case errors.Is(err, models.ErrDivNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("div_name_required", "Le nom de la div est requis", http.StatusBadRequest))
+		case errors.Is(err, models.ErrDivNameExists):
+			apierror.RespondWithError(c, apierror.NewAPIError("div_name_exists", "Une div avec ce nom existe déjà dans cette ligue", http.StatusConflict))
+		default:
+			h.logger.Error("failed to create div", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		}
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"div": div})
+}
+
+func (h *ArchiveHandler) UpdateDiv(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	var req updateDivRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	div, err := h.divRepo.Update(id, req.Nom)
+	if err != nil {
+		switch {
+		case errors.Is(err, models.ErrDivNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("div_name_required", "Le nom de la div est requis", http.StatusBadRequest))
+		case errors.Is(err, models.ErrDivNotFound):
+			apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		case errors.Is(err, models.ErrDivNameExists):
+			apierror.RespondWithError(c, apierror.NewAPIError("div_name_exists", "Une div avec ce nom existe déjà dans cette ligue", http.StatusConflict))
+		default:
+			h.logger.Error("failed to update div", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		}
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"div": div})
+}
+
+func (h *ArchiveHandler) DeleteDiv(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	err = h.divRepo.Delete(id)
+	if errors.Is(err, models.ErrDivNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to delete div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Div supprimée"})
+}
+
+func (h *ArchiveHandler) AssignTeamToDiv(c *gin.Context) {
+	divID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	var req assignTeamRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	_, err = h.divRepo.FindByID(divID)
+	if errors.Is(err, models.ErrDivNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	_, err = h.evaTeamRepo.FindByID(req.EquipeEvaID)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("eva_team_not_found", "Équipe eva non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find eva team", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	err = h.divRepo.AssignTeam(divID, req.EquipeEvaID)
+	if errors.Is(err, models.ErrDivTeamAlreadyAssigned) {
+		apierror.RespondWithError(c, apierror.NewAPIError("team_already_assigned", "Cette équipe est déjà assignée à une autre div dans cette ligue", http.StatusConflict))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to assign team to div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Équipe assignée à la div"})
+}
+
+func (h *ArchiveHandler) RemoveTeamFromDiv(c *gin.Context) {
+	divID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	teamID, err := strconv.Atoi(c.Param("teamId"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
+		return
+	}
+
+	err = h.divRepo.RemoveTeam(divID, teamID)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("team_not_in_div", "Cette équipe n'est pas dans cette div", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to remove team from div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Équipe retirée de la div"})
+}
+
+func (h *ArchiveHandler) GetDivStandings(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	_, err = h.divRepo.FindByID(id)
+	if errors.Is(err, models.ErrDivNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	standings, err := h.divRepo.GetStandings(id)
+	if err != nil {
+		h.logger.Error("failed to get standings", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"standings": standings})
+}
+
+func (h *ArchiveHandler) GenerateRoundRobin(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	_, err = h.divRepo.FindByID(id)
+	if errors.Is(err, models.ErrDivNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find div", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	bos, err := h.divRepo.GenerateRoundRobin(id)
+	if errors.Is(err, models.ErrDivNotEnoughTeams) {
+		apierror.RespondWithError(c, apierror.NewAPIError("not_enough_teams", "La division doit avoir au moins 2 équipes pour générer un calendrier", http.StatusBadRequest))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to generate round-robin", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"bos": bos})
 }

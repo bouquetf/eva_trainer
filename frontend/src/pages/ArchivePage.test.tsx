@@ -14,6 +14,16 @@ vi.mock('../api/archives', () => ({
   createLigueLocale: vi.fn(),
   updateLigueLocale: vi.fn(),
   deleteLigueLocale: vi.fn(),
+  listLigues: vi.fn(),
+  listDivs: vi.fn(),
+  getDiv: vi.fn(),
+  createDiv: vi.fn(),
+  updateDiv: vi.fn(),
+  deleteDiv: vi.fn(),
+  assignTeamToDiv: vi.fn(),
+  removeTeamFromDiv: vi.fn(),
+  getDivStandings: vi.fn(),
+  listEvaTeams: vi.fn(),
 }))
 
 import { useArchiveAccess } from '../hooks/useArchiveAccess'

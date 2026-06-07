@@ -1,0 +1,39 @@
+### Créer une division
+POST /api/v1/archive/divisions
+Content-Type: application/json
+
+{
+  "ligue_id": 1,
+  "nom": "Groupe A"
+}
+
+### Lister les divisions d'une ligue
+GET /api/v1/archive/divisions?ligue_id=1
+
+### Détail d'une division
+GET /api/v1/archive/divisions/1
+
+### Modifier une division
+PUT /api/v1/archive/divisions/1
+Content-Type: application/json
+
+{
+  "nom": "Poule Haute"
+}
+
+### Supprimer une division
+DELETE /api/v1/archive/divisions/1
+
+### Assigner une équipe à une division
+POST /api/v1/archive/divisions/1/assign
+Content-Type: application/json
+
+{
+  "equipe_eva_id": 1
+}
+
+### Retirer une équipe d'une division
+DELETE /api/v1/archive/divisions/1/teams/1
+
+### Classement d'une division
+GET /api/v1/archive/divisions/1/standings

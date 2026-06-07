@@ -517,8 +517,9 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 	splitRepo := models.NewSplitRepository(db)
 	evaTeamRepo := models.NewEvaTeamRepository(db)
 	teamRepo := models.NewTeamRepository(db)
+	divRepo := models.NewDivRepository(db)
 	archivePermissionsHandler := handlers.NewArchivePermissionsHandler(globalRoleRepo, teamRoleRepo, logger)
-	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, logger)
+	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, divRepo, logger)
 
 	archive := rg.Group("/archive")
 	{
@@ -606,6 +607,52 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
 			archiveHandler.DeleteEvaTeam,
+		)
+
+		archive.GET("/divisions",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.ListDivs,
+		)
+		archive.GET("/divisions/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetDiv,
+		)
+		archive.POST("/divisions",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.CreateDiv,
+		)
+		archive.PUT("/divisions/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.UpdateDiv,
+		)
+		archive.DELETE("/divisions/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.DeleteDiv,
+		)
+		archive.POST("/divisions/:id/assign",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.AssignTeamToDiv,
+		)
+		archive.DELETE("/divisions/:id/teams/:teamId",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.RemoveTeamFromDiv,
+		)
+		archive.GET("/divisions/:id/standings",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetDivStandings,
+		)
+		archive.POST("/divisions/:id/generate-round-robin",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.GenerateRoundRobin,
 		)
 	}
 }
