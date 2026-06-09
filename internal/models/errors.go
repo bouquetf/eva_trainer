@@ -105,7 +105,10 @@ var (
 )
 
 var (
-	ErrBONotFound = errors.New("BO not found")
+	ErrBONotFound    = errors.New("BO not found")
+	ErrMatchNotFound = errors.New("match not found")
+	ErrBanNotFound   = errors.New("ban not found")
+	ErrPickNotFound  = errors.New("pick not found")
 )
 
 var (

@@ -19,7 +19,9 @@
 
 services:
   db:
-    image: postgres:17-alpine
+    build:
+      context: .
+      dockerfile: db.Dockerfile
     environment:
       POSTGRES_USER: ${DB_USER:-eva_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
@@ -63,6 +65,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    volumes:
+      - ./dump:/app/dump:ro
     depends_on:
       db:
         condition: service_healthy

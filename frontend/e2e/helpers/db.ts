@@ -292,10 +292,24 @@ export async function seedBO(ligueId: number, equipe1Id: number, equipe2Id: numb
   return { id: rows[0].id };
 }
 
-export async function seedMatch(boId: number, mapId: number, score1: number, score2: number, vainqueurId: number): Promise<void> {
+export async function seedMatch(boId: number, mapId: number, score1: number, score2: number, vainqueurId: number | null = null): Promise<void> {
   await queryDB(
     `INSERT INTO matchs (bo_id, map_id, score_equipe1, score_equipe2, vainqueur_id)
      VALUES ($1, $2, $3, $4, $5)`,
     [boId, mapId, score1, score2, vainqueurId],
+  );
+}
+
+export async function seedBan(boId: number, equipeId: number, mapId: number): Promise<void> {
+  await queryDB(
+    `INSERT INTO bo_bans (bo_id, equipe_id, map_id) VALUES ($1, $2, $3)`,
+    [boId, equipeId, mapId],
+  );
+}
+
+export async function seedPick(boId: number, equipeId: number, mapId: number): Promise<void> {
+  await queryDB(
+    `INSERT INTO bo_picks (bo_id, equipe_id, map_id) VALUES ($1, $2, $3)`,
+    [boId, equipeId, mapId],
   );
 }

@@ -282,6 +282,7 @@ export interface BO {
   equipe2_id: number
   vainqueur_id: number | null
   format: string
+  forfait: number
   created_at: string
   updated_at: string
 }
@@ -293,4 +294,116 @@ export interface GenerateRoundRobinResponse {
 export async function generateRoundRobin(divId: number): Promise<GenerateRoundRobinResponse> {
   const api = getApiClient()
   return api.post<GenerateRoundRobinResponse>(`${DIVISIONS_BASE}/${divId}/generate-round-robin`)
+}
+
+// --- BOs (Best-of) ---
+
+export interface Ban {
+  id: number
+  bo_id: number
+  equipe_id: number
+  map_id: number
+  created_at: string
+}
+
+export interface Pick {
+  id: number
+  bo_id: number
+  equipe_id: number
+  map_id: number
+  created_at: string
+}
+
+export interface Match {
+  id: number
+  bo_id: number
+  map_id: number
+  score_equipe1: number
+  score_equipe2: number
+  forfait: number
+  vainqueur_id: number | null
+  commentaires: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BODetail {
+  BO: BO
+  matchs: Match[]
+  bans: Ban[]
+  picks: Pick[]
+}
+
+export interface BOListItem extends BO {
+  equipe1_name: string
+  equipe2_name: string
+}
+
+export interface BOListResponse {
+  bos: BOListItem[]
+  total: number
+}
+
+export interface BOListDetailResponse {
+  bos: BODetail[]
+  total: number
+}
+
+export interface BODetailResponse {
+  bo: BODetail
+}
+
+export interface CreateBOPayload {
+  ligue_id: number
+  equipe1_id: number
+  equipe2_id: number
+  format: string
+  forfait?: number
+  bans?: { equipe_id: number; map_id: number; ordre: number }[]
+  picks?: { equipe_id?: number | null; map_id: number; ordre: number }[]
+  matchs?: { map_id: number; score_equipe1: number; score_equipe2: number; forfait?: number; commentaires?: string | null }[]
+}
+
+export interface UpdateBOPayload {
+  format: string
+  forfait?: number
+  bans?: { equipe_id: number; map_id: number; ordre: number }[]
+  picks?: { equipe_id?: number | null; map_id: number; ordre: number }[]
+  matchs?: { map_id: number; score_equipe1: number; score_equipe2: number; forfait?: number; commentaires?: string | null }[]
+}
+
+export interface LigueMapsResponse {
+  maps: { id: number; name: string }[]
+}
+
+const BOS_BASE = '/api/v1/archive/bos'
+
+export async function listBOs(ligueId: number, details = false): Promise<BOListResponse | BOListDetailResponse> {
+  const api = getApiClient()
+  return api.get<BOListResponse | BOListDetailResponse>(`${BOS_BASE}?ligue_id=${ligueId}${details ? '&details=true' : ''}`)
+}
+
+export async function getBO(id: number): Promise<BODetailResponse> {
+  const api = getApiClient()
+  return api.get<BODetailResponse>(`${BOS_BASE}/${id}`)
+}
+
+export async function createBO(data: CreateBOPayload): Promise<BODetailResponse> {
+  const api = getApiClient()
+  return api.post<BODetailResponse>(BOS_BASE, data)
+}
+
+export async function updateBO(id: number, data: UpdateBOPayload): Promise<BODetailResponse> {
+  const api = getApiClient()
+  return api.put<BODetailResponse>(`${BOS_BASE}/${id}`, data)
+}
+
+export async function deleteBO(id: number): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.del<{ message: string }>(`${BOS_BASE}/${id}`)
+}
+
+export async function getLigueMaps(ligueId: number): Promise<LigueMapsResponse> {
+  const api = getApiClient()
+  return api.get<LigueMapsResponse>(`/api/v1/archive/ligues/${ligueId}/maps`)
 }

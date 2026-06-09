@@ -3,11 +3,12 @@ import { useArchiveAccess } from '../hooks/useArchiveAccess'
 import LiguesLocalesSection from './LiguesLocalesSection'
 import EvaTeamsSection from './EvaTeamsSection'
 import DivisionsSection from './DivisionsSection'
+import BOsSection from './BOsSection'
 import '../styles/admin.css'
 
 function ArchivePage() {
   const { canWrite, isLoading: permLoading } = useArchiveAccess()
-  const [activeTab, setActiveTab] = useState<'locales' | 'eva' | 'divisions'>('locales')
+  const [activeTab, setActiveTab] = useState<'locales' | 'eva' | 'divisions' | 'bos'>('locales')
 
   if (permLoading) {
     return <div className="empty-state"><p>Chargement...</p></div>
@@ -29,11 +30,15 @@ function ArchivePage() {
         <button className={activeTab === 'divisions' ? 'active' : ''} onClick={() => setActiveTab('divisions')}>
           Divisions
         </button>
+        <button className={activeTab === 'bos' ? 'active' : ''} onClick={() => setActiveTab('bos')}>
+          BOs
+        </button>
       </div>
 
       {activeTab === 'locales' && <LiguesLocalesSection canWrite={canWrite} />}
       {activeTab === 'eva' && <EvaTeamsSection canWrite={canWrite} />}
       {activeTab === 'divisions' && <DivisionsSection canWrite={canWrite} />}
+      {activeTab === 'bos' && <BOsSection canWrite={canWrite} />}
     </div>
   )
 }

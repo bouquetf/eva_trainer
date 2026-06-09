@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,6 +22,11 @@ type ArchiveHandler struct {
 	evaTeamRepo     models.EvaTeamRepository
 	teamRepo        models.TeamRepository
 	divRepo         models.DivRepository
+	boRepo          models.BORepository
+	matchRepo       models.MatchRepository
+	banRepo         models.BanRepository
+	pickRepo        models.PickRepository
+	mapRepo         models.MapRepository
 	logger          services.Logger
 }
 
@@ -31,6 +37,11 @@ func NewArchiveHandler(
 	evaTeamRepo models.EvaTeamRepository,
 	teamRepo models.TeamRepository,
 	divRepo models.DivRepository,
+	boRepo models.BORepository,
+	matchRepo models.MatchRepository,
+	banRepo models.BanRepository,
+	pickRepo models.PickRepository,
+	mapRepo models.MapRepository,
 	logger services.Logger,
 ) *ArchiveHandler {
 	return &ArchiveHandler{
@@ -40,6 +51,11 @@ func NewArchiveHandler(
 		evaTeamRepo:     evaTeamRepo,
 		teamRepo:        teamRepo,
 		divRepo:         divRepo,
+		boRepo:          boRepo,
+		matchRepo:       matchRepo,
+		banRepo:         banRepo,
+		pickRepo:        pickRepo,
+		mapRepo:         mapRepo,
 		logger:          logger,
 	}
 }
@@ -947,4 +963,439 @@ func (h *ArchiveHandler) GenerateRoundRobin(c *gin.Context) {
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"bos": bos})
+}
+
+type createBORequest struct {
+	LigueID   int               `json:"ligue_id" binding:"required"`
+	Equipe1ID int               `json:"equipe1_id" binding:"required"`
+	Equipe2ID int               `json:"equipe2_id" binding:"required"`
+	Format    string            `json:"format" binding:"required"`
+	Forfait   int               `json:"forfait"`
+	Bans      []createBanItem   `json:"bans"`
+	Picks     []createPickItem  `json:"picks"`
+	Matchs    []createMatchItem `json:"matchs"`
+}
+
+type createBanItem struct {
+	EquipeID int `json:"equipe_id" binding:"required"`
+	MapID    int `json:"map_id" binding:"required"`
+	Ordre    int `json:"ordre" binding:"required"`
+}
+
+type createPickItem struct {
+	EquipeID *int `json:"equipe_id"`
+	MapID    int  `json:"map_id" binding:"required"`
+	Ordre    int  `json:"ordre" binding:"required"`
+}
+
+type createMatchItem struct {
+	MapID        int     `json:"map_id" binding:"required"`
+	ScoreEquipe1 int     `json:"score_equipe1"`
+	ScoreEquipe2 int     `json:"score_equipe2"`
+	Forfait      int     `json:"forfait"`
+	Commentaires *string `json:"commentaires"`
+}
+
+type updateBORequest struct {
+	Format  string            `json:"format" binding:"required"`
+	Forfait int               `json:"forfait"`
+	Bans    []createBanItem   `json:"bans"`
+	Picks   []createPickItem  `json:"picks"`
+	Matchs  []createMatchItem `json:"matchs"`
+}
+
+func (h *ArchiveHandler) GetLigueMaps(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_ligue_id", "invalid ligue id", http.StatusBadRequest))
+		return
+	}
+
+	ligue, err := h.ligueRepo.FindByID(id)
+	if errors.Is(err, models.ErrLigueNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("ligue_not_found", "ligue not found", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find ligue", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	maps, err := h.splitRepo.FindMapsBySplitID(ligue.SplitID)
+	if err != nil {
+		h.logger.Error("failed to find maps by split", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"maps": maps})
+}
+
+func (h *ArchiveHandler) CreateBO(c *gin.Context) {
+	var req createBORequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	if req.Equipe1ID == req.Equipe2ID {
+		apierror.RespondWithError(c, apierror.NewAPIError("same_team", "equipe1 and equipe2 must be different", http.StatusBadRequest))
+		return
+	}
+	if req.Format != "BO3" && req.Format != "BO5" {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_format", "format must be BO3 or BO5", http.StatusBadRequest))
+		return
+	}
+	if req.Forfait < 0 || req.Forfait > 2 {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_forfait", "forfait must be 0, 1, or 2", http.StatusBadRequest))
+		return
+	}
+
+	_, err := h.ligueRepo.FindByID(req.LigueID)
+	if errors.Is(err, models.ErrLigueNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("ligue_not_found", "ligue not found", http.StatusBadRequest))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to verify ligue", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	_, err = h.evaTeamRepo.FindByID(req.Equipe1ID)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("equipe1_not_found", "equipe1 not found", http.StatusBadRequest))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to verify equipe1", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	_, err = h.evaTeamRepo.FindByID(req.Equipe2ID)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("equipe2_not_found", "equipe2 not found", http.StatusBadRequest))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to verify equipe2", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if req.Forfait == 0 {
+		for _, m := range req.Matchs {
+			if m.Forfait == 0 {
+				if m.ScoreEquipe1 < 0 || m.ScoreEquipe1 > 100 || m.ScoreEquipe2 < 0 || m.ScoreEquipe2 > 100 {
+					apierror.RespondWithError(c, apierror.NewAPIError("invalid_score", "scores must be between 0 and 100", http.StatusBadRequest))
+					return
+				}
+			}
+		}
+
+		mapIDs := make(map[int]bool)
+		for _, b := range req.Bans {
+			mapIDs[b.MapID] = true
+		}
+		for _, p := range req.Picks {
+			mapIDs[p.MapID] = true
+		}
+		for _, m := range req.Matchs {
+			mapIDs[m.MapID] = true
+		}
+		for mid := range mapIDs {
+			_, err := h.mapRepo.FindByID(mid)
+			if errors.Is(err, models.ErrMapNotFound) {
+				apierror.RespondWithError(c, apierror.NewAPIError("map_not_found", fmt.Sprintf("map %d not found", mid), http.StatusBadRequest))
+				return
+			}
+			if err != nil {
+				h.logger.Error("failed to verify map", "error", err, "map_id", mid)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+	}
+
+	bo, err := h.boRepo.Create(req.LigueID, req.Equipe1ID, req.Equipe2ID, req.Format, req.Forfait)
+	if err != nil {
+		h.logger.Error("failed to create BO", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if req.Forfait == 0 {
+		for _, b := range req.Bans {
+			_, err := h.banRepo.Create(bo.ID, b.EquipeID, b.MapID)
+			if err != nil {
+				h.logger.Error("failed to create ban", "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+
+		for _, p := range req.Picks {
+			equipeID := 0
+			if p.EquipeID != nil {
+				equipeID = *p.EquipeID
+			}
+			_, err := h.pickRepo.Create(bo.ID, equipeID, p.MapID)
+			if err != nil {
+				h.logger.Error("failed to create pick", "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+
+		for _, m := range req.Matchs {
+			_, err := h.matchRepo.Create(bo.ID, m.MapID, m.ScoreEquipe1, m.ScoreEquipe2, m.Forfait, m.Commentaires)
+			if err != nil {
+				h.logger.Error("failed to create match", "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+	}
+
+	bo, err = h.boRepo.RecomputeWinner(bo.ID)
+	if err != nil {
+		h.logger.Error("failed to recompute BO winner", "error", err)
+	}
+
+	details, err := h.boRepo.FindWithDetails(bo.ID)
+	if err != nil {
+		h.logger.Error("failed to find BO details", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusCreated, gin.H{"bo": details})
+}
+
+func (h *ArchiveHandler) GetBO(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_bo_id", "invalid bo id", http.StatusBadRequest))
+		return
+	}
+
+	details, err := h.boRepo.FindWithDetails(id)
+	if errors.Is(err, models.ErrBONotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("bo_not_found", "BO not found", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find BO", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"bo": details})
+}
+
+func (h *ArchiveHandler) ListBOs(c *gin.Context) {
+	ligueIDStr := c.Query("ligue_id")
+	if ligueIDStr == "" {
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_ligue_id", "ligue_id query parameter is required", http.StatusBadRequest))
+		return
+	}
+	ligueID, err := strconv.Atoi(ligueIDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_ligue_id", "invalid ligue_id", http.StatusBadRequest))
+		return
+	}
+
+	details := c.Query("details") == "true"
+
+	if details {
+		bos, err := h.boRepo.FindByLigueID(ligueID)
+		if err != nil {
+			h.logger.Error("failed to list BOs", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+			return
+		}
+
+		result := make([]*models.BOWithDetails, 0, len(bos))
+		for _, bo := range bos {
+			d, err := h.boRepo.FindWithDetails(bo.ID)
+			if err != nil {
+				h.logger.Error("failed to find BO details", "error", err, "bo_id", bo.ID)
+				continue
+			}
+			result = append(result, d)
+		}
+
+		apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"bos": result, "total": len(result)})
+		return
+	}
+
+	items, err := h.boRepo.FindByLigueIDWithTeams(ligueID)
+	if err != nil {
+		h.logger.Error("failed to list BOs with teams", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"bos": items, "total": len(items)})
+}
+
+func (h *ArchiveHandler) UpdateBO(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_bo_id", "invalid bo id", http.StatusBadRequest))
+		return
+	}
+
+	existing, err := h.boRepo.FindByID(id)
+	if errors.Is(err, models.ErrBONotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("bo_not_found", "BO not found", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find BO", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	var req updateBORequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	if req.Format != "BO3" && req.Format != "BO5" {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_format", "format must be BO3 or BO5", http.StatusBadRequest))
+		return
+	}
+	if req.Forfait < 0 || req.Forfait > 2 {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_forfait", "forfait must be 0, 1, or 2", http.StatusBadRequest))
+		return
+	}
+
+	if req.Forfait == 0 {
+		for _, m := range req.Matchs {
+			if m.Forfait == 0 {
+				if m.ScoreEquipe1 < 0 || m.ScoreEquipe1 > 100 || m.ScoreEquipe2 < 0 || m.ScoreEquipe2 > 100 {
+					apierror.RespondWithError(c, apierror.NewAPIError("invalid_score", "scores must be between 0 and 100", http.StatusBadRequest))
+					return
+				}
+			}
+		}
+
+		mapIDs := make(map[int]bool)
+		for _, b := range req.Bans {
+			mapIDs[b.MapID] = true
+		}
+		for _, p := range req.Picks {
+			mapIDs[p.MapID] = true
+		}
+		for _, m := range req.Matchs {
+			mapIDs[m.MapID] = true
+		}
+		for mid := range mapIDs {
+			_, err := h.mapRepo.FindByID(mid)
+			if errors.Is(err, models.ErrMapNotFound) {
+				apierror.RespondWithError(c, apierror.NewAPIError("map_not_found", fmt.Sprintf("map %d not found", mid), http.StatusBadRequest))
+				return
+			}
+			if err != nil {
+				h.logger.Error("failed to verify map", "error", err, "map_id", mid)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+	}
+
+	_, err = h.boRepo.Update(id, existing.LigueID, existing.Equipe1ID, existing.Equipe2ID, req.Format, req.Forfait)
+	if err != nil {
+		h.logger.Error("failed to update BO", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if err := h.matchRepo.DeleteByBOID(id); err != nil {
+		h.logger.Error("failed to delete existing matchs", "error", fmt.Sprintf("%+v", err))
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+	if err := h.banRepo.DeleteByBOID(id); err != nil {
+		h.logger.Error("failed to delete existing bans", "error", fmt.Sprintf("%+v", err))
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+	if err := h.pickRepo.DeleteByBOID(id); err != nil {
+		h.logger.Error("failed to delete existing picks", "error", fmt.Sprintf("%+v", err))
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if req.Forfait == 0 {
+		for _, b := range req.Bans {
+			_, err := h.banRepo.Create(id, b.EquipeID, b.MapID)
+			if err != nil {
+				h.logger.Error("failed to create ban", "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+
+		for _, p := range req.Picks {
+			equipeID := 0
+			if p.EquipeID != nil {
+				equipeID = *p.EquipeID
+			}
+			_, err := h.pickRepo.Create(id, equipeID, p.MapID)
+			if err != nil {
+				h.logger.Error("failed to create pick", "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+
+		for _, m := range req.Matchs {
+			_, err := h.matchRepo.Create(id, m.MapID, m.ScoreEquipe1, m.ScoreEquipe2, m.Forfait, m.Commentaires)
+			if err != nil {
+				h.logger.Error("failed to create match", "error", err)
+				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+				return
+			}
+		}
+	}
+
+	_, err = h.boRepo.RecomputeWinner(id)
+	if err != nil {
+		h.logger.Error("failed to recompute BO winner", "error", err)
+	}
+
+	details, err := h.boRepo.FindWithDetails(id)
+	if err != nil {
+		h.logger.Error("failed to find BO details", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"bo": details})
+}
+
+func (h *ArchiveHandler) DeleteBO(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_bo_id", "invalid bo id", http.StatusBadRequest))
+		return
+	}
+
+	err = h.boRepo.Delete(id)
+	if errors.Is(err, models.ErrBONotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("bo_not_found", "BO not found", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to delete BO", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "BO supprimé"})
 }

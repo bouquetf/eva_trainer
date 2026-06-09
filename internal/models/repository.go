@@ -272,9 +272,39 @@ type DivRepository interface {
 }
 
 type BORepository interface {
-	Create(ligueID, equipe1ID, equipe2ID int) (*BO, error)
+	Create(ligueID, equipe1ID, equipe2ID int, format string, forfait int) (*BO, error)
 	Delete(id int) error
+	FindByID(id int) (*BO, error)
 	FindByLigueID(ligueID int) ([]*BO, error)
+	FindWithDetails(id int) (*BOWithDetails, error)
+	FindByLigueIDWithTeams(ligueID int) ([]*BOListItem, error)
+	Update(id int, ligueID, equipe1ID, equipe2ID int, format string, forfait int) (*BO, error)
+	RecomputeWinner(id int) (*BO, error)
+}
+
+type MatchRepository interface {
+	Create(boID, mapID, scoreEquipe1, scoreEquipe2, forfait int, commentaires *string) (*Match, error)
+	FindByID(id int) (*Match, error)
+	FindByBOID(boID int) ([]*Match, error)
+	Update(id, mapID, scoreEquipe1, scoreEquipe2, forfait int, commentaires *string) (*Match, error)
+	Delete(id int) error
+	DeleteByBOID(boID int) error
+}
+
+type BanRepository interface {
+	Create(boID, equipeID, mapID int) (*Ban, error)
+	FindByID(id int) (*Ban, error)
+	FindByBOID(boID int) ([]*Ban, error)
+	Delete(id int) error
+	DeleteByBOID(boID int) error
+}
+
+type PickRepository interface {
+	Create(boID, equipeID, mapID int) (*Pick, error)
+	FindByID(id int) (*Pick, error)
+	FindByBOID(boID int) ([]*Pick, error)
+	Delete(id int) error
+	DeleteByBOID(boID int) error
 }
 
 type EditHistoryRepository interface {

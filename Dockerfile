@@ -22,7 +22,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/migrate ./cmd/migrate/
 # Stage 3: Run
 FROM alpine:latest
 WORKDIR /app
-RUN adduser -D -g '' appuser
+RUN apk add --no-cache postgresql17-client && \
+    adduser -D -g '' appuser
 COPY --from=builder /app/server /app/server
 COPY --from=builder /app/migrate /app/migrate
 COPY --from=builder /app/db/migrations /app/db/migrations

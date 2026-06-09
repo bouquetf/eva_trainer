@@ -518,8 +518,13 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 	evaTeamRepo := models.NewEvaTeamRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	divRepo := models.NewDivRepository(db)
+	boRepo := models.NewBORepository(db)
+	matchRepo := models.NewMatchRepository(db)
+	banRepo := models.NewBanRepository(db)
+	pickRepo := models.NewPickRepository(db)
+	mapRepo := models.NewMapRepository(db)
 	archivePermissionsHandler := handlers.NewArchivePermissionsHandler(globalRoleRepo, teamRoleRepo, logger)
-	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, divRepo, logger)
+	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, divRepo, boRepo, matchRepo, banRepo, pickRepo, mapRepo, logger)
 
 	archive := rg.Group("/archive")
 	{
@@ -653,6 +658,38 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
 			archiveHandler.GenerateRoundRobin,
+		)
+
+		archive.POST("/bos",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.CreateBO,
+		)
+		archive.GET("/bos/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetBO,
+		)
+		archive.GET("/bos",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.ListBOs,
+		)
+		archive.PUT("/bos/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.UpdateBO,
+		)
+		archive.DELETE("/bos/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.DeleteBO,
+		)
+
+		archive.GET("/ligues/:id/maps",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetLigueMaps,
 		)
 	}
 }

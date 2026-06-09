@@ -516,6 +516,23 @@ func (r *divRepo) createBO(ligueID, equipe1ID, equipe2ID int) (*BO, error) {
 	return b, nil
 }
 
+func (r *divRepo) createBOWithFormat(ligueID, equipe1ID, equipe2ID int, format string) (*BO, error) {
+	if format == "" {
+		format = "BO3"
+	}
+	b := &BO{}
+	err := r.db.QueryRow(
+		`INSERT INTO bos (ligue_id, equipe1_id, equipe2_id, format, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, NOW(), NOW())
+		 RETURNING id, ligue_id, equipe1_id, equipe2_id, vainqueur_id, format, created_at, updated_at`,
+		ligueID, equipe1ID, equipe2ID, format,
+	).Scan(&b.ID, &b.LigueID, &b.Equipe1ID, &b.Equipe2ID, &b.VainqueurID, &b.Format, &b.CreatedAt, &b.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create BO: %w", err)
+	}
+	return b, nil
+}
+
 func (r *divRepo) deleteBO(id int) error {
 	result, err := r.db.Exec(`DELETE FROM bos WHERE id = $1`, id)
 	if err != nil {

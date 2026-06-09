@@ -56,9 +56,14 @@ func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTServic
 	evaTeamRepo := models.NewEvaTeamRepository(db)
 	teamRepo := models.NewTeamRepository(db)
 	divRepo := models.NewDivRepository(db)
+	boRepo := models.NewBORepository(db)
+	matchRepo := models.NewMatchRepository(db)
+	banRepo := models.NewBanRepository(db)
+	pickRepo := models.NewPickRepository(db)
+	mapRepo := models.NewMapRepository(db)
 	userRepo := models.NewUserRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, boRepo, matchRepo, banRepo, pickRepo, mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return archiveHandler, jwtService, userRepo, db
 }
@@ -1274,5 +1279,738 @@ func TestArchiveHandler_GetDivStandings_WithBOs(t *testing.T) {
 	}
 	if entryA["bo_points"].(float64) != 1 {
 		t.Errorf("expected bo_points 1, got %v", entryA["bo_points"])
+	}
+}
+
+// --- BO helpers ---
+
+func createTestBOMap(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	mapRepo := models.NewMapRepository(db)
+	m, err := mapRepo.Create("Test Map", nil)
+	if err != nil {
+		t.Fatalf("failed to create test map: %v", err)
+	}
+	return m.ID
+}
+
+// --- CreateBO ---
+
+func TestArchiveHandler_CreateBO_Full(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	body := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3",
+		"bans": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"picks": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"matchs": [{"map_id": %d, "score_equipe1": 16, "score_equipe2": 10}]
+	}`, ligueID, teamAID, teamBID, teamAID, mapID, teamAID, mapID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	bo, ok := resp["bo"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'bo' object")
+	}
+
+	boFields, ok := bo["BO"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'BO' field in bo")
+	}
+
+	if boFields["format"] != "BO3" {
+		t.Errorf("expected format 'BO3', got '%v'", boFields["format"])
+	}
+	if boFields["vainqueur_id"] == nil {
+		t.Error("expected vainqueur_id to be set (Team A won)")
+	}
+	if boFields["vainqueur_id"].(float64) != float64(teamAID) {
+		t.Errorf("expected vainqueur_id %d, got %v", teamAID, boFields["vainqueur_id"])
+	}
+
+	matchs, _ := bo["matchs"].([]interface{})
+	if len(matchs) != 1 {
+		t.Errorf("expected 1 match, got %d", len(matchs))
+	}
+
+	bans, _ := bo["bans"].([]interface{})
+	if len(bans) != 1 {
+		t.Errorf("expected 1 ban, got %d", len(bans))
+	}
+
+	picks, _ := bo["picks"].([]interface{})
+	if len(picks) != 1 {
+		t.Errorf("expected 1 pick, got %d", len(picks))
+	}
+}
+
+func TestArchiveHandler_CreateBO_Minimal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	body := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO5"
+	}`, ligueID, teamAID, teamBID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	bo, ok := resp["bo"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'bo' object")
+	}
+
+	boFields, ok := bo["BO"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'BO' field in bo")
+	}
+
+	if boFields["format"] != "BO5" {
+		t.Errorf("expected format 'BO5', got '%v'", boFields["format"])
+	}
+	if boFields["vainqueur_id"] != nil {
+		t.Error("expected nil vainqueur_id for BO with no matchs")
+	}
+
+	matchs, _ := bo["matchs"].([]interface{})
+	if len(matchs) != 0 {
+		t.Errorf("expected 0 matchs, got %d", len(matchs))
+	}
+}
+
+// --- GetBO ---
+
+func TestArchiveHandler_GetBO_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	// Create BO via handler
+	createBody := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3",
+		"bans": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"picks": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"matchs": [{"map_id": %d, "score_equipe1": 16, "score_equipe2": 10}]
+	}`, ligueID, teamAID, teamBID, teamAID, mapID, teamAID, mapID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(createBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	handler.CreateBO(c)
+
+	var createResp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &createResp)
+	createdBO := createResp["bo"].(map[string]interface{})
+	createdBOFields := createdBO["BO"].(map[string]interface{})
+	boID := int(createdBOFields["id"].(float64))
+
+	// GET the BO
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/bos/%d", boID), nil)
+	c2.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", boID)}}
+
+	handler.GetBO(c2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w2.Code, w2.Body.String())
+	}
+
+	var getResp map[string]interface{}
+	json.Unmarshal(w2.Body.Bytes(), &getResp)
+
+	bo, ok := getResp["bo"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'bo' object in GET response")
+	}
+
+	boFields := bo["BO"].(map[string]interface{})
+	if boFields["id"].(float64) != float64(boID) {
+		t.Errorf("expected id %d, got %v", boID, boFields["id"])
+	}
+	if boFields["format"] != "BO3" {
+		t.Errorf("expected format 'BO3', got '%v'", boFields["format"])
+	}
+
+	bans, _ := bo["bans"].([]interface{})
+	if len(bans) != 1 {
+		t.Errorf("expected 1 ban, got %d", len(bans))
+	}
+
+	picks, _ := bo["picks"].([]interface{})
+	if len(picks) != 1 {
+		t.Errorf("expected 1 pick, got %d", len(picks))
+	}
+
+	matchs, _ := bo["matchs"].([]interface{})
+	if len(matchs) != 1 {
+		t.Errorf("expected 1 match, got %d", len(matchs))
+	}
+}
+
+func TestArchiveHandler_GetBO_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/bos/99999", nil)
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.GetBO(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- ListBOs ---
+
+func TestArchiveHandler_ListBOs_ByLigue(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	// Create 2 BOs
+	boRepo := models.NewBORepository(db)
+	_, err := boRepo.Create(ligueID, teamAID, teamBID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+	_, err = boRepo.Create(ligueID, teamBID, teamAID, "BO5", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/bos?ligue_id=%d", ligueID), nil)
+
+	handler.ListBOs(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	bos, ok := resp["bos"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'bos' array")
+	}
+	if len(bos) != 2 {
+		t.Fatalf("expected 2 BOs, got %d", len(bos))
+	}
+
+	first := bos[0].(map[string]interface{})
+	if first["equipe1_name"] != "Team A" {
+		t.Errorf("expected equipe1_name 'Team A', got '%v'", first["equipe1_name"])
+	}
+	if first["equipe2_name"] != "Team B" {
+		t.Errorf("expected equipe2_name 'Team B', got '%v'", first["equipe2_name"])
+	}
+}
+
+func TestArchiveHandler_ListBOs_Empty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/bos?ligue_id=%d", ligueID), nil)
+
+	handler.ListBOs(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	bos, ok := resp["bos"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'bos' array")
+	}
+	if len(bos) != 0 {
+		t.Errorf("expected empty bos, got %d", len(bos))
+	}
+}
+
+func TestArchiveHandler_ListBOs_MissingLigueID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/bos", nil)
+
+	handler.ListBOs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_ListBOs_WithDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	// Create BO via handler with bans/picks/matchs
+	createBody := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3",
+		"bans": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"picks": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"matchs": [{"map_id": %d, "score_equipe1": 16, "score_equipe2": 10}]
+	}`, ligueID, teamAID, teamBID, teamAID, mapID, teamAID, mapID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(createBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	handler.CreateBO(c)
+
+	// List with details=true
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/bos?ligue_id=%d&details=true", ligueID), nil)
+
+	handler.ListBOs(c2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w2.Body.Bytes(), &resp)
+
+	bos, ok := resp["bos"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'bos' array")
+	}
+	if len(bos) != 1 {
+		t.Fatalf("expected 1 BO, got %d", len(bos))
+	}
+
+	bo := bos[0].(map[string]interface{})
+	matchs, _ := bo["matchs"].([]interface{})
+	if len(matchs) != 1 {
+		t.Errorf("expected 1 match in details, got %d", len(matchs))
+	}
+}
+
+// --- UpdateBO ---
+
+func TestArchiveHandler_UpdateBO_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	boRepo := models.NewBORepository(db)
+	bo, err := boRepo.Create(ligueID, teamAID, teamBID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	updateBody := fmt.Sprintf(`{
+		"format": "BO5",
+		"bans": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"picks": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"matchs": [{"map_id": %d, "score_equipe1": 16, "score_equipe2": 5}]
+	}`, teamAID, mapID, teamAID, mapID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/bos/%d", bo.ID), strings.NewReader(updateBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", bo.ID)}}
+
+	handler.UpdateBO(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	updated, ok := resp["bo"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'bo' object")
+	}
+
+	boFields := updated["BO"].(map[string]interface{})
+	if boFields["format"] != "BO5" {
+		t.Errorf("expected format 'BO5', got '%v'", boFields["format"])
+	}
+	if boFields["vainqueur_id"] == nil {
+		t.Error("expected vainqueur_id to be set after update")
+	}
+
+	matchs, _ := updated["matchs"].([]interface{})
+	if len(matchs) != 1 {
+		t.Errorf("expected 1 match, got %d", len(matchs))
+	}
+}
+
+func TestArchiveHandler_UpdateBO_EmptyBansPicksMatchs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	boRepo := models.NewBORepository(db)
+	bo, err := boRepo.Create(ligueID, teamAID, teamBID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	// Update sans bans, picks ni matchs (tableaux vides)
+	updateBody := `{"format": "BO5", "bans": [], "picks": [], "matchs": []}`
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/bos/%d", bo.ID), strings.NewReader(updateBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", bo.ID)}}
+
+	handler.UpdateBO(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpdateBO_EmptyBansPicksMatchs_Undefined(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	boRepo := models.NewBORepository(db)
+	bo, err := boRepo.Create(ligueID, teamAID, teamBID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	// Update sans bans/picks/matchs dans le JSON (comme fait par le frontend quand length === 0)
+	updateBody := `{"format": "BO5"}`
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/bos/%d", bo.ID), strings.NewReader(updateBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", bo.ID)}}
+
+	handler.UpdateBO(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpdateBO_CreateWithBans_UpdateWithoutBans(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	// Créer un BO avec bans
+	createBody := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3",
+		"bans": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"picks": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"matchs": [{"map_id": %d, "score_equipe1": 16, "score_equipe2": 5}]
+	}`, ligueID, teamAID, teamBID, teamAID, mapID, teamBID, mapID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(createBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusCreated && w.Code != http.StatusOK {
+		t.Fatalf("create: expected 200/201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var createResp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &createResp)
+	boData := createResp["bo"].(map[string]interface{})
+	boInfo := boData["BO"].(map[string]interface{})
+	boID := int(boInfo["id"].(float64))
+
+	// Update sans bans/picks/matchs
+	updateBody := `{"format": "BO5", "bans": [], "picks": [], "matchs": []}`
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/bos/%d", boID), strings.NewReader(updateBody))
+	c2.Request.Header.Set("Content-Type", "application/json")
+	c2.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", boID)}}
+	handler.UpdateBO(c2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("update: expected 200, got %d. Body: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpdateBO_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	body := `{"format": "BO5", "bans": [], "picks": [], "matchs": []}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/archive/bos/99999", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.UpdateBO(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- DeleteBO ---
+
+func TestArchiveHandler_DeleteBO_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team To Delete", "TD")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	boRepo := models.NewBORepository(db)
+	bo, err := boRepo.Create(ligueID, teamAID, teamBID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/archive/bos/%d", bo.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", bo.ID)}}
+
+	handler.DeleteBO(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify it's gone
+	_, err = boRepo.FindByID(bo.ID)
+	if err != models.ErrBONotFound {
+		t.Fatal("expected BO to be deleted")
+	}
+}
+
+func TestArchiveHandler_DeleteBO_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/archive/bos/99999", nil)
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.DeleteBO(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- CreateBO validation ---
+
+func TestArchiveHandler_CreateBO_InvalidFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	body := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO7"
+	}`, ligueID, teamAID, teamBID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "invalid_format" {
+		t.Errorf("expected error 'invalid_format', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_CreateBO_SameTeam(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamID := createTestEvaTeam(t, db, "Team A", "TA")
+
+	body := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3"
+	}`, ligueID, teamID, teamID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "same_team" {
+		t.Errorf("expected error 'same_team', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_CreateBO_InvalidScore(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	body := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3",
+		"matchs": [{"map_id": %d, "score_equipe1": 150, "score_equipe2": 0}]
+	}`, ligueID, teamAID, teamBID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "invalid_score" {
+		t.Errorf("expected error 'invalid_score', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_CreateBO_LigueNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	body := fmt.Sprintf(`{
+		"ligue_id": 99999,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3"
+	}`, teamAID, teamBID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "ligue_not_found" {
+		t.Errorf("expected error 'ligue_not_found', got '%v'", resp["error"])
 	}
 }

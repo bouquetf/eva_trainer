@@ -64,20 +64,21 @@ test.describe('Feature: Zones des cartes obsolètes en révision', () => {
 
   test('5.3: Carte obsolète supprimée → zones exclues', async ({ page, adminUser }) => {
     const team = await seedTeam('E2E ObsRev ' + Date.now(), adminUser.id);
+    const map = await seedMap('E2E-ObsRev-Del-' + Date.now());
     const secret = process.env.JWT_SECRET || 'test-secret-key-for-manual-validation-32chars';
     await generateJWT(adminUser.id, secret);
 
-    const zones = [makeRevisionZone(1, 'V2 Zone', 2)];
+    const zones = [makeRevisionZone(1, 'V2 Zone', map.id)];
 
     await page.goto('/login');
     await loginAsUser(page, adminUser);
-    await startRevisionSession(page, team.id, zones, 2, 'Active Map');
+    await startRevisionSession(page, team.id, zones, map.id, map.name);
 
     await page.locator('input[placeholder="Nom de la zone..."]').fill('V2 Zone');
     await page.getByRole('button', { name: /valider/i }).click();
     await expect(page.locator('.revision-feedback')).toBeVisible({ timeout: 5000 });
 
-    await queryDB('DELETE FROM maps WHERE id = 2');
+    await queryDB('DELETE FROM maps WHERE id = $1', [map.id]);
     await queryDB('DELETE FROM team_members WHERE team_id = $1', [team.id]);
     await queryDB('DELETE FROM teams WHERE id = $1', [team.id]);
   });
