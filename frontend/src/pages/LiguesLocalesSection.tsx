@@ -246,15 +246,17 @@ export default function LiguesLocalesSection({ canWrite }: { canWrite: boolean }
                 <p className="text-muted">Aucune ligue associée</p>
               )}
 
-              <div className="add-membership-form">
-                <h4>Ajouter une ligue</h4>
-                {liguesForImport && (
-                  <LigueSelectField
-                    ligues={liguesForImport.items}
-                    onImport={(ligueId) => setImportTarget({ localeId: detailData.ligue_locale.id, ligueId })}
-                  />
-                )}
-              </div>
+              {canWrite && (
+                <div className="add-membership-form">
+                  <h4>Ajouter une ligue</h4>
+                  {liguesForImport && (
+                    <LigueSelectField
+                      ligues={liguesForImport.items}
+                      onImport={(ligueId) => setImportTarget({ localeId: detailData.ligue_locale.id, ligueId })}
+                    />
+                  )}
+                </div>
+              )}
             </>
           ) : null}
         </>
