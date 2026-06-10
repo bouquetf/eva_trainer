@@ -107,6 +107,18 @@ describe('CardStatsSection', () => {
     })
   })
 
+  it('affiche "Aucun adversaire" pour une carte sans matchs joués', async () => {
+    ;(getCardStats as any).mockResolvedValue({ stats: mockStats })
+    renderSection()
+    await waitFor(() => expect(screen.getByText('Team Alpha')).toBeInTheDocument())
+    await userEvent.selectOptions(screen.getByLabelText('Équipe :'), '1')
+    await waitFor(() => expect(screen.getByText('Mirage')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Mirage'))
+    await waitFor(() => {
+      expect(screen.getByText('Aucun adversaire pour cette carte')).toBeInTheDocument()
+    })
+  })
+
   it('tri ascendant puis descendant sur Victoires', async () => {
     ;(getCardStats as any).mockResolvedValue({ stats: mockStats })
     renderSection()

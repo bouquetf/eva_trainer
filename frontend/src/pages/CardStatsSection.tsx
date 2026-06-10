@@ -167,29 +167,35 @@ export default function CardStatsSection() {
                   <td>{(s.pick_rate * 100).toFixed(1)}%</td>
                   <td>{(s.ban_rate * 100).toFixed(1)}%</td>
                 </tr>
-                {expandedMapId === s.map_id && s.opponents.length > 0 && (
+                {expandedMapId === s.map_id && (
                   <tr key={`${s.map_id}-opponents`} className="row-expanded">
                     <td colSpan={8} style={{ padding: 0 }}>
                       <div className="detail-cell">
-                        <h5 style={{ margin: '8px 0' }}>Scores par adversaire</h5>
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Adversaire</th>
-                              <th>Score moyen</th>
-                              <th>Score médian</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {s.opponents.map((opp) => (
-                              <tr key={opp.team_id}>
-                                <td>{opp.team_name}</td>
-                                <td>{opp.avg_score.toFixed(1)}</td>
-                                <td>{opp.median_score.toFixed(1)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        {(s.opponents?.length ?? 0) > 0 ? (
+                          <>
+                            <h5 style={{ margin: '8px 0' }}>Scores par adversaire</h5>
+                            <table className="admin-table">
+                              <thead>
+                                <tr>
+                                  <th>Adversaire</th>
+                                  <th>Score moyen</th>
+                                  <th>Score médian</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(s.opponents ?? []).map((opp) => (
+                                  <tr key={opp.team_id}>
+                                    <td>{opp.team_name}</td>
+                                    <td>{opp.avg_score.toFixed(1)}</td>
+                                    <td>{opp.median_score.toFixed(1)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </>
+                        ) : (
+                          <p style={{ margin: '8px 0' }}>Aucun adversaire pour cette carte</p>
+                        )}
                       </div>
                     </td>
                   </tr>

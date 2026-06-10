@@ -229,6 +229,7 @@ func (r *cardStatsRepo) Compute(teamID int) ([]*CardStats, error) {
 			MedianScore: ComputeMedian(ma.scores),
 			PickRate:    computeRate(ma.picks, totalPicks),
 			BanRate:     computeRate(ma.bans, totalBans),
+			Opponents:   make([]OpponentCardStats, 0),
 		}
 
 		opponents := opponentData[mapID]
