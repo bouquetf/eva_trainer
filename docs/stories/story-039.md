@@ -7,25 +7,25 @@ En tant que lecteur, je veux consulter les statistiques globales par carte (vict
 Spécification `docs/specification/features/feedback-archives-matchs.md` (section 6, 8 étape 5).
 
 ## Critères d'acceptation
-- [ ] Consultation : liste des cartes par équipe, avec pour chaque carte :
+- [x] Consultation : liste des cartes par équipe, avec pour chaque carte :
   - Nombre de victoires
   - Nombre de défaites
   - Nombre moyen de victoires = winrate (victoires / (victoires + défaites))
   - Score moyen et médian sur cette carte
   - Score moyen par équipe adverse sur cette carte
   - Score médian par équipe adverse sur cette carte
-- [ ] Tri possible sur chacune des colonnes (ascendant et descendant)
-- [ ] Les données sont calculées à partir de tous les matchs enregistrés
-- [ ] L'API REST expose les endpoints
-- [ ] Les utilisateurs sans droits ne voient pas la fonctionnalité
+- [x] Tri possible sur chacune des colonnes (ascendant et descendant)
+- [x] Les données sont calculées à partir de tous les matchs enregistrés (toutes les cartes sont affichées, même sans match)
+- [x] L'API REST expose les endpoints
+- [x] Les utilisateurs sans droits ne voient pas la fonctionnalité
 
 ## Tests automatisés
-- Test unitaire : calcul des statistiques (winrate, moyenne, médiane)
-- Test d'intégration : API stats cartes
-- Test E2E : consultation de la page stats → vérification des valeurs → tri
+- [x] Test unitaire : calcul des statistiques (winrate, moyenne, médiane)
+- [x] Test d'intégration : API stats cartes
+- [x] Test E2E : consultation de la page stats → vérification des valeurs → tri
 
 ## Documentation
-- docs/archives-card-stats.md (à créer)
+- [x] docs/archives-card-stats.md
 
 ## Valeur utilisateur
 Offre une vue analytique des performances par carte, utile pour préparer les stratégies de picks/bans.

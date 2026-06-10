@@ -519,12 +519,13 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 	teamRepo := models.NewTeamRepository(db)
 	divRepo := models.NewDivRepository(db)
 	boRepo := models.NewBORepository(db)
+	cardStatsRepo := models.NewCardStatsRepository(db)
 	matchRepo := models.NewMatchRepository(db)
 	banRepo := models.NewBanRepository(db)
 	pickRepo := models.NewPickRepository(db)
 	mapRepo := models.NewMapRepository(db)
 	archivePermissionsHandler := handlers.NewArchivePermissionsHandler(globalRoleRepo, teamRoleRepo, logger)
-	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, divRepo, boRepo, matchRepo, banRepo, pickRepo, mapRepo, logger)
+	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, logger)
 
 	archive := rg.Group("/archive")
 	{
@@ -684,6 +685,12 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
 			archiveHandler.DeleteBO,
+		)
+
+		archive.GET("/card-stats",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetCardStats,
 		)
 
 		archive.GET("/ligues/:id/maps",

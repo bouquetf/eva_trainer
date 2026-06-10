@@ -23,6 +23,7 @@ type ArchiveHandler struct {
 	teamRepo        models.TeamRepository
 	divRepo         models.DivRepository
 	boRepo          models.BORepository
+	cardStatsRepo   models.CardStatsRepository
 	matchRepo       models.MatchRepository
 	banRepo         models.BanRepository
 	pickRepo        models.PickRepository
@@ -38,6 +39,7 @@ func NewArchiveHandler(
 	teamRepo models.TeamRepository,
 	divRepo models.DivRepository,
 	boRepo models.BORepository,
+	cardStatsRepo models.CardStatsRepository,
 	matchRepo models.MatchRepository,
 	banRepo models.BanRepository,
 	pickRepo models.PickRepository,
@@ -52,6 +54,7 @@ func NewArchiveHandler(
 		teamRepo:        teamRepo,
 		divRepo:         divRepo,
 		boRepo:          boRepo,
+		cardStatsRepo:   cardStatsRepo,
 		matchRepo:       matchRepo,
 		banRepo:         banRepo,
 		pickRepo:        pickRepo,
@@ -1398,4 +1401,37 @@ func (h *ArchiveHandler) DeleteBO(c *gin.Context) {
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "BO supprimé"})
+}
+
+func (h *ArchiveHandler) GetCardStats(c *gin.Context) {
+	teamIDStr := c.Query("team_id")
+	if teamIDStr == "" {
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_team_id", "team_id query parameter is required", http.StatusBadRequest))
+		return
+	}
+	teamID, err := strconv.Atoi(teamIDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team_id", http.StatusBadRequest))
+		return
+	}
+
+	_, err = h.evaTeamRepo.FindByID(teamID)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("eva_team_not_found", "Équipe eva non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find eva team", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	stats, err := h.cardStatsRepo.Compute(teamID)
+	if err != nil {
+		h.logger.Error("failed to compute card stats", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"stats": stats})
 }

@@ -407,3 +407,36 @@ export async function getLigueMaps(ligueId: number): Promise<LigueMapsResponse> 
   const api = getApiClient()
   return api.get<LigueMapsResponse>(`/api/v1/archive/ligues/${ligueId}/maps`)
 }
+
+// --- Card Stats ---
+
+export interface OpponentCardStats {
+  team_id: number
+  team_name: string
+  avg_score: number
+  median_score: number
+}
+
+export interface CardStats {
+  map_id: number
+  map_name: string
+  wins: number
+  losses: number
+  winrate: number
+  avg_score: number
+  median_score: number
+  pick_rate: number
+  ban_rate: number
+  opponents: OpponentCardStats[]
+}
+
+export interface CardStatsResponse {
+  stats: CardStats[]
+}
+
+const CARD_STATS_BASE = '/api/v1/archive/card-stats'
+
+export async function getCardStats(teamId: number): Promise<CardStatsResponse> {
+  const api = getApiClient()
+  return api.get<CardStatsResponse>(`${CARD_STATS_BASE}?team_id=${teamId}`)
+}

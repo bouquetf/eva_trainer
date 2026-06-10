@@ -11,6 +11,8 @@ import (
 	"testing"
 )
 
+const migrationsDir = "../../db/migrations"
+
 func seedRolePermissions(db *sql.DB) error {
 	permMap := make(map[string]int)
 	rows, err := db.Query(`SELECT id, feature FROM permissions`)

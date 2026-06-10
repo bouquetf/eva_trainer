@@ -57,13 +57,14 @@ func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTServic
 	teamRepo := models.NewTeamRepository(db)
 	divRepo := models.NewDivRepository(db)
 	boRepo := models.NewBORepository(db)
+	cardStatsRepo := models.NewCardStatsRepository(db)
 	matchRepo := models.NewMatchRepository(db)
 	banRepo := models.NewBanRepository(db)
 	pickRepo := models.NewPickRepository(db)
 	mapRepo := models.NewMapRepository(db)
 	userRepo := models.NewUserRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, boRepo, matchRepo, banRepo, pickRepo, mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return archiveHandler, jwtService, userRepo, db
 }
@@ -2012,5 +2013,234 @@ func TestArchiveHandler_CreateBO_LigueNotFound(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["error"] != "ligue_not_found" {
 		t.Errorf("expected error 'ligue_not_found', got '%v'", resp["error"])
+	}
+}
+
+// --- CardStats ---
+
+func TestArchiveHandler_GetCardStats_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	// Create maps
+	mapRepo := models.NewMapRepository(db)
+	cpMetal, err := mapRepo.Create("cp_metal", nil)
+	if err != nil {
+		t.Fatalf("failed to create map: %v", err)
+	}
+	mistral, err := mapRepo.Create("mistral", nil)
+	if err != nil {
+		t.Fatalf("failed to create map: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	// Create a BO between A and B
+	boRepo := models.NewBORepository(db)
+	bo, err := boRepo.Create(ligueID, teamAID, teamBID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	// Match 1: cp_metal, A wins 80-60
+	matchRepo := models.NewMatchRepository(db)
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 80, 60, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+
+	// Match 2: cp_metal, B wins 55-70
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 55, 70, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+
+	// Match 3: mistral, A wins 90-50
+	_, err = matchRepo.Create(bo.ID, mistral.ID, 90, 50, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+
+	// Add picks and bans
+	banRepo := models.NewBanRepository(db)
+	_, err = banRepo.Create(bo.ID, teamAID, mistral.ID)
+	if err != nil {
+		t.Fatalf("failed to create ban: %v", err)
+	}
+	pickRepo := models.NewPickRepository(db)
+	_, err = pickRepo.Create(bo.ID, teamAID, cpMetal.ID)
+	if err != nil {
+		t.Fatalf("failed to create pick: %v", err)
+	}
+	_, err = pickRepo.Create(bo.ID, teamAID, cpMetal.ID)
+	if err != nil {
+		t.Fatalf("failed to create second pick: %v", err)
+	}
+
+	// Recompute BO winner
+	bo, err = boRepo.RecomputeWinner(bo.ID)
+	if err != nil {
+		t.Fatalf("failed to recompute BO winner: %v", err)
+	}
+	_ = bo
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/card-stats?team_id=%d", teamAID), nil)
+
+	handler.GetCardStats(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	stats, ok := resp["stats"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'stats' array")
+	}
+	if len(stats) != 2 {
+		t.Fatalf("expected 2 stats, got %d", len(stats))
+	}
+
+	cpMetalStat := stats[0].(map[string]interface{})
+	if cpMetalStat["map_name"] != "cp_metal" {
+		t.Errorf("expected map_name 'cp_metal', got '%v'", cpMetalStat["map_name"])
+	}
+	if cpMetalStat["wins"].(float64) != 1 {
+		t.Errorf("cp_metal: expected wins=1, got %v", cpMetalStat["wins"])
+	}
+	if cpMetalStat["losses"].(float64) != 1 {
+		t.Errorf("cp_metal: expected losses=1, got %v", cpMetalStat["losses"])
+	}
+	if cpMetalStat["winrate"].(float64) != 0.5 {
+		t.Errorf("cp_metal: expected winrate=0.5, got %v", cpMetalStat["winrate"])
+	}
+	if cpMetalStat["avg_score"].(float64) != 67.5 {
+		t.Errorf("cp_metal: expected avg_score=67.5, got %v", cpMetalStat["avg_score"])
+	}
+	if cpMetalStat["picks"].(float64) != 2 {
+		t.Errorf("cp_metal: expected picks=2, got %v", cpMetalStat["picks"])
+	}
+	if cpMetalStat["bans"].(float64) != 0 {
+		t.Errorf("cp_metal: expected bans=0, got %v", cpMetalStat["bans"])
+	}
+
+	mistralStat := stats[1].(map[string]interface{})
+	if mistralStat["map_name"] != "mistral" {
+		t.Errorf("expected map_name 'mistral', got '%v'", mistralStat["map_name"])
+	}
+	if mistralStat["wins"].(float64) != 1 {
+		t.Errorf("mistral: expected wins=1, got %v", mistralStat["wins"])
+	}
+	if mistralStat["losses"].(float64) != 0 {
+		t.Errorf("mistral: expected losses=0, got %v", mistralStat["losses"])
+	}
+	if mistralStat["winrate"].(float64) != 1.0 {
+		t.Errorf("mistral: expected winrate=1.0, got %v", mistralStat["winrate"])
+	}
+	if mistralStat["avg_score"].(float64) != 90.0 {
+		t.Errorf("mistral: expected avg_score=90.0, got %v", mistralStat["avg_score"])
+	}
+	if mistralStat["picks"].(float64) != 0 {
+		t.Errorf("mistral: expected picks=0, got %v", mistralStat["picks"])
+	}
+	if mistralStat["bans"].(float64) != 1 {
+		t.Errorf("mistral: expected bans=1, got %v", mistralStat["bans"])
+	}
+}
+
+func TestArchiveHandler_GetCardStats_MissingTeamID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/card-stats", nil)
+
+	handler.GetCardStats(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "missing_team_id" {
+		t.Errorf("expected error 'missing_team_id', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_GetCardStats_InvalidTeamID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/card-stats?team_id=abc", nil)
+
+	handler.GetCardStats(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "invalid_team_id" {
+		t.Errorf("expected error 'invalid_team_id', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_GetCardStats_TeamNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/card-stats?team_id=99999", nil)
+
+	handler.GetCardStats(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "eva_team_not_found" {
+		t.Errorf("expected error 'eva_team_not_found', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_GetCardStats_TeamWithoutMatchs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	teamID := createTestEvaTeam(t, db, "Lonely", "LON")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/card-stats?team_id=%d", teamID), nil)
+
+	handler.GetCardStats(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	stats, ok := resp["stats"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'stats' array")
+	}
+	if len(stats) != 0 {
+		t.Errorf("expected empty stats, got %d", len(stats))
 	}
 }

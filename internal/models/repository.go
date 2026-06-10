@@ -291,6 +291,10 @@ type MatchRepository interface {
 	DeleteByBOID(boID int) error
 }
 
+type CardStatsRepository interface {
+	Compute(teamID int) ([]*CardStats, error)
+}
+
 type BanRepository interface {
 	Create(boID, equipeID, mapID int) (*Ban, error)
 	FindByID(id int) (*Ban, error)

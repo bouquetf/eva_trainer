@@ -381,7 +381,7 @@ func TestZoneRepository_Delete_NotFound(t *testing.T) {
 	}
 }
 
-func ptr(s string) *string {
+func strPtr(s string) *string {
 	return &s
 }
 
@@ -392,11 +392,11 @@ func TestValidateFloor(t *testing.T) {
 		want  error
 	}{
 		{"nil", nil, nil},
-		{"haut", ptr("haut"), nil},
-		{"bas", ptr("bas"), nil},
-		{"empty string", ptr(""), nil},
-		{"middle", ptr("middle"), ErrInvalidFloorValue},
-		{"HAUT uppercase", ptr("HAUT"), ErrInvalidFloorValue},
+		{"haut", strPtr("haut"), nil},
+		{"bas", strPtr("bas"), nil},
+		{"empty string", strPtr(""), nil},
+		{"middle", strPtr("middle"), ErrInvalidFloorValue},
+		{"HAUT uppercase", strPtr("HAUT"), ErrInvalidFloorValue},
 	}
 
 	for _, tt := range tests {
