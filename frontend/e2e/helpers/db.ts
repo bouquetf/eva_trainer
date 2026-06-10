@@ -262,14 +262,15 @@ export interface TestDiv {
   id: number;
   ligue_id: number;
   nom: string;
+  replay_url?: string;
 }
 
-export async function seedDiv(ligueId: number, nom: string): Promise<TestDiv> {
+export async function seedDiv(ligueId: number, nom: string, replayUrl?: string): Promise<TestDiv> {
   const rows = await queryDB<{ id: number }[]>(
-    `INSERT INTO divs (ligue_id, nom) VALUES ($1, $2) RETURNING id`,
-    [ligueId, nom],
+    `INSERT INTO divs (ligue_id, nom, replay_url) VALUES ($1, $2, $3) RETURNING id`,
+    [ligueId, nom, replayUrl ?? ''],
   );
-  return { id: rows[0].id, ligue_id: ligueId, nom };
+  return { id: rows[0].id, ligue_id: ligueId, nom, replay_url: replayUrl };
 }
 
 export async function seedEquipeEvaDiv(equipeEvaId: number, divId: number, ligueId: number): Promise<void> {

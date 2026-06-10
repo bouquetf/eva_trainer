@@ -196,6 +196,7 @@ export interface Div {
   id: number
   ligue_id: number
   nom: string
+  replay_url: string
   teams?: EvaTeam[]
 }
 
@@ -268,6 +269,16 @@ export async function assignTeamToDiv(divId: number, equipeEvaId: number): Promi
 export async function removeTeamFromDiv(divId: number, teamId: number): Promise<{ message: string }> {
   const api = getApiClient()
   return api.del<{ message: string }>(`${DIVISIONS_BASE}/${divId}/teams/${teamId}`)
+}
+
+export async function setDivReplayURL(divId: number, replayUrl: string): Promise<{ div: Div }> {
+  const api = getApiClient()
+  return api.put<{ div: Div }>(`${DIVISIONS_BASE}/${divId}/replay`, { replay_url: replayUrl })
+}
+
+export async function deleteDivReplayURL(divId: number): Promise<{ div: Div }> {
+  const api = getApiClient()
+  return api.del<{ div: Div }>(`${DIVISIONS_BASE}/${divId}/replay`)
 }
 
 export async function getDivStandings(divId: number): Promise<StandingsResponse> {

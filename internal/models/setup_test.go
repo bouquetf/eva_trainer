@@ -31,6 +31,8 @@ var migrationFiles = []string{
 	"000028_add_ligue_locale_emplacement_unique.up.sql",
 	"000029_add_ligue_locale_junction.up.sql",
 	"000030_add_eva_teams.up.sql",
+	"000031_add_archive_divs_and_bos.up.sql",
+	"000032_add_divs_replay_url.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

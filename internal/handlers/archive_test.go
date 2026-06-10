@@ -38,6 +38,7 @@ var archiveMigrationFiles = []string{
 	"000029_add_ligue_locale_junction.up.sql",
 	"000030_add_eva_teams.up.sql",
 	"000031_add_archive_divs_and_bos.up.sql",
+	"000032_add_divs_replay_url.up.sql",
 }
 
 func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTService, models.UserRepository, *sql.DB) {
@@ -1281,6 +1282,320 @@ func TestArchiveHandler_GetDivStandings_WithBOs(t *testing.T) {
 	}
 	if entryA["bo_points"].(float64) != 1 {
 		t.Errorf("expected bo_points 1, got %v", entryA["bo_points"])
+	}
+}
+
+// --- SetDivReplayURL / DeleteDivReplayURL ---
+
+func TestArchiveHandler_SetDivReplayURL_ValidYouTube(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	body := `{"replay_url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/divisions/%d/replay", div.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.SetDivReplayURL(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	d, ok := resp["div"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'div' object")
+	}
+	if d["replay_url"] != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
+		t.Errorf("expected replay_url 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', got '%v'", d["replay_url"])
+	}
+}
+
+func TestArchiveHandler_SetDivReplayURL_ValidTwitch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	body := `{"replay_url":"https://www.twitch.tv/videos/123456"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/divisions/%d/replay", div.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.SetDivReplayURL(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	d, ok := resp["div"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'div' object")
+	}
+	if d["replay_url"] != "https://www.twitch.tv/videos/123456" {
+		t.Errorf("expected replay_url 'https://www.twitch.tv/videos/123456', got '%v'", d["replay_url"])
+	}
+}
+
+func TestArchiveHandler_SetDivReplayURL_InvalidURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	body := `{"replay_url":"https://vimeo.com/123"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/divisions/%d/replay", div.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.SetDivReplayURL(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "invalid_replay_url" {
+		t.Errorf("expected error 'invalid_replay_url', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_SetDivReplayURL_EmptyURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	// First set a URL
+	_, err = divRepo.SetReplayURL(div.ID, "https://www.youtube.com/watch?v=test")
+	if err != nil {
+		t.Fatalf("failed to set replay url: %v", err)
+	}
+
+	body := `{"replay_url":""}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/archive/divisions/%d/replay", div.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.SetDivReplayURL(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	d, ok := resp["div"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'div' object")
+	}
+	if d["replay_url"] != "" {
+		t.Errorf("expected empty replay_url, got '%v'", d["replay_url"])
+	}
+}
+
+func TestArchiveHandler_SetDivReplayURL_DivNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	body := `{"replay_url":"https://www.youtube.com/watch?v=test"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/archive/divisions/99999/replay", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.SetDivReplayURL(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "div_not_found" {
+		t.Errorf("expected error 'div_not_found', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_DeleteDivReplayURL_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	// Set a URL first
+	_, err = divRepo.SetReplayURL(div.ID, "https://www.youtube.com/watch?v=test")
+	if err != nil {
+		t.Fatalf("failed to set replay url: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/archive/divisions/%d/replay", div.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.DeleteDivReplayURL(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	d, ok := resp["div"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'div' object")
+	}
+	if d["replay_url"] != "" {
+		t.Errorf("expected empty replay_url, got '%v'", d["replay_url"])
+	}
+}
+
+func TestArchiveHandler_DeleteDivReplayURL_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/archive/divisions/99999/replay", nil)
+	c.Params = gin.Params{{Key: "id", Value: "99999"}}
+
+	handler.DeleteDivReplayURL(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "div_not_found" {
+		t.Errorf("expected error 'div_not_found', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_ListDivs_IncludesReplayURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div1, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+	_, err = divRepo.Create(ligueID, "Groupe B")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	// Set replay_url on div1
+	_, err = divRepo.SetReplayURL(div1.ID, "https://www.youtube.com/watch?v=test")
+	if err != nil {
+		t.Fatalf("failed to set replay url: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/divisions?ligue_id=%d", ligueID), nil)
+
+	handler.ListDivs(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	divs, ok := resp["divs"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'divs' array")
+	}
+	if len(divs) != 2 {
+		t.Fatalf("expected 2 divs, got %d", len(divs))
+	}
+
+	for _, raw := range divs {
+		d := raw.(map[string]interface{})
+		nom := d["nom"].(string)
+		replayURL := d["replay_url"].(string)
+		if nom == "Groupe A" && replayURL != "https://www.youtube.com/watch?v=test" {
+			t.Errorf("expected replay_url for Groupe A, got '%s'", replayURL)
+		}
+		if nom == "Groupe B" && replayURL != "" {
+			t.Errorf("expected empty replay_url for Groupe B, got '%s'", replayURL)
+		}
+	}
+}
+
+func TestArchiveHandler_GetDiv_IncludesReplayURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe A")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+
+	_, err = divRepo.SetReplayURL(div.ID, "https://www.twitch.tv/videos/999")
+	if err != nil {
+		t.Fatalf("failed to set replay url: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/divisions/%d", div.ID), nil)
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", div.ID)}}
+
+	handler.GetDiv(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	d, ok := resp["div"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'div' object")
+	}
+	if d["replay_url"] != "https://www.twitch.tv/videos/999" {
+		t.Errorf("expected replay_url 'https://www.twitch.tv/videos/999', got '%v'", d["replay_url"])
 	}
 }
 

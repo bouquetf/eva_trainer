@@ -678,10 +678,11 @@ type assignTeamRequest struct {
 }
 
 type divWithTeams struct {
-	ID      int               `json:"id"`
-	LigueID int               `json:"ligue_id"`
-	Nom     string            `json:"nom"`
-	Teams   []*models.EvaTeam `json:"teams"`
+	ID        int               `json:"id"`
+	LigueID   int               `json:"ligue_id"`
+	Nom       string            `json:"nom"`
+	ReplayURL string            `json:"replay_url"`
+	Teams     []*models.EvaTeam `json:"teams"`
 }
 
 func (h *ArchiveHandler) ListDivs(c *gin.Context) {
@@ -717,10 +718,11 @@ func (h *ArchiveHandler) ListDivs(c *gin.Context) {
 			teams = []*models.EvaTeam{}
 		}
 		result = append(result, divWithTeams{
-			ID:      d.ID,
-			LigueID: d.LigueID,
-			Nom:     d.Nom,
-			Teams:   teams,
+			ID:        d.ID,
+			LigueID:   d.LigueID,
+			Nom:       d.Nom,
+			ReplayURL: d.ReplayURL,
+			Teams:     teams,
 		})
 	}
 
@@ -937,6 +939,61 @@ func (h *ArchiveHandler) GetDivStandings(c *gin.Context) {
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"standings": standings})
+}
+
+func (h *ArchiveHandler) SetDivReplayURL(c *gin.Context) {
+	divID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	var req struct {
+		ReplayURL string `json:"replay_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	if !models.IsValidReplayURL(req.ReplayURL) {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_replay_url", "invalid replay URL: only YouTube and Twitch URLs are allowed", http.StatusBadRequest))
+		return
+	}
+
+	div, err := h.divRepo.SetReplayURL(divID, req.ReplayURL)
+	if errors.Is(err, models.ErrDivNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to set replay url", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"div": div})
+}
+
+func (h *ArchiveHandler) DeleteDivReplayURL(c *gin.Context) {
+	divID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid div id", http.StatusBadRequest))
+		return
+	}
+
+	div, err := h.divRepo.SetReplayURL(divID, "")
+	if errors.Is(err, models.ErrDivNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("div_not_found", "Div non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to delete replay url", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"div": div})
 }
 
 func (h *ArchiveHandler) GenerateRoundRobin(c *gin.Context) {

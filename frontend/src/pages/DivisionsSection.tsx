@@ -3,8 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listLigues, listDivs, getDiv, createDiv, updateDiv, deleteDiv,
   assignTeamToDiv, removeTeamFromDiv, getDivStandings, listEvaTeams, generateRoundRobin,
+  setDivReplayURL, deleteDivReplayURL,
 } from '../api/archives'
-import type { Div, StandingEntry } from '../api/archives'
+import type { Div, DivDetailResponse, StandingEntry } from '../api/archives'
+import { detectReplayType, getYouTubeEmbedUrl } from '../lib/replay-url'
 
 export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
   const queryClient = useQueryClient()
@@ -21,6 +23,10 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
 
   const [showAssignForm, setShowAssignForm] = useState(false)
   const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('')
+
+  const [replayFormVisible, setReplayFormVisible] = useState(false)
+  const [replayFormUrl, setReplayFormUrl] = useState('')
+  const [deletingReplay, setDeletingReplay] = useState(false)
 
   const { data: liguesData } = useQuery({
     queryKey: ['archive-ligues', 1],
@@ -152,6 +158,40 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
     },
   })
 
+  const setReplayURLMutation = useMutation({
+    mutationFn: ({ divId, replayUrl }: { divId: number; replayUrl: string }) => setDivReplayURL(divId, replayUrl),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['archive-div-detail', selectedDivId], (old: DivDetailResponse | undefined) => {
+        if (!old) return old
+        return { ...old, div: data.div }
+      })
+      queryClient.invalidateQueries({ queryKey: ['archive-divs'] })
+      setReplayFormVisible(false)
+      setReplayFormUrl('')
+      setSuccess('Lien replay mis à jour')
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Erreur lors de la mise à jour du lien replay")
+    },
+  })
+
+  const deleteReplayURLMutation = useMutation({
+    mutationFn: (divId: number) => deleteDivReplayURL(divId),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['archive-div-detail', selectedDivId], (old: DivDetailResponse | undefined) => {
+        if (!old) return old
+        return { ...old, div: data.div }
+      })
+      queryClient.invalidateQueries({ queryKey: ['archive-divs'] })
+      setSuccess('Lien replay supprimé')
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Erreur lors de la suppression du lien replay")
+    },
+  })
+
   function openCreateDivForm() {
     setEditingDiv(null)
     setDivFormName('')
@@ -185,6 +225,24 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
     setError(null)
     if (selectedDivId !== null && selectedTeamId !== '') {
       assignMutation.mutate({ divId: selectedDivId, teamId: Number(selectedTeamId) })
+    }
+  }
+
+  function openAddReplayForm() {
+    setReplayFormUrl('')
+    setReplayFormVisible(true)
+  }
+
+  function openEditReplayForm(currentUrl: string) {
+    setReplayFormUrl(currentUrl)
+    setReplayFormVisible(true)
+  }
+
+  function handleReplaySubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (selectedDivId !== null) {
+      setReplayURLMutation.mutate({ divId: selectedDivId, replayUrl: replayFormUrl })
     }
   }
 
@@ -336,6 +394,90 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
                                 >
                                   {generateRoundRobinMutation.isPending ? 'Génération...' : 'Générer le calendrier'}
                                 </button>
+                              )}
+
+                              <h4 style={{ marginTop: 16 }}>Replay stream</h4>
+                              {(() => {
+                                const divReplayUrl = divDetailData?.div?.replay_url
+                                const replayType = divReplayUrl ? detectReplayType(divReplayUrl) : null
+                                const embedUrl = replayType === 'youtube' && divReplayUrl ? getYouTubeEmbedUrl(divReplayUrl) : null
+
+                                if (divReplayUrl) {
+                                  return (
+                                    <>
+                                      {replayType === 'youtube' && embedUrl && (
+                                        <div style={{ margin: '8px 0', maxWidth: 560 }}>
+                                          <iframe
+                                            src={embedUrl}
+                                            title="Replay YouTube"
+                                            allowFullScreen
+                                            style={{ width: '100%', height: 'auto', aspectRatio: '16 / 9', border: 'none', borderRadius: 8 }}
+                                          />
+                                        </div>
+                                      )}
+                                      {replayType === 'twitch' && (
+                                        <p style={{ margin: '8px 0' }}>
+                                          <a href={divReplayUrl} target="_blank" rel="noopener noreferrer">
+                                            Regarder sur Twitch
+                                          </a>
+                                        </p>
+                                      )}
+                                      {canWrite && (
+                                        <div style={{ marginTop: 8 }}>
+                                          <button className="btn-secondary btn-small" onClick={() => openEditReplayForm(divReplayUrl)}>Modifier</button>
+                                          <button className="btn-danger btn-small" style={{ marginLeft: 8 }} onClick={() => setDeletingReplay(true)}>Supprimer</button>
+                                        </div>
+                                      )}
+
+                                      {deletingReplay && (
+                                        <div className="modal-overlay" onClick={() => setDeletingReplay(false)}>
+                                          <div className="modal-content" onClick={e => e.stopPropagation()}>
+                                            <h3>Confirmer la suppression</h3>
+                                            <p>Êtes-vous sûr de vouloir supprimer le lien replay ?</p>
+                                            <div className="modal-actions">
+                                              <button className="btn-secondary" onClick={() => setDeletingReplay(false)}>Annuler</button>
+                                              <button className="btn-danger" onClick={() => { deleteReplayURLMutation.mutate(div.id); setDeletingReplay(false) }} disabled={deleteReplayURLMutation.isPending}>
+                                                Supprimer
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
+                                  )
+                                }
+
+                                return (
+                                  <>
+                                    <p className="text-muted">Aucun lien replay</p>
+                                    {canWrite && (
+                                      <button className="btn-primary btn-small" onClick={openAddReplayForm}>Ajouter un lien replay</button>
+                                    )}
+                                  </>
+                                )
+                              })()}
+
+                              {replayFormVisible && (
+                                <div className="add-membership-form" style={{ marginTop: 8 }}>
+                                  <form onSubmit={handleReplaySubmit}>
+                                    <div className="add-membership-row">
+                                      <input
+                                        type="text"
+                                        className="role-select"
+                                        style={{ flex: 1 }}
+                                        value={replayFormUrl}
+                                        onChange={e => setReplayFormUrl(e.target.value)}
+                                        placeholder="https://www.youtube.com/watch?v=..."
+                                      />
+                                      <button type="submit" className="btn-primary btn-small" disabled={setReplayURLMutation.isPending}>
+                                        {setReplayURLMutation.isPending ? 'En cours...' : 'Valider'}
+                                      </button>
+                                      <button type="button" className="btn-secondary btn-small" onClick={() => { setReplayFormVisible(false); setReplayFormUrl('') }}>
+                                        Annuler
+                                      </button>
+                                    </div>
+                                  </form>
+                                </div>
                               )}
 
                               <h4 style={{ marginTop: 16 }}>Classement {div.nom}</h4>

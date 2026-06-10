@@ -4,15 +4,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Div struct {
-	ID      int    `json:"id"`
-	LigueID int    `json:"ligue_id"`
-	Nom     string `json:"nom"`
+	ID        int    `json:"id"`
+	LigueID   int    `json:"ligue_id"`
+	Nom       string `json:"nom"`
+	ReplayURL string `json:"replay_url"`
 }
 
 type StandingEntry struct {
@@ -31,6 +33,16 @@ type StandingEntry struct {
 	MatchPoints   int    `json:"match_points"`
 }
 
+var youtubeRe = regexp.MustCompile(`^(https?://)?(www\.)?(youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+|youtube\.com/embed/[\w-]+)$`)
+var twitchRe = regexp.MustCompile(`^(https?://)?(www\.|clips\.)?twitch\.tv/(videos/\d+|[a-zA-Z0-9_]+(/video/\d+)?)$`)
+
+func IsValidReplayURL(url string) bool {
+	if url == "" {
+		return true
+	}
+	return youtubeRe.MatchString(url) || twitchRe.MatchString(url)
+}
+
 type divRepo struct {
 	db *sql.DB
 }
@@ -43,7 +55,7 @@ func scanDiv(scanner interface {
 	Scan(dest ...interface{}) error
 }) (*Div, error) {
 	d := &Div{}
-	err := scanner.Scan(&d.ID, &d.LigueID, &d.Nom)
+	err := scanner.Scan(&d.ID, &d.LigueID, &d.Nom, &d.ReplayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +88,7 @@ func (r *divRepo) Create(ligueID int, nom string) (*Div, error) {
 	d, err := scanDiv(r.db.QueryRow(
 		`INSERT INTO divs (ligue_id, nom)
 		 VALUES ($1, $2)
-		 RETURNING id, ligue_id, nom`,
+		 RETURNING id, ligue_id, nom, replay_url`,
 		ligueID, nom,
 	))
 	if err != nil {
@@ -91,7 +103,7 @@ func (r *divRepo) Create(ligueID int, nom string) (*Div, error) {
 
 func (r *divRepo) FindByID(id int) (*Div, error) {
 	d, err := scanDiv(r.db.QueryRow(
-		`SELECT id, ligue_id, nom FROM divs WHERE id = $1`,
+		`SELECT id, ligue_id, nom, replay_url FROM divs WHERE id = $1`,
 		id,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -105,7 +117,7 @@ func (r *divRepo) FindByID(id int) (*Div, error) {
 
 func (r *divRepo) FindByLigueID(ligueID int) ([]*Div, error) {
 	rows, err := r.db.Query(
-		`SELECT id, ligue_id, nom FROM divs WHERE ligue_id = $1 ORDER BY nom ASC`,
+		`SELECT id, ligue_id, nom, replay_url FROM divs WHERE ligue_id = $1 ORDER BY nom ASC`,
 		ligueID,
 	)
 	if err != nil {
@@ -122,7 +134,7 @@ func (r *divRepo) Update(id int, nom string) (*Div, error) {
 
 	d, err := scanDiv(r.db.QueryRow(
 		`UPDATE divs SET nom = $1 WHERE id = $2
-		 RETURNING id, ligue_id, nom`,
+		 RETURNING id, ligue_id, nom, replay_url`,
 		nom, id,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -134,6 +146,21 @@ func (r *divRepo) Update(id int, nom string) (*Div, error) {
 			return nil, ErrDivNameExists
 		}
 		return nil, fmt.Errorf("failed to update div: %w", err)
+	}
+	return d, nil
+}
+
+func (r *divRepo) SetReplayURL(divID int, url string) (*Div, error) {
+	d, err := scanDiv(r.db.QueryRow(
+		`UPDATE divs SET replay_url = $1 WHERE id = $2
+		 RETURNING id, ligue_id, nom, replay_url`,
+		url, divID,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrDivNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to set replay url: %w", err)
 	}
 	return d, nil
 }

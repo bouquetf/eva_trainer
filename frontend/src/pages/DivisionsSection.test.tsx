@@ -17,11 +17,14 @@ vi.mock('../api/archives', () => ({
   getDivStandings: vi.fn(),
   listEvaTeams: vi.fn(),
   generateRoundRobin: vi.fn(),
+  setDivReplayURL: vi.fn(),
+  deleteDivReplayURL: vi.fn(),
 }))
 
 import {
   listLigues, listDivs, getDiv, createDiv, updateDiv, deleteDiv,
   getDivStandings, listEvaTeams, generateRoundRobin,
+  setDivReplayURL, deleteDivReplayURL,
 } from '../api/archives'
 
 const mockLigues = [
@@ -35,8 +38,8 @@ const mockTeams = [
 ]
 
 const mockDivs = [
-  { id: 1, ligue_id: 1, nom: 'Groupe A', teams: [mockTeams[0]] },
-  { id: 2, ligue_id: 1, nom: 'Groupe B', teams: [] },
+  { id: 1, ligue_id: 1, nom: 'Groupe A', replay_url: '', teams: [mockTeams[0]] },
+  { id: 2, ligue_id: 1, nom: 'Groupe B', replay_url: '', teams: [] },
 ]
 
 const mockStandings = [
@@ -241,5 +244,138 @@ describe('DivisionsSection', () => {
     await waitFor(() => expect(screen.getByText('Groupe A')).toBeInTheDocument())
     await userEvent.click(screen.getByText('Groupe A'))
     expect(screen.queryByText('Générer le calendrier')).not.toBeInTheDocument()
+  })
+
+  describe('replay URL', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+      ;(listLigues as any).mockResolvedValue({ items: mockLigues, total: 2, page: 1, per_page: 100 })
+      ;(listEvaTeams as any).mockResolvedValue({ teams: mockTeams })
+      ;(listDivs as any).mockResolvedValue({ divs: mockDivs })
+      ;(getDivStandings as any).mockResolvedValue({ standings: mockStandings })
+    })
+
+    it('shows "Aucun lien replay" when replay_url is empty', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: '' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => {
+        expect(screen.getByText('Aucun lien replay')).toBeInTheDocument()
+      })
+    })
+
+    it('shows "Ajouter un lien replay" button when canWrite=true and replay_url empty', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: '' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => {
+        expect(screen.getByText('Ajouter un lien replay')).toBeInTheDocument()
+      })
+    })
+
+    it('does not show "Ajouter un lien replay" when canWrite=false', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: '' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={false} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => {
+        expect(screen.queryByText('Ajouter un lien replay')).not.toBeInTheDocument()
+      })
+    })
+
+    it('shows YouTube embed iframe for a YouTube link', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: 'https://www.youtube.com/watch?v=test123' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => {
+        const iframe = document.querySelector('iframe')
+        expect(iframe).toBeInTheDocument()
+        expect(iframe?.src).toContain('youtube.com/embed/test123')
+      })
+    })
+
+    it('shows "Regarder sur Twitch" link for a Twitch link', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: 'https://www.twitch.tv/videos/123456' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => {
+        const link = screen.getByText('Regarder sur Twitch')
+        expect(link).toBeInTheDocument()
+        expect(link).toHaveAttribute('href', 'https://www.twitch.tv/videos/123456')
+      })
+    })
+
+    it('shows Modifier/Supprimer buttons for canWrite=true with existing link', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: 'https://www.youtube.com/watch?v=test123' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => {
+        expect(screen.getAllByText('Modifier').length).toBeGreaterThanOrEqual(2)
+        expect(screen.getAllByText('Supprimer').length).toBeGreaterThanOrEqual(2)
+      })
+    })
+
+    it('hides Modifier/Supprimer when canWrite=false but still shows iframe', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: 'https://www.youtube.com/watch?v=test123' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={false} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => {
+        const iframe = document.querySelector('iframe')
+        expect(iframe).toBeInTheDocument()
+        expect(screen.queryByText('Modifier')).not.toBeInTheDocument()
+      })
+    })
+
+    it('opens add replay form when clicking "Ajouter un lien replay"', async () => {
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: '' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => expect(screen.getByText('Ajouter un lien replay')).toBeInTheDocument())
+      await userEvent.click(screen.getByText('Ajouter un lien replay'))
+      expect(screen.getByPlaceholderText('https://www.youtube.com/watch?v=...')).toBeInTheDocument()
+      expect(screen.getByText('Valider')).toBeInTheDocument()
+    })
+
+    it('calls setDivReplayURL on form submit', async () => {
+      ;(setDivReplayURL as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: 'https://www.youtube.com/watch?v=test' } })
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: '' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => expect(screen.getByText('Ajouter un lien replay')).toBeInTheDocument())
+      await userEvent.click(screen.getByText('Ajouter un lien replay'))
+      await userEvent.type(screen.getByPlaceholderText('https://www.youtube.com/watch?v=...'), 'https://www.youtube.com/watch?v=test')
+      await userEvent.click(screen.getByText('Valider'))
+      await waitFor(() => {
+        expect(setDivReplayURL).toHaveBeenCalledWith(1, 'https://www.youtube.com/watch?v=test')
+      })
+    })
+
+    it('shows confirmation modal before deletion and confirms', async () => {
+      ;(deleteDivReplayURL as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: '' } })
+      ;(getDiv as any).mockResolvedValue({ div: { ...mockDivs[0], replay_url: 'https://www.youtube.com/watch?v=test' }, teams: [mockTeams[0]] })
+      render(<DivisionsSection canWrite={true} />, { wrapper: createQueryWrapper() })
+      await selectLigue()
+      await userEvent.click(screen.getByText('Groupe A'))
+      await waitFor(() => expect(screen.getByText('Replay stream')).toBeInTheDocument())
+      const detailCell = screen.getByText('Replay stream').closest('.detail-cell')!
+      const replayDeleteBtn = within(detailCell).getByText('Supprimer')
+      await userEvent.click(replayDeleteBtn)
+      await waitFor(() => {
+        expect(screen.getByText('Confirmer la suppression')).toBeInTheDocument()
+      })
+      const confirmBtn = screen.getByText('Supprimer', { selector: 'button:not(.btn-small)' })
+      await userEvent.click(confirmBtn)
+      await waitFor(() => {
+        expect(deleteDivReplayURL).toHaveBeenCalledWith(1)
+      })
+    })
   })
 })

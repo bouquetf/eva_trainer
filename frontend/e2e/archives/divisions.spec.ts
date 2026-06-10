@@ -210,4 +210,34 @@ test.describe('Feature: Divisions et classement', () => {
 
     await expect(page.getByRole('button', { name: 'Nouvelle division' })).not.toBeVisible();
   });
+
+  test('9: Ajout d\'un lien YouTube replay sur une division', async ({ page }) => {
+    archivist = await seedUser('e2e-div-9-' + Date.now(), { isAdmin: true });
+    await seedGlobalRole(archivist.id, 'archivist');
+    const ligueId = await seedLigueWithSplit();
+    const div = await seedDiv(ligueId, 'E2E Replay ' + Date.now());
+
+    await page.goto('/login');
+    await loginAsUser(page, archivist);
+    await page.goto('/archives');
+
+    await page.getByRole('button', { name: 'Divisions' }).click();
+    await page.getByRole('combobox', { name: 'Période' }).selectOption(String(ligueId));
+
+    await page.getByRole('row').filter({ hasText: div.nom }).click();
+
+    await expect(page.getByText('Aucun lien replay')).toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: 'Ajouter un lien replay' }).click();
+
+    const youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+    await page.getByPlaceholder('https://www.youtube.com/watch?v=...').fill(youtubeUrl);
+    await page.locator('.add-membership-form').getByRole('button', { name: 'Valider' }).click();
+
+    await expect(page.locator('iframe[src*="youtube.com/embed"]')).toBeVisible({ timeout: 5000 });
+
+    const detailSection = page.locator('.row-expanded')
+    await expect(detailSection.getByRole('button', { name: 'Modifier' })).toBeVisible();
+    await expect(detailSection.getByRole('button', { name: 'Supprimer' })).toBeVisible();
+  });
 });

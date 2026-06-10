@@ -661,6 +661,16 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
 			archiveHandler.GenerateRoundRobin,
 		)
+		archive.PUT("/divisions/:id/replay",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.SetDivReplayURL,
+		)
+		archive.DELETE("/divisions/:id/replay",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.DeleteDivReplayURL,
+		)
 
 		archive.POST("/bos",
 			middleware.RequireAuth(logger, userRepo, jwtService),

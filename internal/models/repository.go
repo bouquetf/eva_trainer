@@ -269,6 +269,7 @@ type DivRepository interface {
 	FindTeamsByLigueID(ligueID int) (map[int][]*EvaTeam, error)
 	GetStandings(divID int) ([]*StandingEntry, error)
 	GenerateRoundRobin(divID int) ([]*BO, error)
+	SetReplayURL(divID int, url string) (*Div, error)
 }
 
 type BORepository interface {

@@ -1,0 +1,1 @@
+ALTER TABLE divs DROP COLUMN IF EXISTS replay_url;

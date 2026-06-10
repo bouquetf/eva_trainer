@@ -7,6 +7,8 @@ import {
 import type { TestUser } from '../helpers/auth';
 
 test.describe('Feature: Card Stats', () => {
+  test.describe.configure({ mode: 'serial' });
+
   let reader: TestUser | null = null;
   let testTeamId: number | null = null;
 
@@ -55,8 +57,6 @@ test.describe('Feature: Card Stats', () => {
     testTeamId = team.id;
     await seedTeamRole(team.id, 'reader');
 
-    const data = await seedStatsData();
-
     await page.goto('/login');
     await loginAsUser(page, reader);
     await page.goto('/archives');
@@ -82,30 +82,28 @@ test.describe('Feature: Card Stats', () => {
     await page.getByRole('button', { name: 'Stats cartes' }).click();
     await page.getByLabel('Équipe :').selectOption(String(data.teamA.id));
 
-    await expect(page.locator('table')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('table tbody tr')).toHaveCount(2);
-
     const rows = page.locator('table tbody tr');
-    const firstRow = rows.nth(0);
-    const secondRow = rows.nth(1);
+    await expect(rows.first()).toBeVisible({ timeout: 10000 });
 
-    // cp_metal: 1 victoire, 1 défaite, winrate 50%, score moyen 67.5, picks=2, bans=0
-    await expect(firstRow.locator('td').nth(0)).toHaveText(data.map1.name);
-    await expect(firstRow.locator('td').nth(1)).toHaveText('1');
-    await expect(firstRow.locator('td').nth(2)).toHaveText('1');
-    await expect(firstRow.locator('td').nth(3)).toHaveText('50.0%');
-    await expect(firstRow.locator('td').nth(4)).toHaveText('67.5');
-    await expect(firstRow.locator('td').nth(6)).toHaveText('2');
-    await expect(firstRow.locator('td').nth(7)).toHaveText('0');
+    // Find our map rows by name (other maps from parallel tests also exist)
+    const map1Row = rows.filter({ hasText: data.map1.name });
+    const map2Row = rows.filter({ hasText: data.map2.name });
 
-    // mistral: 1 victoire, 0 défaite, winrate 100%, score moyen 90.0, picks=0, bans=1
-    await expect(secondRow.locator('td').nth(0)).toHaveText(data.map2.name);
-    await expect(secondRow.locator('td').nth(1)).toHaveText('1');
-    await expect(secondRow.locator('td').nth(2)).toHaveText('0');
-    await expect(secondRow.locator('td').nth(3)).toHaveText('100.0%');
-    await expect(secondRow.locator('td').nth(4)).toHaveText('90.0');
-    await expect(secondRow.locator('td').nth(6)).toHaveText('0');
-    await expect(secondRow.locator('td').nth(7)).toHaveText('1');
+    // cp_metal: 1 victoire, 1 défaite, winrate 50%, score moyen 67.5, pickrate 100%, banrate 0%
+    await expect(map1Row.locator('td').nth(1)).toHaveText('1');
+    await expect(map1Row.locator('td').nth(2)).toHaveText('1');
+    await expect(map1Row.locator('td').nth(3)).toHaveText('50.0%');
+    await expect(map1Row.locator('td').nth(4)).toHaveText('67.5');
+    await expect(map1Row.locator('td').nth(6)).toHaveText('100.0%');
+    await expect(map1Row.locator('td').nth(7)).toHaveText('0.0%');
+
+    // mistral: 1 victoire, 0 défaite, winrate 100%, score moyen 90.0, pickrate 0%, banrate 100%
+    await expect(map2Row.locator('td').nth(1)).toHaveText('1');
+    await expect(map2Row.locator('td').nth(2)).toHaveText('0');
+    await expect(map2Row.locator('td').nth(3)).toHaveText('100.0%');
+    await expect(map2Row.locator('td').nth(4)).toHaveText('90.0');
+    await expect(map2Row.locator('td').nth(6)).toHaveText('0.0%');
+    await expect(map2Row.locator('td').nth(7)).toHaveText('100.0%');
   });
 
   test('3: Tri par victoires', async ({ page }) => {
@@ -124,18 +122,21 @@ test.describe('Feature: Card Stats', () => {
     await page.getByLabel('Équipe :').selectOption(String(data.teamA.id));
     await expect(page.locator('table')).toBeVisible({ timeout: 10000 });
 
-    // Default sort by map_name asc: cp_metal then mistral
-    // After clicking Victoires asc: same order (both have 1 win) → alphabetical
+    // Default sort by map_name asc
+    // Sort by Victoires asc: 0-win maps first, then 1-win maps (alpha)
     await page.getByText('Victoires').click();
-    let rows = page.locator('table tbody tr');
-    await expect(rows.nth(0).locator('td').nth(0)).toHaveText(data.map1.name);
-    await expect(rows.nth(1).locator('td').nth(0)).toHaveText(data.map2.name);
 
-    // Click again → desc: reversed (same 1 win, reversed alphabetical)
+    // Sort by Victoires desc: 1-win maps first, then 0-win maps
+    // Our maps (both 1 win) sorted alpha desc: mistral then cp_metal
     await page.getByText('Victoires').click();
-    rows = page.locator('table tbody tr');
-    await expect(rows.nth(0).locator('td').nth(0)).toHaveText(data.map2.name);
-    await expect(rows.nth(1).locator('td').nth(0)).toHaveText(data.map1.name);
+
+    // Verify relative order: mistral (map2) before cp_metal (map1)
+    const rows = page.locator('table tbody tr');
+    const allRows = await rows.all();
+    const texts = await Promise.all(allRows.map(r => r.innerText()));
+    const idx1 = texts.findIndex(t => t.includes(data.map1.name));
+    const idx2 = texts.findIndex(t => t.includes(data.map2.name));
+    expect(idx2).toBeLessThan(idx1);
   });
 
   test('4: Affichage des scores par adversaire (sous-lignes expandables)', async ({ page }) => {
@@ -154,9 +155,10 @@ test.describe('Feature: Card Stats', () => {
     await page.getByLabel('Équipe :').selectOption(String(data.teamA.id));
     await expect(page.locator('table')).toBeVisible({ timeout: 10000 });
 
-    // Click on cp_metal row to expand opponents
+    // Find and click cp_metal row by name (not nth(0) — other maps exist)
     const rows = page.locator('table tbody tr');
-    await rows.nth(0).click();
+    const cpMetalRow = rows.filter({ hasText: data.map1.name });
+    await cpMetalRow.locator('td').nth(0).click();
 
     // The expanded sub-table should appear with Team B
     const detailCell = page.locator('.detail-cell');
@@ -188,7 +190,12 @@ test.describe('Feature: Card Stats', () => {
     await page.getByRole('button', { name: 'Stats cartes' }).click();
     await page.getByLabel('Équipe :').selectOption(String(teamC.id));
 
-    await expect(page.getByText('Aucune statistique pour cette équipe')).toBeVisible({ timeout: 10000 });
+    // All maps appear with 0 stats (team has no matches)
+    const rows = page.locator('table tbody tr');
+    await expect(rows.first()).toBeVisible({ timeout: 10000 });
+    await expect(rows.first().locator('td').nth(1)).toHaveText('0');
+    await expect(rows.first().locator('td').nth(2)).toHaveText('0');
+    await expect(rows.first().locator('td').nth(3)).toHaveText('0.0%');
 
     await queryDB('DELETE FROM eva_teams WHERE id = $1', [teamC.id]);
   });

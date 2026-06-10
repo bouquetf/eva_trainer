@@ -217,6 +217,56 @@ func (r *cardStatsRepo) Compute(teamID int) ([]*CardStats, error) {
 		return nil, fmt.Errorf("failed to iterate all-maps rows: %w", err)
 	}
 
+	// Fetch pick counts per map for the team (also covers maps with picks but no matches)
+	pickRows, err := r.db.Query(`
+		SELECT bp.map_id, COUNT(*) AS pick_count
+		FROM bo_picks bp
+		JOIN bos b ON b.id = bp.bo_id
+		WHERE bp.equipe_id = $1
+		  AND (b.equipe1_id = $1 OR b.equipe2_id = $1)
+		GROUP BY bp.map_id
+	`, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pick counts: %w", err)
+	}
+	for pickRows.Next() {
+		var mapID int
+		var count int
+		if err := pickRows.Scan(&mapID, &count); err != nil {
+			pickRows.Close()
+			return nil, fmt.Errorf("failed to scan pick count row: %w", err)
+		}
+		if ma, ok := mapData[mapID]; ok {
+			ma.picks = count
+		}
+	}
+	pickRows.Close()
+
+	// Fetch ban counts per map for the team (also covers maps with bans but no matches)
+	banRows, err := r.db.Query(`
+		SELECT bb.map_id, COUNT(*) AS ban_count
+		FROM bo_bans bb
+		JOIN bos b ON b.id = bb.bo_id
+		WHERE bb.equipe_id = $1
+		  AND (b.equipe1_id = $1 OR b.equipe2_id = $1)
+		GROUP BY bb.map_id
+	`, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query ban counts: %w", err)
+	}
+	for banRows.Next() {
+		var mapID int
+		var count int
+		if err := banRows.Scan(&mapID, &count); err != nil {
+			banRows.Close()
+			return nil, fmt.Errorf("failed to scan ban count row: %w", err)
+		}
+		if ma, ok := mapData[mapID]; ok {
+			ma.bans = count
+		}
+	}
+	banRows.Close()
+
 	result := make([]*CardStats, 0, len(mapData))
 	for mapID, ma := range mapData {
 		cs := &CardStats{
