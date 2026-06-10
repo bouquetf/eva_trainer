@@ -5,11 +5,12 @@ import EvaTeamsSection from './EvaTeamsSection'
 import DivisionsSection from './DivisionsSection'
 import BOsSection from './BOsSection'
 import CardStatsSection from './CardStatsSection'
+import HeadToHeadSection from './HeadToHeadSection'
 import '../styles/admin.css'
 
 function ArchivePage() {
   const { canWrite, isLoading: permLoading } = useArchiveAccess()
-  const [activeTab, setActiveTab] = useState<'locales' | 'eva' | 'divisions' | 'bos' | 'stats'>('locales')
+  const [activeTab, setActiveTab] = useState<'locales' | 'eva' | 'divisions' | 'bos' | 'stats' | 'head-to-head'>('locales')
 
   if (permLoading) {
     return <div className="empty-state"><p>Chargement...</p></div>
@@ -37,6 +38,9 @@ function ArchivePage() {
         <button className={activeTab === 'stats' ? 'active' : ''} onClick={() => setActiveTab('stats')}>
           Stats cartes
         </button>
+        <button className={activeTab === 'head-to-head' ? 'active' : ''} onClick={() => setActiveTab('head-to-head')}>
+          Confrontations
+        </button>
       </div>
 
       {activeTab === 'locales' && <LiguesLocalesSection canWrite={canWrite} />}
@@ -44,6 +48,7 @@ function ArchivePage() {
       {activeTab === 'divisions' && <DivisionsSection canWrite={canWrite} />}
       {activeTab === 'bos' && <BOsSection canWrite={canWrite} />}
       {activeTab === 'stats' && <CardStatsSection />}
+      {activeTab === 'head-to-head' && <HeadToHeadSection />}
     </div>
   )
 }

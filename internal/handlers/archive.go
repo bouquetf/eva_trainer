@@ -16,19 +16,20 @@ import (
 )
 
 type ArchiveHandler struct {
-	ligueLocaleRepo models.LigueLocaleRepository
-	ligueRepo       models.LigueRepository
-	splitRepo       models.SplitRepository
-	evaTeamRepo     models.EvaTeamRepository
-	teamRepo        models.TeamRepository
-	divRepo         models.DivRepository
-	boRepo          models.BORepository
-	cardStatsRepo   models.CardStatsRepository
-	matchRepo       models.MatchRepository
-	banRepo         models.BanRepository
-	pickRepo        models.PickRepository
-	mapRepo         models.MapRepository
-	logger          services.Logger
+	ligueLocaleRepo     models.LigueLocaleRepository
+	ligueRepo           models.LigueRepository
+	splitRepo           models.SplitRepository
+	evaTeamRepo         models.EvaTeamRepository
+	teamRepo            models.TeamRepository
+	divRepo             models.DivRepository
+	boRepo              models.BORepository
+	cardStatsRepo       models.CardStatsRepository
+	headToHeadStatsRepo models.HeadToHeadStatsRepository
+	matchRepo           models.MatchRepository
+	banRepo             models.BanRepository
+	pickRepo            models.PickRepository
+	mapRepo             models.MapRepository
+	logger              services.Logger
 }
 
 func NewArchiveHandler(
@@ -40,6 +41,7 @@ func NewArchiveHandler(
 	divRepo models.DivRepository,
 	boRepo models.BORepository,
 	cardStatsRepo models.CardStatsRepository,
+	headToHeadStatsRepo models.HeadToHeadStatsRepository,
 	matchRepo models.MatchRepository,
 	banRepo models.BanRepository,
 	pickRepo models.PickRepository,
@@ -47,19 +49,20 @@ func NewArchiveHandler(
 	logger services.Logger,
 ) *ArchiveHandler {
 	return &ArchiveHandler{
-		ligueLocaleRepo: ligueLocaleRepo,
-		ligueRepo:       ligueRepo,
-		splitRepo:       splitRepo,
-		evaTeamRepo:     evaTeamRepo,
-		teamRepo:        teamRepo,
-		divRepo:         divRepo,
-		boRepo:          boRepo,
-		cardStatsRepo:   cardStatsRepo,
-		matchRepo:       matchRepo,
-		banRepo:         banRepo,
-		pickRepo:        pickRepo,
-		mapRepo:         mapRepo,
-		logger:          logger,
+		ligueLocaleRepo:     ligueLocaleRepo,
+		ligueRepo:           ligueRepo,
+		splitRepo:           splitRepo,
+		evaTeamRepo:         evaTeamRepo,
+		teamRepo:            teamRepo,
+		divRepo:             divRepo,
+		boRepo:              boRepo,
+		cardStatsRepo:       cardStatsRepo,
+		headToHeadStatsRepo: headToHeadStatsRepo,
+		matchRepo:           matchRepo,
+		banRepo:             banRepo,
+		pickRepo:            pickRepo,
+		mapRepo:             mapRepo,
+		logger:              logger,
 	}
 }
 
@@ -1434,4 +1437,69 @@ func (h *ArchiveHandler) GetCardStats(c *gin.Context) {
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"stats": stats})
+}
+
+func (h *ArchiveHandler) GetHeadToHeadStats(c *gin.Context) {
+	team1IDStr := c.Query("team1_id")
+	team2IDStr := c.Query("team2_id")
+
+	if team1IDStr == "" {
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_team1_id", "team1_id query parameter is required", http.StatusBadRequest))
+		return
+	}
+	if team2IDStr == "" {
+		apierror.RespondWithError(c, apierror.NewAPIError("missing_team2_id", "team2_id query parameter is required", http.StatusBadRequest))
+		return
+	}
+
+	team1ID, err := strconv.Atoi(team1IDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team1_id", "invalid team1_id", http.StatusBadRequest))
+		return
+	}
+	team2ID, err := strconv.Atoi(team2IDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team2_id", "invalid team2_id", http.StatusBadRequest))
+		return
+	}
+
+	if team1ID == team2ID {
+		apierror.RespondWithError(c, apierror.NewAPIError("same_team", "team1 and team2 must be different", http.StatusBadRequest))
+		return
+	}
+
+	_, err = h.evaTeamRepo.FindByID(team1ID)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("eva_team_not_found", "Équipe eva team1 non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find eva team1", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	_, err = h.evaTeamRepo.FindByID(team2ID)
+	if errors.Is(err, models.ErrEvaTeamNotFound) {
+		apierror.RespondWithError(c, apierror.NewAPIError("eva_team_not_found", "Équipe eva team2 non trouvée", http.StatusNotFound))
+		return
+	}
+	if err != nil {
+		h.logger.Error("failed to find eva team2", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	stats, err := h.headToHeadStatsRepo.Compute(team1ID, team2ID)
+	if err != nil {
+		h.logger.Error("failed to compute head-to-head stats", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
+		"team1_id": team1ID,
+		"team2_id": team2ID,
+		"stats":    stats,
+	})
 }

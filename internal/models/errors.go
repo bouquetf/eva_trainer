@@ -94,6 +94,7 @@ var (
 	ErrEvaTeamTagTooLong    = errors.New("eva team tag exceeds maximum length of 50 characters")
 	ErrEvaTeamNotFound      = errors.New("eva team not found")
 	ErrEvaTeamHasReferences = errors.New("cannot delete eva team: it has associated leagues or matches")
+	ErrInvalidTeamPair      = errors.New("team1 and team2 must be different")
 )
 
 var (

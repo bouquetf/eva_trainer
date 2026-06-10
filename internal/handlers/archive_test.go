@@ -58,13 +58,14 @@ func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTServic
 	divRepo := models.NewDivRepository(db)
 	boRepo := models.NewBORepository(db)
 	cardStatsRepo := models.NewCardStatsRepository(db)
+	headToHeadStatsRepo := models.NewHeadToHeadStatsRepository(db)
 	matchRepo := models.NewMatchRepository(db)
 	banRepo := models.NewBanRepository(db)
 	pickRepo := models.NewPickRepository(db)
 	mapRepo := models.NewMapRepository(db)
 	userRepo := models.NewUserRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, headToHeadStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return archiveHandler, jwtService, userRepo, db
 }
@@ -2235,6 +2236,270 @@ func TestArchiveHandler_GetCardStats_TeamWithoutMatchs(t *testing.T) {
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	stats, ok := resp["stats"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'stats' array")
+	}
+	if len(stats) != 0 {
+		t.Errorf("expected empty stats, got %d", len(stats))
+	}
+}
+
+// --- HeadToHeadStats ---
+
+func TestArchiveHandler_GetHeadToHeadStats_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	mapRepo := models.NewMapRepository(db)
+	cpMetal, err := mapRepo.Create("cp_metal", nil)
+	if err != nil {
+		t.Fatalf("failed to create map: %v", err)
+	}
+	mistral, err := mapRepo.Create("mistral", nil)
+	if err != nil {
+		t.Fatalf("failed to create map: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	team1ID := createTestEvaTeam(t, db, "Team One", "ONE")
+	team2ID := createTestEvaTeam(t, db, "Team Two", "TWO")
+
+	boRepo := models.NewBORepository(db)
+	bo, err := boRepo.Create(ligueID, team1ID, team2ID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	matchRepo := models.NewMatchRepository(db)
+	// Match 1: cp_metal, team1 wins 80-60
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 80, 60, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+	// Match 2: cp_metal, team2 wins 55-70
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 55, 70, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+	// Match 3: mistral, team1 wins 90-50
+	_, err = matchRepo.Create(bo.ID, mistral.ID, 90, 50, 0, nil)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+
+	bo, err = boRepo.RecomputeWinner(bo.ID)
+	if err != nil {
+		t.Fatalf("failed to recompute BO winner: %v", err)
+	}
+	_ = bo
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/head-to-head-stats?team1_id=%d&team2_id=%d", team1ID, team2ID), nil)
+
+	handler.GetHeadToHeadStats(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	if resp["team1_id"].(float64) != float64(team1ID) {
+		t.Errorf("expected team1_id %d, got %v", team1ID, resp["team1_id"])
+	}
+	if resp["team2_id"].(float64) != float64(team2ID) {
+		t.Errorf("expected team2_id %d, got %v", team2ID, resp["team2_id"])
+	}
+
+	stats, ok := resp["stats"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'stats' array")
+	}
+	if len(stats) != 2 {
+		t.Fatalf("expected 2 stats, got %d", len(stats))
+	}
+
+	cpMetalStat := stats[0].(map[string]interface{})
+	if cpMetalStat["map_name"] != "cp_metal" {
+		t.Errorf("expected map_name 'cp_metal', got '%v'", cpMetalStat["map_name"])
+	}
+	team1Stats := cpMetalStat["team1_stats"].(map[string]interface{})
+	if team1Stats["wins"].(float64) != 1 {
+		t.Errorf("cp_metal team1: expected wins=1, got %v", team1Stats["wins"])
+	}
+	if team1Stats["losses"].(float64) != 1 {
+		t.Errorf("cp_metal team1: expected losses=1, got %v", team1Stats["losses"])
+	}
+	if team1Stats["winrate"].(float64) != 0.5 {
+		t.Errorf("cp_metal team1: expected winrate=0.5, got %v", team1Stats["winrate"])
+	}
+	if team1Stats["avg_score"].(float64) != 67.5 {
+		t.Errorf("cp_metal team1: expected avg_score=67.5, got %v", team1Stats["avg_score"])
+	}
+
+	team2Stats := cpMetalStat["team2_stats"].(map[string]interface{})
+	if team2Stats["wins"].(float64) != 1 {
+		t.Errorf("cp_metal team2: expected wins=1, got %v", team2Stats["wins"])
+	}
+	if team2Stats["losses"].(float64) != 1 {
+		t.Errorf("cp_metal team2: expected losses=1, got %v", team2Stats["losses"])
+	}
+	if team2Stats["winrate"].(float64) != 0.5 {
+		t.Errorf("cp_metal team2: expected winrate=0.5, got %v", team2Stats["winrate"])
+	}
+	if team2Stats["avg_score"].(float64) != 65.0 {
+		t.Errorf("cp_metal team2: expected avg_score=65.0, got %v", team2Stats["avg_score"])
+	}
+
+	mistralStat := stats[1].(map[string]interface{})
+	if mistralStat["map_name"] != "mistral" {
+		t.Errorf("expected map_name 'mistral', got '%v'", mistralStat["map_name"])
+	}
+	team1StatsM := mistralStat["team1_stats"].(map[string]interface{})
+	if team1StatsM["wins"].(float64) != 1 {
+		t.Errorf("mistral team1: expected wins=1, got %v", team1StatsM["wins"])
+	}
+	if team1StatsM["losses"].(float64) != 0 {
+		t.Errorf("mistral team1: expected losses=0, got %v", team1StatsM["losses"])
+	}
+	if team1StatsM["winrate"].(float64) != 1.0 {
+		t.Errorf("mistral team1: expected winrate=1.0, got %v", team1StatsM["winrate"])
+	}
+	if team1StatsM["avg_score"].(float64) != 90.0 {
+		t.Errorf("mistral team1: expected avg_score=90.0, got %v", team1StatsM["avg_score"])
+	}
+
+	team2StatsM := mistralStat["team2_stats"].(map[string]interface{})
+	if team2StatsM["wins"].(float64) != 0 {
+		t.Errorf("mistral team2: expected wins=0, got %v", team2StatsM["wins"])
+	}
+	if team2StatsM["losses"].(float64) != 1 {
+		t.Errorf("mistral team2: expected losses=1, got %v", team2StatsM["losses"])
+	}
+	if team2StatsM["winrate"].(float64) != 0.0 {
+		t.Errorf("mistral team2: expected winrate=0.0, got %v", team2StatsM["winrate"])
+	}
+	if team2StatsM["avg_score"].(float64) != 50.0 {
+		t.Errorf("mistral team2: expected avg_score=50.0, got %v", team2StatsM["avg_score"])
+	}
+}
+
+func TestArchiveHandler_GetHeadToHeadStats_MissingTeam1ID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/head-to-head-stats?team2_id=1", nil)
+
+	handler.GetHeadToHeadStats(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "missing_team1_id" {
+		t.Errorf("expected error 'missing_team1_id', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_GetHeadToHeadStats_MissingTeam2ID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/archive/head-to-head-stats?team1_id=1", nil)
+
+	handler.GetHeadToHeadStats(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "missing_team2_id" {
+		t.Errorf("expected error 'missing_team2_id', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_GetHeadToHeadStats_SameTeam(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	teamID := createTestEvaTeam(t, db, "Team", "T")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/head-to-head-stats?team1_id=%d&team2_id=%d", teamID, teamID), nil)
+
+	handler.GetHeadToHeadStats(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "same_team" {
+		t.Errorf("expected error 'same_team', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_GetHeadToHeadStats_TeamNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	teamID := createTestEvaTeam(t, db, "Team", "T")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/head-to-head-stats?team1_id=%d&team2_id=99999", teamID), nil)
+
+	handler.GetHeadToHeadStats(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "eva_team_not_found" {
+		t.Errorf("expected error 'eva_team_not_found', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_GetHeadToHeadStats_NoMatches(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	team1ID := createTestEvaTeam(t, db, "Team One", "ONE")
+	team2ID := createTestEvaTeam(t, db, "Team Two", "TWO")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/head-to-head-stats?team1_id=%d&team2_id=%d", team1ID, team2ID), nil)
+
+	handler.GetHeadToHeadStats(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	if resp["team1_id"].(float64) != float64(team1ID) {
+		t.Errorf("expected team1_id %d, got %v", team1ID, resp["team1_id"])
+	}
+	if resp["team2_id"].(float64) != float64(team2ID) {
+		t.Errorf("expected team2_id %d, got %v", team2ID, resp["team2_id"])
+	}
 
 	stats, ok := resp["stats"].([]interface{})
 	if !ok {

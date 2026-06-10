@@ -295,6 +295,10 @@ type CardStatsRepository interface {
 	Compute(teamID int) ([]*CardStats, error)
 }
 
+type HeadToHeadStatsRepository interface {
+	Compute(team1ID, team2ID int) ([]*HeadToHeadMapStats, error)
+}
+
 type BanRepository interface {
 	Create(boID, equipeID, mapID int) (*Ban, error)
 	FindByID(id int) (*Ban, error)

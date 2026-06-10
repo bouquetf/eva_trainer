@@ -440,3 +440,31 @@ export async function getCardStats(teamId: number): Promise<CardStatsResponse> {
   const api = getApiClient()
   return api.get<CardStatsResponse>(`${CARD_STATS_BASE}?team_id=${teamId}`)
 }
+
+// --- Head-to-Head Stats ---
+
+export interface HeadToHeadTeamStats {
+  wins: number
+  losses: number
+  winrate: number
+  avg_score: number
+  median_score: number
+}
+
+export interface HeadToHeadMapStats {
+  map_id: number
+  map_name: string
+  team1_stats: HeadToHeadTeamStats
+  team2_stats: HeadToHeadTeamStats
+}
+
+export interface HeadToHeadStatsResponse {
+  team1_id: number
+  team2_id: number
+  stats: HeadToHeadMapStats[]
+}
+
+export async function getHeadToHeadStats(team1Id: number, team2Id: number): Promise<HeadToHeadStatsResponse> {
+  const api = getApiClient()
+  return api.get<HeadToHeadStatsResponse>(`/api/v1/archive/head-to-head-stats?team1_id=${team1Id}&team2_id=${team2Id}`)
+}
