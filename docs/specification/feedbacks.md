@@ -44,3 +44,10 @@
   * Liste des cartes : nombre de victoires, nombre de défaites, nombre moyen de victoires, nombre moyen de défaites, score moyen, score médian, tri possible sur chacune de ces colonnes
   * Même liste des cartes, mais sur l’historique des matchs entre 2 équipes [PROCESSED: feature-archives-matchs.md]
 * Éditeur : ajouter/éditer des lignes de tir, révision sur les lignes. C’est une autre table que les zones. Pour la révision, offrir la possibilité de réviser sur les lignes ou les zones, ou les deux. [PROCESSED: story-033]
+
+## 2026-06-10
+
+* Ajouter à une div un lien vers une vidéo pour le replay du stream [PROCESSED: story-042]
+* Un joueur qui a accès aux divs peut ajouter des commentaires à l’aide l’un éditeur texte riche minimaliste. Le résultat est stocké en base de données en markdown. [PROCESSED: story-043]
+* Ajouter la possibilité pour un capitaine ou cocapitaine d’équipe de supprimer un membre et de supprimer un lien d’invitation [PROCESSED: story-044]
+* Un utilisateur "Lecteur" ne doit pas voir : ligues locales -> importer [PROCESSED: story-041]
