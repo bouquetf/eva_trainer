@@ -170,6 +170,12 @@ flowchart TD
 - Parallel groups can be developed simultaneously by different teams
 ``
 
+## Naming Conventions
+
+- Story files follow the format `docs/stories/story-<number>.md` (e.g. `story-001.md`, `story-002.md`)
+- A story is renamed to `story-XXX-done.md` by the `tasks` skill when its task decomposition is complete with no remaining questions
+- The `-later` suffix can be used for deferred stories (`story-028-later.md`)
+
 ## How to Move from One Step to Another
 
 | Transition | User Action | Agent Action |

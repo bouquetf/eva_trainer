@@ -67,6 +67,7 @@ Use this skill after creating your user stories with the `stories` skill, when y
 ### Step 6 - Workflow completion
 - When nothing remains to clarify
 - Delete the `questions.md` file
+- **Rename the story** : `docs/stories/story-XXX.md` → `docs/stories/story-XXX-done.md` to mark that this story has been broken down into tasks with no remaining questions
 - Present the final plan to the user
 
 ## Detailed prompt format

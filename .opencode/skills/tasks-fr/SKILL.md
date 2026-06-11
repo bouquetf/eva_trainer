@@ -71,6 +71,7 @@ Utilisez cette skill après avoir créé vos user stories avec la skill `stories
 ### Étape 6 - Fin du workflow
 - Quand il n'y a plus rien à clarifier
 - Supprimer le fichier `questions.md`
+- **Renommer la story** : `docs/stories/story-XXX.md` → `docs/stories/story-XXX-done.md` pour marquer que cette story est découpée en tâches et qu'il n'y a plus de questions en suspens
 - Présenter le plan final à l'utilisateur
 
 ## Format des prompts détaillés

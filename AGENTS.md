@@ -23,6 +23,19 @@ Les skills se trouvent dans le répertoire `ia/skills/`.
 | Commit message | `ia/skills/commit-en/` | Proposes a commit message from a story + local git changes | English |
 | Feedback → Stories | `ia/skills/feedback-fr/` | Génération de stories à partir de feedbacks utilisateur | Français |
 
+## Conventions de nommage
+
+### Fichiers de stories
+
+- Les stories sont nommées `docs/stories/story-<numero>.md` (ex: `story-001.md`, `story-002.md`)
+- Une story passe en `-done` (`story-001-done.md`) lorsque la skill `tasks` a terminé son découpage en tâches et qu'il n'y a plus de questions en suspens
+- Le suffixe `-later` peut être utilisé pour les stories repoussées (`story-028-later.md`)
+
+### Fichiers de tâches
+
+- Les tâches sont nommées `docs/tasks/story-XXX/task-YYY.md`
+- Les questions de clarification sont dans `docs/tasks/story-XXX/questions.md`
+
 ## Convention
 
 Chaque skill est un répertoire contenant un fichier `SKILL.md` avec :

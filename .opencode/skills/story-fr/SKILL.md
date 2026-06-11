@@ -170,6 +170,12 @@ flowchart TD
 - Les groupes en parallèle peuvent être développés simultanément par différentes équipes
 ``
 
+## Conventions de nommage
+
+- Les fichiers de stories suivent le format `docs/stories/story-<numero>.md` (ex: `story-001.md`, `story-002.md`)
+- Une story est renommée en `story-XXX-done.md` par la skill `tasks` lorsque son découpage en tâches est terminé et qu'il n'y a plus de questions en suspens
+- Le suffixe `-later` peut être utilisé pour les stories repoussées (`story-028-later.md`)
+
 ## Comment passer d'une étape à l'autre
 
 | Transition | Action de l'utilisateur | Action de l'agent |

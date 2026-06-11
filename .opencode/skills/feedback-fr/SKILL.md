@@ -55,7 +55,7 @@ Chaque feedback traité reçoit un marqueur `[PROCESSED: story-XXX]` :
 
 ### Étape 2 - Analyse des stories existantes
 
-- Lire les stories dans `docs/stories/done/` ou `docs/stories/` 
+- Lire les stories dans `docs/stories/` (les stories terminées sont suffixées `-done`, ex: `story-031-done.md`)
 - Vérifier si certains feedbacks non marqués sont déjà couverts par des stories existantes
   - Exemple : "Avoir un écran avec la liste des zones" peut déjà exister dans Story #009
   - Si c'est le cas, ajouter le marqueur `[PROCESSED: story-XXX]` (donc déjà couvert) et ne pas recréer de story
@@ -82,7 +82,7 @@ Chaque feedback traité reçoit un marqueur `[PROCESSED: story-XXX]` :
 
 #### Étape 4a - Génération des stories
 
-- Lire les stories dans `docs/stories/done/` pour déterminer le prochain numéro de story
+- Lire les stories dans `docs/stories/` (suffixées `-done` ou non) pour déterminer le prochain numéro de story
 - Créer les nouvelles stories dans `docs/stories/` en suivant le format story-fr :
 
 ```markdown
@@ -127,7 +127,7 @@ Feedback du [DATE] : "[texte du feedback]"
 
 - Analyser les nouvelles stories
 - Vérifier la cohérence avec la spécification `docs/specification/specification.md`
-- Vérifier la cohérence avec les stories existantes dans `docs/stories/done/`
+- Vérifier la cohérence avec les stories existantes dans `docs/stories/` (y compris les `*-done.md`)
 - Ajouter des questions dans `docs/stories/questions.md` si nécessaire
 
 #### Étape 7a - Mise à jour
@@ -182,7 +182,7 @@ Feedback du [DATE] : "[texte du feedback]"
 
 - Quand il n'y a plus rien à clarifier (pour tous les chemins)
 - Supprimer le fichier `questions.md` s'il existe
-- Déplacer les nouvelles stories dans `docs/stories/done/` (ou les laisser dans `docs/stories/` selon la convention)
+- Les nouvelles stories restent dans `docs/stories/` ; elles seront renommées en `story-XXX-done.md` par la skill `tasks` après découpage en tâches
 - Mettre à jour `AGENTS.md` et `workflow.md` si nécessaire
 - Annoncer la fin du workflow
 

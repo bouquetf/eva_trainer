@@ -55,7 +55,7 @@ Each processed feedback gets a `[PROCESSED: story-XXX]` marker:
 
 ### Step 2 - Analyze existing stories
 
-- Read stories in `docs/stories/done/` or `docs/stories/`
+- Read stories in `docs/stories/` (completed stories are suffixed `-done`, e.g. `story-031-done.md`)
 - Check if some unmarked feedbacks are already covered by existing stories
   - Example: "A screen with the list of zones" might already exist in Story #009
   - If so, add the `[PROCESSED: story-XXX]` marker (already covered) and do not recreate the story
@@ -82,7 +82,7 @@ Each processed feedback gets a `[PROCESSED: story-XXX]` marker:
 
 #### Step 4a - Generate stories
 
-- Read stories in `docs/stories/done/` to determine the next story number
+- Read stories in `docs/stories/` (with `-done` suffix or not) to determine the next story number
 - Create new stories in `docs/stories/` following the story-en format:
 
 ```markdown
@@ -127,7 +127,7 @@ Feedback from [DATE]: "[feedback text]"
 
 - Analyze the new stories
 - Check consistency with the specification `docs/specification/specification.md`
-- Check consistency with existing stories in `docs/stories/done/`
+- Check consistency with existing stories in `docs/stories/` (including `*-done.md`)
 - Add questions in `docs/stories/questions.md` if needed
 
 #### Step 7a - Update
@@ -182,7 +182,7 @@ Feedback from [DATE]: "[feedback text]"
 
 - When nothing remains to clarify (for all paths)
 - Delete the `questions.md` file if it exists
-- Move new stories to `docs/stories/done/` (or leave them in `docs/stories/` per convention)
+- New stories stay in `docs/stories/`; they will be renamed to `story-XXX-done.md` by the `tasks` skill after task decomposition
 - Update `AGENTS.md` and `workflow.md` if necessary
 - Announce the end of the workflow
 
