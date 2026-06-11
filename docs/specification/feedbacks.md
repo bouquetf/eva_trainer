@@ -51,3 +51,10 @@
 * Un joueur qui a accès aux divs peut ajouter des commentaires à l’aide l’un éditeur texte riche minimaliste. Le résultat est stocké en base de données en markdown. [PROCESSED: story-043]
 * Ajouter la possibilité pour un capitaine ou cocapitaine d’équipe de supprimer un membre et de supprimer un lien d’invitation [PROCESSED: story-044]
 * Un utilisateur "Lecteur" ne doit pas voir : ligues locales -> importer [PROCESSED: story-041]
+
+## 2026-06-12
+
+* Lors de la création/modification d’une ligue, il faut pouvoir lui donner un nom et l’associer à un split [PROCESSED: story-045]
+* Dans archives -> BO, il faut les regrouper par division [PROCESSED: story-046]
+* Bug : dans les détails d’un BO, ajouter un pick ne doit pas créer un match automatiquement. Lorsque l’on ajoute un match, on l’ajoute en prenant automatiquement le pick suivant. [PROCESSED: story-046]
+* Il doit être possible dans les BO de marquer un match "hors compétition". Le résultat est enregistré dans les stats mais ne compte pas pour le résultat du BO. [PROCESSED: story-046]
