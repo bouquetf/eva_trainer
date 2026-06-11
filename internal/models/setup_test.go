@@ -33,6 +33,7 @@ var migrationFiles = []string{
 	"000030_add_eva_teams.up.sql",
 	"000031_add_archive_divs_and_bos.up.sql",
 	"000032_add_divs_replay_url.up.sql",
+	"000033_add_div_notes.up.sql",
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {

@@ -265,6 +265,23 @@ export interface TestDiv {
   replay_url?: string;
 }
 
+export interface TestDivNote {
+  div_id: number
+  user_id: number
+  content_md: string
+}
+
+export async function seedDivNote(divId: number, userId: number, contentMD: string): Promise<TestDivNote> {
+  const rows = await queryDB<{ div_id: number; user_id: number }[]>(
+    `INSERT INTO div_notes (div_id, user_id, content_md, created_at, updated_at)
+     VALUES ($1, $2, $3, NOW(), NOW())
+     ON CONFLICT (div_id, user_id) DO UPDATE SET content_md = $3, updated_at = NOW()
+     RETURNING div_id, user_id`,
+    [divId, userId, contentMD],
+  )
+  return { div_id: rows[0].div_id, user_id: rows[0].user_id, content_md: contentMD }
+}
+
 export async function seedDiv(ligueId: number, nom: string, replayUrl?: string): Promise<TestDiv> {
   const rows = await queryDB<{ id: number }[]>(
     `INSERT INTO divs (ligue_id, nom, replay_url) VALUES ($1, $2, $3) RETURNING id`,

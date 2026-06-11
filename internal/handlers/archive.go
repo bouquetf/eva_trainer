@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"eva_trainer/internal/middleware"
 	"eva_trainer/internal/models"
 	"eva_trainer/internal/services"
 	"eva_trainer/pkg/apierror"
@@ -29,6 +30,7 @@ type ArchiveHandler struct {
 	banRepo             models.BanRepository
 	pickRepo            models.PickRepository
 	mapRepo             models.MapRepository
+	divNoteRepo         models.DivNoteRepository
 	logger              services.Logger
 }
 
@@ -46,6 +48,7 @@ func NewArchiveHandler(
 	banRepo models.BanRepository,
 	pickRepo models.PickRepository,
 	mapRepo models.MapRepository,
+	divNoteRepo models.DivNoteRepository,
 	logger services.Logger,
 ) *ArchiveHandler {
 	return &ArchiveHandler{
@@ -62,6 +65,7 @@ func NewArchiveHandler(
 		banRepo:             banRepo,
 		pickRepo:            pickRepo,
 		mapRepo:             mapRepo,
+		divNoteRepo:         divNoteRepo,
 		logger:              logger,
 	}
 }
@@ -675,6 +679,10 @@ type updateDivRequest struct {
 
 type assignTeamRequest struct {
 	EquipeEvaID int `json:"equipe_eva_id" binding:"required"`
+}
+
+type upsertDivNoteRequest struct {
+	ContentMD string `json:"content_md"`
 }
 
 type divWithTeams struct {
@@ -1559,4 +1567,87 @@ func (h *ArchiveHandler) GetHeadToHeadStats(c *gin.Context) {
 		"team2_id": team2ID,
 		"stats":    stats,
 	})
+}
+
+func (h *ArchiveHandler) GetMyDivNote(c *gin.Context) {
+	divIDStr := c.Param("id")
+	divID, err := strconv.Atoi(divIDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid division id", http.StatusBadRequest))
+		return
+	}
+
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		return
+	}
+
+	note, err := h.divNoteRepo.FindByDivAndUser(divID, user.ID)
+	if err != nil {
+		if errors.Is(err, models.ErrDivNoteNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("note_not_found", "note not found", http.StatusNotFound))
+			return
+		}
+		h.logger.Error("failed to get div note", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"note": note})
+}
+
+func (h *ArchiveHandler) UpsertMyDivNote(c *gin.Context) {
+	divIDStr := c.Param("id")
+	divID, err := strconv.Atoi(divIDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid division id", http.StatusBadRequest))
+		return
+	}
+
+	var req upsertDivNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		return
+	}
+
+	note, err := h.divNoteRepo.Upsert(divID, user.ID, req.ContentMD)
+	if err != nil {
+		h.logger.Error("failed to upsert div note", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"note": note})
+}
+
+func (h *ArchiveHandler) DeleteMyDivNote(c *gin.Context) {
+	divIDStr := c.Param("id")
+	divID, err := strconv.Atoi(divIDStr)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_div_id", "invalid division id", http.StatusBadRequest))
+		return
+	}
+
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		return
+	}
+
+	err = h.divNoteRepo.DeleteByDivAndUser(divID, user.ID)
+	if err != nil {
+		if errors.Is(err, models.ErrDivNoteNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("note_not_found", "note not found", http.StatusNotFound))
+			return
+		}
+		h.logger.Error("failed to delete div note", "error", err)
+		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Note supprimée"})
 }

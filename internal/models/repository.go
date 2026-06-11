@@ -272,6 +272,12 @@ type DivRepository interface {
 	SetReplayURL(divID int, url string) (*Div, error)
 }
 
+type DivNoteRepository interface {
+	Upsert(divID, userID int, contentMD string) (*DivNote, error)
+	FindByDivAndUser(divID, userID int) (*DivNote, error)
+	DeleteByDivAndUser(divID, userID int) error
+}
+
 type BORepository interface {
 	Create(ligueID, equipe1ID, equipe2ID int, format string, forfait int) (*BO, error)
 	Delete(id int) error

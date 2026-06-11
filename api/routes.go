@@ -525,8 +525,9 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 	banRepo := models.NewBanRepository(db)
 	pickRepo := models.NewPickRepository(db)
 	mapRepo := models.NewMapRepository(db)
+	divNoteRepo := models.NewDivNoteRepository(db)
 	archivePermissionsHandler := handlers.NewArchivePermissionsHandler(globalRoleRepo, teamRoleRepo, logger)
-	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, headToHeadStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, logger)
+	archiveHandler := handlers.NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepo, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, headToHeadStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, divNoteRepo, logger)
 
 	archive := rg.Group("/archive")
 	{
@@ -670,6 +671,22 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
 			archiveHandler.DeleteDivReplayURL,
+		)
+
+		archive.GET("/divisions/:id/note",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.GetMyDivNote,
+		)
+		archive.PUT("/divisions/:id/note",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.UpsertMyDivNote,
+		)
+		archive.DELETE("/divisions/:id/note",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),
+			archiveHandler.DeleteMyDivNote,
 		)
 
 		archive.POST("/bos",

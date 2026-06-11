@@ -19,12 +19,14 @@ vi.mock('../api/archives', () => ({
   generateRoundRobin: vi.fn(),
   setDivReplayURL: vi.fn(),
   deleteDivReplayURL: vi.fn(),
+  getDivNote: vi.fn().mockRejectedValue(new Error('not found')),
+  upsertDivNote: vi.fn(),
 }))
 
 import {
   listLigues, listDivs, getDiv, createDiv, updateDiv, deleteDiv,
   getDivStandings, listEvaTeams, generateRoundRobin,
-  setDivReplayURL, deleteDivReplayURL,
+  setDivReplayURL, deleteDivReplayURL, getDivNote, upsertDivNote,
 } from '../api/archives'
 
 const mockLigues = [

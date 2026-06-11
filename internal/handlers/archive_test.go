@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,7 @@ var archiveMigrationFiles = []string{
 	"000030_add_eva_teams.up.sql",
 	"000031_add_archive_divs_and_bos.up.sql",
 	"000032_add_divs_replay_url.up.sql",
+	"000033_add_div_notes.up.sql",
 }
 
 func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTService, models.UserRepository, *sql.DB) {
@@ -64,9 +66,10 @@ func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTServic
 	banRepo := models.NewBanRepository(db)
 	pickRepo := models.NewPickRepository(db)
 	mapRepo := models.NewMapRepository(db)
+	divNoteRepo := models.NewDivNoteRepository(db)
 	userRepo := models.NewUserRepository(db)
 	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
-	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, headToHeadStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
+	archiveHandler := NewArchiveHandler(ligueLocaleRepo, ligueRepo, splitRepoModels, evaTeamRepo, teamRepo, divRepo, boRepo, cardStatsRepo, headToHeadStatsRepo, matchRepo, banRepo, pickRepo, mapRepo, divNoteRepo, services.NewLogger(services.LogLevelError, services.LogFormatText))
 
 	return archiveHandler, jwtService, userRepo, db
 }
@@ -2822,5 +2825,410 @@ func TestArchiveHandler_GetHeadToHeadStats_NoMatches(t *testing.T) {
 	}
 	if len(stats) != 0 {
 		t.Errorf("expected empty stats, got %d", len(stats))
+	}
+}
+
+// --- Div Notes ---
+
+func createTestDiv(t *testing.T, db *sql.DB, ligueID int, name string) int {
+	t.Helper()
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, name)
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+	return div.ID
+}
+
+func TestArchiveHandler_GetMyDivNote_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("div-note-get-notfound-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe A")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", nil)
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c.Set("user", user)
+
+	handler.GetMyDivNote(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpsertMyDivNote_Create(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("div-note-create-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe B")
+
+	body := `{"content_md":"# Ma note\n\nHello world!"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c.Set("user", user)
+
+	handler.UpsertMyDivNote(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	note, ok := resp["note"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'note' object")
+	}
+	if note["content_md"] != "# Ma note\n\nHello world!" {
+		t.Errorf("unexpected content_md: %v", note["content_md"])
+	}
+	if note["div_id"].(float64) != float64(divID) {
+		t.Errorf("expected div_id %d, got %v", divID, note["div_id"])
+	}
+}
+
+func TestArchiveHandler_UpsertMyDivNote_Update(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("div-note-update-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe C")
+
+	body := `{"content_md":"version 1"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c.Set("user", user)
+
+	handler.UpsertMyDivNote(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	body2 := `{"content_md":"version 2"}`
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(body2))
+	c2.Request.Header.Set("Content-Type", "application/json")
+	c2.Request.Header.Set("Authorization", "Bearer "+token)
+	c2.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c2.Set("user", user)
+
+	handler.UpsertMyDivNote(c2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w2.Body.Bytes(), &resp)
+	note, ok := resp["note"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'note' object")
+	}
+	if note["content_md"] != "version 2" {
+		t.Errorf("expected 'version 2', got %v", note["content_md"])
+	}
+}
+
+func TestArchiveHandler_UpsertMyDivNote_InvalidBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("div-note-invalid-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe D")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(`not-json`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c.Set("user", user)
+
+	handler.UpsertMyDivNote(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpsertMyDivNote_EmptyContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("div-note-empty-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe E")
+
+	body := `{"content_md":""}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c.Set("user", user)
+
+	handler.UpsertMyDivNote(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	note, ok := resp["note"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'note' object")
+	}
+	if note["content_md"] != "" {
+		t.Errorf("expected empty content_md, got %v", note["content_md"])
+	}
+}
+
+func TestArchiveHandler_DeleteMyDivNote_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("div-note-del-notfound-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe F")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", nil)
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c.Set("user", user)
+
+	handler.DeleteMyDivNote(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_DeleteMyDivNote_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	user, _, err := userRepo.FindOrCreateByDiscordID("div-note-del-success-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	token, _, err := jwtService.GenerateAccessToken(user.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe G")
+
+	body := `{"content_md":"to delete"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c.Set("user", user)
+
+	handler.UpsertMyDivNote(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", nil)
+	c2.Request.Header.Set("Authorization", "Bearer "+token)
+	c2.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c2.Set("user", user)
+
+	handler.DeleteMyDivNote(c2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w2.Body.Bytes(), &resp)
+	if resp["message"] != "Note supprimée" {
+		t.Errorf("unexpected message: %v", resp["message"])
+	}
+
+	w3 := httptest.NewRecorder()
+	c3, _ := gin.CreateTestContext(w3)
+	c3.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", nil)
+	c3.Request.Header.Set("Authorization", "Bearer "+token)
+	c3.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	c3.Set("user", user)
+
+	handler.GetMyDivNote(c3)
+
+	if w3.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %d. Body: %s", w3.Code, w3.Body.String())
+	}
+}
+
+func TestArchiveHandler_DivNote_TwoUsersIndependent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, jwtService, userRepo, db := setupArchiveHandlerTest(t)
+
+	userA, _, err := userRepo.FindOrCreateByDiscordID("div-note-userA-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create userA: %v", err)
+	}
+	tokenA, _, err := jwtService.GenerateAccessToken(userA.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	userB, _, err := userRepo.FindOrCreateByDiscordID("div-note-userB-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create userB: %v", err)
+	}
+	tokenB, _, err := jwtService.GenerateAccessToken(userB.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+	divID := createTestDiv(t, db, ligueID, "Groupe H")
+
+	bodyA := `{"content_md":"note de A"}`
+	wA := httptest.NewRecorder()
+	cA, _ := gin.CreateTestContext(wA)
+	cA.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(bodyA))
+	cA.Request.Header.Set("Content-Type", "application/json")
+	cA.Request.Header.Set("Authorization", "Bearer "+tokenA)
+	cA.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	cA.Set("user", userA)
+
+	handler.UpsertMyDivNote(cA)
+
+	if wA.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", wA.Code, wA.Body.String())
+	}
+
+	bodyB := `{"content_md":"note de B"}`
+	wB := httptest.NewRecorder()
+	cB, _ := gin.CreateTestContext(wB)
+	cB.Request = httptest.NewRequest(http.MethodPut, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", strings.NewReader(bodyB))
+	cB.Request.Header.Set("Content-Type", "application/json")
+	cB.Request.Header.Set("Authorization", "Bearer "+tokenB)
+	cB.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	cB.Set("user", userB)
+
+	handler.UpsertMyDivNote(cB)
+
+	if wB.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", wB.Code, wB.Body.String())
+	}
+
+	wGetA := httptest.NewRecorder()
+	cGetA, _ := gin.CreateTestContext(wGetA)
+	cGetA.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", nil)
+	cGetA.Request.Header.Set("Authorization", "Bearer "+tokenA)
+	cGetA.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	cGetA.Set("user", userA)
+
+	handler.GetMyDivNote(cGetA)
+
+	if wGetA.Code != http.StatusOK {
+		t.Fatalf("expected 200 for userA get, got %d. Body: %s", wGetA.Code, wGetA.Body.String())
+	}
+	var respA map[string]interface{}
+	json.Unmarshal(wGetA.Body.Bytes(), &respA)
+	noteA := respA["note"].(map[string]interface{})
+	if noteA["content_md"] != "note de A" {
+		t.Errorf("userA expected 'note de A', got %v", noteA["content_md"])
+	}
+
+	wGetB := httptest.NewRecorder()
+	cGetB, _ := gin.CreateTestContext(wGetB)
+	cGetB.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/divisions/"+strconv.Itoa(divID)+"/note", nil)
+	cGetB.Request.Header.Set("Authorization", "Bearer "+tokenB)
+	cGetB.Params = gin.Params{{Key: "id", Value: strconv.Itoa(divID)}}
+	cGetB.Set("user", userB)
+
+	handler.GetMyDivNote(cGetB)
+
+	if wGetB.Code != http.StatusOK {
+		t.Fatalf("expected 200 for userB get, got %d. Body: %s", wGetB.Code, wGetB.Body.String())
+	}
+	var respB map[string]interface{}
+	json.Unmarshal(wGetB.Body.Bytes(), &respB)
+	noteB := respB["note"].(map[string]interface{})
+	if noteB["content_md"] != "note de B" {
+		t.Errorf("userB expected 'note de B', got %v", noteB["content_md"])
 	}
 }

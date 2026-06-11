@@ -307,6 +307,31 @@ export async function generateRoundRobin(divId: number): Promise<GenerateRoundRo
   return api.post<GenerateRoundRobinResponse>(`${DIVISIONS_BASE}/${divId}/generate-round-robin`)
 }
 
+// --- Div Notes ---
+
+export interface DivNote {
+  div_id: number
+  user_id: number
+  content_md: string
+  created_at: string
+  updated_at: string
+}
+
+export async function getDivNote(divId: number): Promise<{ note: DivNote }> {
+  const api = getApiClient()
+  return api.get<{ note: DivNote }>(`${DIVISIONS_BASE}/${divId}/note`)
+}
+
+export async function upsertDivNote(divId: number, contentMd: string): Promise<{ note: DivNote }> {
+  const api = getApiClient()
+  return api.put<{ note: DivNote }>(`${DIVISIONS_BASE}/${divId}/note`, { content_md: contentMd })
+}
+
+export async function deleteDivNote(divId: number): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.del<{ message: string }>(`${DIVISIONS_BASE}/${divId}/note`)
+}
+
 // --- BOs (Best-of) ---
 
 export interface Ban {

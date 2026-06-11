@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listLigues, listDivs, getDiv, createDiv, updateDiv, deleteDiv,
   assignTeamToDiv, removeTeamFromDiv, getDivStandings, listEvaTeams, generateRoundRobin,
   setDivReplayURL, deleteDivReplayURL,
+  getDivNote, upsertDivNote,
 } from '../api/archives'
 import type { Div, DivDetailResponse, StandingEntry } from '../api/archives'
 import { detectReplayType, getYouTubeEmbedUrl } from '../lib/replay-url'
+import MarkdownEditor from '../components/MarkdownEditor'
 
 export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
   const queryClient = useQueryClient()
@@ -27,6 +29,11 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
   const [replayFormVisible, setReplayFormVisible] = useState(false)
   const [replayFormUrl, setReplayFormUrl] = useState('')
   const [deletingReplay, setDeletingReplay] = useState(false)
+
+  const [noteContent, setNoteContent] = useState('')
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initialContentRef = useRef('')
+  const noteLoadedRef = useRef(false)
 
   const { data: liguesData } = useQuery({
     queryKey: ['archive-ligues', 1],
@@ -192,6 +199,21 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
     },
   })
 
+  const { data: noteData, isLoading: noteLoading } = useQuery({
+    queryKey: ['archive-div-note', selectedDivId],
+    queryFn: () => getDivNote(selectedDivId!).then(r => r.note.content_md).catch(() => ''),
+    enabled: selectedDivId !== null,
+    staleTime: 30_000,
+  })
+
+  const upsertNoteMutation = useMutation({
+    mutationFn: ({ divId, contentMd }: { divId: number; contentMd: string }) => upsertDivNote(divId, contentMd),
+    onError: (err: unknown) => {
+      const apiErr = err as { body?: { message?: string } }
+      setError(apiErr?.body?.message ?? "Erreur lors de l'enregistrement de la note")
+    },
+  })
+
   function openCreateDivForm() {
     setEditingDiv(null)
     setDivFormName('')
@@ -247,8 +269,37 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
   }
 
   function selectDiv(divId: number) {
+    if (selectedDivId !== null && noteLoadedRef.current && noteContent !== initialContentRef.current) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      upsertNoteMutation.mutate({ divId: selectedDivId, contentMd: noteContent })
+    }
     setSelectedDivId(prev => prev === divId ? null : divId)
+    setNoteContent('')
+    noteLoadedRef.current = false
   }
+
+  useEffect(() => {
+    if (noteData !== undefined) {
+      initialContentRef.current = noteData
+      setNoteContent(noteData)
+      noteLoadedRef.current = true
+    }
+  }, [noteData])
+
+  useEffect(() => {
+    if (!noteLoadedRef.current) return
+    if (noteContent === initialContentRef.current) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      if (selectedDivId !== null) {
+        upsertNoteMutation.mutate({ divId: selectedDivId, contentMd: noteContent })
+        initialContentRef.current = noteContent
+      }
+    }, 5000)
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [noteContent, selectedDivId])
 
   return (
     <>
@@ -523,6 +574,17 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
                                     ))}
                                   </tbody>
                                 </table>
+                              )}
+
+                              <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #ddd' }} />
+
+                              <h4 style={{ marginTop: 16 }}>Notes personnelles</h4>
+                              {noteLoading ? (
+                                <p className="text-muted">Chargement de la note…</p>
+                              ) : (
+                                <div className="add-membership-form" style={{ marginTop: 8 }}>
+                                  <MarkdownEditor value={noteContent} onChange={setNoteContent} />
+                                </div>
                               )}
                             </div>
                           </div>

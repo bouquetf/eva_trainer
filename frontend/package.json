@@ -16,10 +16,12 @@
   "dependencies": {
     "@tanstack/react-query": "^5.100.9",
     "konva": "^10.3.0",
+    "marked": "^18.0.5",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-konva": "^19.2.3",
     "react-router-dom": "^7.15.0",
+    "turndown": "^7.2.4",
     "use-image": "^1.1.4",
     "zustand": "^5.0.13"
   },
@@ -32,6 +34,7 @@
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/ui": "^4.1.5",
     "eslint": "^10.2.1",

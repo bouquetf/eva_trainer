@@ -104,6 +104,7 @@ var (
 	ErrDivTeamAlreadyAssigned = errors.New("team is already assigned to another div in this league")
 	ErrDivNotEnoughTeams      = errors.New("div must have at least 2 teams to generate a round-robin schedule")
 	ErrDivInvalidReplayURL    = errors.New("invalid replay URL: only YouTube and Twitch URLs are allowed")
+	ErrDivNoteNotFound        = errors.New("div note not found")
 )
 
 var (
