@@ -31,3 +31,6 @@ pgdata/
 
 # Misc
 *.log
+
+# Db dumps
+*.dump
