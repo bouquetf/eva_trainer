@@ -428,6 +428,64 @@ func (h *TeamInvitationHandler) ListPendingByTeam(c *gin.Context) {
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"invitations": items})
 }
 
+func (h *TeamInvitationHandler) CancelInvitation(c *gin.Context) {
+	teamID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
+		return
+	}
+
+	invitationID, err := strconv.Atoi(c.Param("invitationId"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_invitation_id", "invalid invitation id", http.StatusBadRequest))
+		return
+	}
+
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("unauthorized", "unauthorized", http.StatusUnauthorized))
+		return
+	}
+
+	member, err := h.teamMemberRepo.FindByUserAndTeam(user.ID, teamID)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("not_team_member", "you are not a member of this team", http.StatusForbidden))
+		return
+	}
+	if member.Role != models.RoleCaptain && member.Role != models.RoleCocaptain {
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_role", "only captains and cocaptains can cancel invitations", http.StatusForbidden))
+		return
+	}
+
+	inv, err := h.teamInvitationRepo.FindByID(invitationID)
+	if err != nil {
+		if errors.Is(err, models.ErrInvitationNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
+			return
+		}
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if inv.TeamID != teamID {
+		apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
+		return
+	}
+
+	if err := h.teamInvitationRepo.CancelInvitation(invitationID); err != nil {
+		if errors.Is(err, models.ErrInvitationNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("invitation_not_found", "Invitation not found", http.StatusNotFound))
+			return
+		}
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
+		"message": "invitation cancelled",
+	})
+}
+
 func (h *TeamInvitationHandler) SearchUsers(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {

@@ -99,6 +99,36 @@ test.describe('Feature: Invitations', () => {
     await queryDB('DELETE FROM team_invitations WHERE team_id = $1', [testTeam.id]);
   });
 
+  test('10.3: Capitaine annule un lien d\'invitation', async ({ page, adminUser, regularUser, testTeam }) => {
+    await page.goto('/login');
+    await loginAsUser(page, adminUser);
+    await page.goto(`/teams/${testTeam.id}`);
+
+    await page.getByRole('button', { name: /Invitations/ }).first().click();
+    await page.getByRole('button', { name: /générer.*lien/i }).click();
+
+    const linkInput = page.locator('input[readonly]');
+    await expect(linkInput).toBeVisible({ timeout: 10000 });
+    const inviteUrl = await linkInput.inputValue();
+    expect(inviteUrl).toContain('/invite/');
+
+    const table = page.locator('table.invitations-table');
+    await expect(table.getByRole('button', { name: /annuler/i })).toBeVisible({ timeout: 10000 });
+    await table.getByRole('button', { name: /annuler/i }).click();
+    await expect(table.getByRole('button', { name: /annuler/i })).not.toBeVisible({ timeout: 10000 });
+
+    await page.goto('/login');
+    await loginAsUser(page, regularUser);
+    const invitePath = inviteUrl.replace(/^https?:\/\/[^/]+/, '');
+    await page.goto(invitePath);
+    await expect(page.getByRole('heading', { name: /invitation.*rejoindre/i })).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole('button', { name: /accepter.*invitation/i }).click();
+    await expect(page.locator('.error-message')).toBeVisible({ timeout: 10000 });
+
+    await queryDB('DELETE FROM team_invitations WHERE team_id = $1', [testTeam.id]);
+  });
+
   test.describe('Join Requests', () => {
     test.afterEach(async ({ testTeam }) => {
       await queryDB('DELETE FROM team_join_requests WHERE team_id = $1', [testTeam.id]);

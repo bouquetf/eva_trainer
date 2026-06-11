@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getTeam, updateTeam, deleteTeam, leaveTeam } from '../api/teams'
 import { listMembers } from '../api/roles'
 import { listTeamMaps } from '../api/maps'
-import { searchUsers, inviteByDisplayName, generateInviteLink, listPendingInvitations } from '../api/invitations'
+import { searchUsers, inviteByDisplayName, generateInviteLink, listPendingInvitations, cancelInvitation } from '../api/invitations'
 import type { UserSearchResult } from '../api/invitations'
 import { listPendingJoinRequests, acceptJoinRequest, declineJoinRequest } from '../api/joinRequests'
 import { listAllTemplates, duplicateTemplate } from '../api/templates'
@@ -219,6 +219,16 @@ function TeamSettings() {
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-join-requests', teamId] })
+    },
+  })
+
+  const cancelInvitationMutation = useMutation({
+    mutationFn: (invitationId: number) => cancelInvitation(teamId, invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-invitations', teamId] })
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-invitations', teamId] })
     },
   })
 
@@ -488,6 +498,7 @@ function TeamSettings() {
                     <th>Type</th>
                     <th>Statut</th>
                     <th>Expire le</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -501,6 +512,17 @@ function TeamSettings() {
                         </span>
                       </td>
                       <td>{new Date(inv.expires_at).toLocaleDateString()}</td>
+                      <td>
+                        {inv.status === 'pending' && (
+                          <button
+                            className="btn-danger btn-small"
+                            onClick={() => cancelInvitationMutation.mutate(inv.id)}
+                            disabled={cancelInvitationMutation.isPending}
+                          >
+                            Annuler
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

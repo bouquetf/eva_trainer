@@ -152,7 +152,7 @@ func executeRoleRequest(t *testing.T, handler gin.HandlerFunc, method, path stri
 
 	c.Set("user", user)
 
-	// Support both /:id/members and /:id/members/:userId/role and /:id/transfer-captaincy
+	// Support /:id/members, /:id/members/:userId, /:id/members/:userId/role and /:id/transfer-captaincy
 	pathStr := strings.TrimPrefix(path, "/api/v1/teams/")
 	parts := strings.SplitN(pathStr, "/", 2)
 	teamIDStr := parts[0]
@@ -160,7 +160,7 @@ func executeRoleRequest(t *testing.T, handler gin.HandlerFunc, method, path stri
 	c.Params = gin.Params{{Key: "id", Value: teamIDStr}}
 	if len(parts) > 1 {
 		subParts := strings.Split(parts[1], "/")
-		if len(subParts) >= 3 && subParts[0] == "members" {
+		if len(subParts) >= 2 && subParts[0] == "members" {
 			c.Params = append(c.Params, gin.Param{Key: "userId", Value: subParts[1]})
 		}
 	}
@@ -684,6 +684,290 @@ func TestTeamRolesHandler_TransferCaptaincy_NonCaptain(t *testing.T) {
 	if !c.IsAborted() {
 		c.Next()
 		handler.TransferCaptaincy(c)
+	}
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, token := createRoleAuthUser(t, userRepo, "rm-cap-"+t.Name())
+	target, _ := createRoleAuthUser(t, userRepo, "rm-target-"+t.Name())
+
+	team, err := teamRepo.Create("Remove Member", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := memberRepo.AddMember(team.ID, target.ID, models.RoleMember); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+
+	w := executeRoleRequest(t, handler.RemoveMember, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/%d", team.ID, target.ID),
+		"", captain, token, memberRepo)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["message"] != "member removed" {
+		t.Errorf("expected 'member removed', got '%v'", resp["message"])
+	}
+
+	// Verify member was removed from the team
+	_, err = memberRepo.FindByUserAndTeam(target.ID, team.ID)
+	if err == nil {
+		t.Error("expected member to be removed, but FindByUserAndTeam succeeded")
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_SuccessByCocaptain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, _ := createRoleAuthUser(t, userRepo, "rmcoc-cap-"+t.Name())
+	cocaptain, coToken := createRoleAuthUser(t, userRepo, "rmcoc-co-"+t.Name())
+	target, _ := createRoleAuthUser(t, userRepo, "rmcoc-target-"+t.Name())
+
+	team, err := teamRepo.Create("Remove By Cocaptain", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := memberRepo.AddMember(team.ID, cocaptain.ID, models.RoleCocaptain); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+	if err := memberRepo.AddMember(team.ID, target.ID, models.RoleMember); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+
+	w := executeRoleRequest(t, handler.RemoveMember, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/%d", team.ID, target.ID),
+		"", cocaptain, coToken, memberRepo)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify member was removed
+	_, err = memberRepo.FindByUserAndTeam(target.ID, team.ID)
+	if err == nil {
+		t.Error("expected member to be removed, but FindByUserAndTeam succeeded")
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_Self(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, token := createRoleAuthUser(t, userRepo, "rmself-cap-"+t.Name())
+
+	team, err := teamRepo.Create("Remove Self", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	w := executeRoleRequest(t, handler.RemoveMember, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/%d", team.ID, captain.ID),
+		"", captain, token, memberRepo)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "cannot_remove_self" {
+		t.Errorf("expected 'cannot_remove_self', got '%s'", resp["error"])
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_Captain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, _ := createRoleAuthUser(t, userRepo, "rmcap-cap-"+t.Name())
+	cocaptain, coToken := createRoleAuthUser(t, userRepo, "rmcap-co-"+t.Name())
+
+	team, err := teamRepo.Create("Remove Captain", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := memberRepo.AddMember(team.ID, cocaptain.ID, models.RoleCocaptain); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+
+	w := executeRoleRequest(t, handler.RemoveMember, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/%d", team.ID, captain.ID),
+		"", cocaptain, coToken, memberRepo)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "cannot_remove_captain" {
+		t.Errorf("expected 'cannot_remove_captain', got '%s'", resp["error"])
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_Admin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, token := createRoleAuthUser(t, userRepo, "rmadmin-cap-"+t.Name())
+	adminUser, _ := createRoleAuthUser(t, userRepo, "rmadmin-adm-"+t.Name())
+
+	team, err := teamRepo.Create("Remove Admin", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := memberRepo.AddMember(team.ID, adminUser.ID, models.RoleMember); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+
+	if err := userRepo.SetAdmin(adminUser.ID); err != nil {
+		t.Fatalf("SetAdmin failed: %v", err)
+	}
+
+	w := executeRoleRequest(t, handler.RemoveMember, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/%d", team.ID, adminUser.ID),
+		"", captain, token, memberRepo)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "cannot_remove_admin" {
+		t.Errorf("expected 'cannot_remove_admin', got '%s'", resp["error"])
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_CocaptainRemovesCocaptain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, _ := createRoleAuthUser(t, userRepo, "rmcrcoc-cap-"+t.Name())
+	cocaptain1, co1Token := createRoleAuthUser(t, userRepo, "rmcrcoc-co1-"+t.Name())
+	cocaptain2, _ := createRoleAuthUser(t, userRepo, "rmcrcoc-co2-"+t.Name())
+
+	team, err := teamRepo.Create("Co Removes Co", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := memberRepo.AddMember(team.ID, cocaptain1.ID, models.RoleCocaptain); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+	if err := memberRepo.AddMember(team.ID, cocaptain2.ID, models.RoleCocaptain); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+
+	w := executeRoleRequest(t, handler.RemoveMember, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/%d", team.ID, cocaptain2.ID),
+		"", cocaptain1, co1Token, memberRepo)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "insufficient_role" {
+		t.Errorf("expected 'insufficient_role', got '%s'", resp["error"])
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_TargetNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, token := createRoleAuthUser(t, userRepo, "rmtnf-cap-"+t.Name())
+
+	team, err := teamRepo.Create("Remove NotFound", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	w := executeRoleRequest(t, handler.RemoveMember, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/99999", team.ID),
+		"", captain, token, memberRepo)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "member_not_found" {
+		t.Errorf("expected 'member_not_found', got '%s'", resp["error"])
+	}
+}
+
+func TestTeamRolesHandler_RemoveMember_NonCaptain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler, userRepo, teamRepo, memberRepo, _, _, _ := setupTeamRolesHandler(t)
+
+	captain, _ := createRoleAuthUser(t, userRepo, "rmnc-cap-"+t.Name())
+	editor, editorToken := createRoleAuthUser(t, userRepo, "rmnc-editor-"+t.Name())
+	target, _ := createRoleAuthUser(t, userRepo, "rmnc-target-"+t.Name())
+
+	team, err := teamRepo.Create("Non Captain Remove", captain.ID)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := memberRepo.AddMember(team.ID, editor.ID, models.RoleEditor); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+	if err := memberRepo.AddMember(team.ID, target.ID, models.RoleMember); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+
+	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
+	authMw := middleware.RequireAuth(nil, userRepo, jwtService)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req, _ := http.NewRequest(http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/members/%d", team.ID, target.ID), nil)
+	req.Header.Set("Authorization", "Bearer "+editorToken)
+	c.Request = req
+	c.Params = gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", team.ID)},
+		{Key: "userId", Value: fmt.Sprintf("%d", target.ID)},
+	}
+
+	roleMw := middleware.RequireTeamRole(nil, memberRepo, "captain", "cocaptain")
+
+	authMw(c)
+	if !c.IsAborted() {
+		c.Next()
+		roleMw(c)
+	}
+	if !c.IsAborted() {
+		c.Next()
+		handler.RemoveMember(c)
 	}
 
 	if w.Code != http.StatusForbidden {

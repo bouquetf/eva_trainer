@@ -95,6 +95,14 @@ export async function acceptInviteLink(
   )
 }
 
+export async function cancelInvitation(
+  teamId: number,
+  invitationId: number,
+): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.del<{ message: string }>(`/api/v1/teams/${teamId}/invitations/${invitationId}`)
+}
+
 export async function searchUsers(query: string): Promise<UserSearchResponse> {
   const api = getApiClient()
   return api.get<UserSearchResponse>(`/api/v1/users/search?q=${encodeURIComponent(query)}`)

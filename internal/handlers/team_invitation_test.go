@@ -505,3 +505,137 @@ func TestTeamInvitationHandler_ListMyInvitations_Success(t *testing.T) {
 		t.Fatalf("expected 1 invitation, got %d", len(resp))
 	}
 }
+
+func TestTeamInvitationHandler_CancelInvitation_Success(t *testing.T) {
+	f := setupTeamInvitationTest(t)
+
+	inv, err := f.invitationRepo.CreateByUser(f.team.ID, f.otherUser.ID, f.captain.ID)
+	if err != nil {
+		t.Fatalf("CreateByUser failed: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "invitationId", Value: fmt.Sprintf("%d", inv.ID)},
+	}
+	w := executeInvitationRequest(t, f.invitationHandler.CancelInvitation, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/invitations/%d", f.team.ID, inv.ID),
+		"", f.captain, f.captainToken, params)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp["message"] != "invitation cancelled" {
+		t.Errorf("expected message 'invitation cancelled', got %v", resp["message"])
+	}
+
+	cancelled, err := f.invitationRepo.FindByID(inv.ID)
+	if err != nil {
+		t.Fatalf("FindByID failed: %v", err)
+	}
+	if cancelled.Status != "cancelled" {
+		t.Errorf("expected status 'cancelled', got %s", cancelled.Status)
+	}
+}
+
+func TestTeamInvitationHandler_CancelInvitation_ByCocaptain_Success(t *testing.T) {
+	f := setupTeamInvitationTest(t)
+
+	cocaptain, _, err := f.userRepo.FindOrCreateByDiscordID("cancel-coca-" + t.Name())
+	if err != nil {
+		t.Fatalf("failed to create cocaptain: %v", err)
+	}
+	if err := f.teamMemberRepo.AddMember(f.team.ID, cocaptain.ID, models.RoleCocaptain); err != nil {
+		t.Fatalf("failed to add cocaptain: %v", err)
+	}
+	jwtService := services.NewJWTService(testSecret, 24*time.Hour, 7*24*time.Hour)
+	cocaptainToken, _, err := jwtService.GenerateAccessToken(cocaptain.ID)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken failed: %v", err)
+	}
+
+	inv, err := f.invitationRepo.CreateByUser(f.team.ID, f.otherUser.ID, f.captain.ID)
+	if err != nil {
+		t.Fatalf("CreateByUser failed: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "invitationId", Value: fmt.Sprintf("%d", inv.ID)},
+	}
+	w := executeInvitationRequest(t, f.invitationHandler.CancelInvitation, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/invitations/%d", f.team.ID, inv.ID),
+		"", cocaptain, cocaptainToken, params)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTeamInvitationHandler_CancelInvitation_ForbiddenForMember(t *testing.T) {
+	f := setupTeamInvitationTest(t)
+
+	inv, err := f.invitationRepo.CreateByUser(f.team.ID, f.otherUser.ID, f.captain.ID)
+	if err != nil {
+		t.Fatalf("CreateByUser failed: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "invitationId", Value: fmt.Sprintf("%d", inv.ID)},
+	}
+	w := executeInvitationRequest(t, f.invitationHandler.CancelInvitation, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/invitations/%d", f.team.ID, inv.ID),
+		"", f.member, f.memberToken, params)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTeamInvitationHandler_CancelInvitation_InvitationNotFound(t *testing.T) {
+	f := setupTeamInvitationTest(t)
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", f.team.ID)},
+		{Key: "invitationId", Value: "99999"},
+	}
+	w := executeInvitationRequest(t, f.invitationHandler.CancelInvitation, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/invitations/99999", f.team.ID),
+		"", f.captain, f.captainToken, params)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTeamInvitationHandler_CancelInvitation_WrongTeam(t *testing.T) {
+	f := setupTeamInvitationTest(t)
+
+	inv, err := f.invitationRepo.CreateByUser(f.team.ID, f.otherUser.ID, f.captain.ID)
+	if err != nil {
+		t.Fatalf("CreateByUser failed: %v", err)
+	}
+
+	otherTeam, err := f.teamRepo.Create("Other Team "+t.Name(), f.captain.ID)
+	if err != nil {
+		t.Fatalf("failed to create other team: %v", err)
+	}
+
+	params := gin.Params{
+		{Key: "id", Value: fmt.Sprintf("%d", otherTeam.ID)},
+		{Key: "invitationId", Value: fmt.Sprintf("%d", inv.ID)},
+	}
+	w := executeInvitationRequest(t, f.invitationHandler.CancelInvitation, http.MethodDelete,
+		fmt.Sprintf("/api/v1/teams/%d/invitations/%d", otherTeam.ID, inv.ID),
+		"", f.captain, f.captainToken, params)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}

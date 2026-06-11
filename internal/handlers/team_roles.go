@@ -158,6 +158,75 @@ func (h *TeamRolesHandler) UpdateRole(c *gin.Context) {
 	})
 }
 
+func (h *TeamRolesHandler) RemoveMember(c *gin.Context) {
+	teamID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_team_id", "invalid team id", http.StatusBadRequest))
+		return
+	}
+
+	targetUserID, err := strconv.Atoi(c.Param("userId"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_user_id", "invalid user id", http.StatusBadRequest))
+		return
+	}
+
+	currentMember, ok := middleware.GetTeamMember(c)
+	if !ok {
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if currentMember.UserID == targetUserID {
+		apierror.RespondWithError(c, apierror.NewAPIError("cannot_remove_self", "vous ne pouvez pas vous supprimer vous-même", http.StatusBadRequest))
+		return
+	}
+
+	targetMember, err := h.teamMemberRepo.FindByUserAndTeam(targetUserID, teamID)
+	if err != nil {
+		if errors.Is(err, models.ErrMemberNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("member_not_found", "member not found in team", http.StatusNotFound))
+			return
+		}
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if targetMember.Role == models.RoleCaptain {
+		apierror.RespondWithError(c, apierror.NewAPIError("cannot_remove_captain", "cannot remove the captain, transfer captaincy first", http.StatusForbidden))
+		return
+	}
+
+	targetUser, err := h.userRepo.FindByID(targetUserID)
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	if targetUser.IsAdmin {
+		apierror.RespondWithError(c, apierror.NewAPIError("cannot_remove_admin", "cannot remove an admin", http.StatusForbidden))
+		return
+	}
+
+	if currentMember.Role == models.RoleCocaptain && targetMember.Role == models.RoleCocaptain {
+		apierror.RespondWithError(c, apierror.NewAPIError("insufficient_role", "you cannot remove another cocaptain", http.StatusForbidden))
+		return
+	}
+
+	if err := h.teamMemberRepo.RemoveMember(teamID, targetUserID); err != nil {
+		if errors.Is(err, models.ErrMemberNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("member_not_found", "member not found in team", http.StatusNotFound))
+			return
+		}
+		apierror.RespondWithError(c, apierror.NewAPIError("internal_error", "internal server error", http.StatusInternalServerError))
+		return
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{
+		"message": "member removed",
+	})
+}
+
 func (h *TeamRolesHandler) TransferCaptaincy(c *gin.Context) {
 	user, err := middleware.MustGetUser(c)
 	if err != nil {

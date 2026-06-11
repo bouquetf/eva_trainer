@@ -152,6 +152,11 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 		teams.GET("/:id/members", middleware.RequireTeamRole(logger, teamMemberRepo, "member", "editor", "cocaptain", "captain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:view"), teamRolesHandler.ListMembers)
 		teams.PUT("/:id/members/:userId/role", middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:role:assign"), teamRolesHandler.UpdateRole)
 		teams.POST("/:id/transfer-captaincy", middleware.RequireTeamRole(logger, teamMemberRepo, "captain"), middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:role:transfer-captain"), teamRolesHandler.TransferCaptaincy)
+		teams.DELETE("/:id/members/:userId",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "member:role:assign"),
+			teamRolesHandler.RemoveMember,
+		)
 
 		teams.POST("/:id/invitations",
 			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
@@ -162,6 +167,11 @@ func setupTeamRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger services
 			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
 			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
 			teamInvitationHandler.GenerateInviteLink,
+		)
+		teams.DELETE("/:id/invitations/:invitationId",
+			middleware.RequireTeamRole(logger, teamMemberRepo, "captain", "cocaptain"),
+			middleware.RequirePermission(logger, teamMemberRepo, rolePermRepo, permRepo, "team:invite"),
+			teamInvitationHandler.CancelInvitation,
 		)
 
 		teams.GET("/:id/maps/:mapId/zones",

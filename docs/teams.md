@@ -28,6 +28,20 @@ Depuis la page des équipes, cliquer sur une équipe pour voir ses détails :
 
 Le capitaine peut modifier le nom de l'équipe depuis la page des détails.
 
+### Supprimer un membre
+
+Le capitaine et le cocapitaine peuvent supprimer un membre de l'équipe :
+
+1. Ouvrir la section **Membres** dans les paramètres de l'équipe
+2. Cliquer sur **Supprimer** à côté du membre concerné
+3. Confirmer la suppression dans la boîte de dialogue
+
+**Règles :**
+- Le capitaine ne peut pas être supprimé (transfert de captaincy requis)
+- Un admin global ne peut pas être supprimé
+- Un utilisateur ne peut pas se supprimer lui-même (doit quitter l'équipe)
+- La suppression retire tous les accès à l'équipe et ses zones
+
 ## Quitter une équipe
 
 ### Membre non-capitaine
@@ -53,6 +67,14 @@ Le capitaine peut supprimer définitivement l'équipe depuis la **Zone de danger
 - Toutes les zones privées de l'équipe sont supprimées
 - Toutes les zones publiques sont converties en templates (à implémenter)
 
+## Annuler une invitation (capitaine/cocapitaine)
+
+Le capitaine et le cocapitaine peuvent annuler une invitation en attente :
+
+1. Ouvrir la section **Invitations** dans les paramètres de l'équipe
+2. Dans le tableau **Invitations en attente**, cliquer sur **Annuler**
+3. L'invitation devient immédiatement invalide : le lien ne fonctionne plus, la notification n'est plus utilisable
+
 ## Contraintes
 
 | Contrainte | Valeur |
@@ -72,6 +94,8 @@ Le capitaine peut supprimer définitivement l'équipe depuis la **Zone de danger
 | GET | `/api/v1/teams/:id` | Oui | Membre | Détails d'une équipe |
 | PUT | `/api/v1/teams/:id` | Oui | Capitaine | Modifier le nom |
 | DELETE | `/api/v1/teams/:id` | Oui | Capitaine | Supprimer l'équipe (saisie du nom requise) |
+| DELETE | `/api/v1/teams/:id/members/:userId` | Oui | Capitaine/Cocapitaine | Supprimer un membre |
+| DELETE | `/api/v1/teams/:id/invitations/:invitationId` | Oui | Capitaine/Cocapitaine | Annuler une invitation |
 | POST | `/api/v1/teams/:id/leave` | Oui | Membre | Quitter l'équipe |
 
 ## Exemples curl
@@ -106,6 +130,14 @@ curl -X DELETE http://localhost:8080/api/v1/teams/1 \
 # Quitter l'équipe
 curl -X POST http://localhost:8080/api/v1/teams/1/leave \
   -H "Authorization: Bearer <jwt>"
+
+# Supprimer un membre
+curl -X DELETE http://localhost:8080/api/v1/teams/1/members/5 \
+  -H "Authorization: Bearer <jwt>"
+
+# Annuler une invitation
+curl -X DELETE http://localhost:8080/api/v1/teams/1/invitations/3 \
+  -H "Authorization: Bearer <jwt>"
 ```
 
 ## Gestion des erreurs
@@ -118,6 +150,11 @@ curl -X POST http://localhost:8080/api/v1/teams/1/leave \
 | 403 | `not_team_member` | L'utilisateur n'est pas membre de l'équipe |
 | 403 | `insufficient_role` | Le rôle de l'utilisateur ne permet pas cette action |
 | 404 | `team_not_found` | Équipe inexistante |
+| 400 | `cannot_remove_self` | Auto-suppression (utiliser "Quitter l'équipe" à la place) |
+| 403 | `cannot_remove_captain` | Suppression du capitaine (transfert de captaincy requis) |
+| 403 | `cannot_remove_admin` | Suppression d'un admin global |
+| 403 | `insufficient_role` | Cocapitaine tente de supprimer un autre cocapitaine ou un capitaine |
+| 404 | `invitation_not_found` | Invitation inexistante ou déjà traitée |
 | 500 | `internal_error` | Erreur serveur interne |
 
 ## Architecture

@@ -1,7 +1,7 @@
 import {useState} from 'react'
 import {useMutation, useQueryClient} from '@tanstack/react-query'
 import type {TeamMemberWithUser} from '../api/roles'
-import {updateMemberRole} from '../api/roles'
+import {updateMemberRole, removeMember} from '../api/roles'
 import {useAuthStore} from '../store/auth'
 import ConfirmDialog from './ConfirmDialog'
 
@@ -29,6 +29,8 @@ function MemberList({ teamId, members, currentUserId, currentUserRole, onRoleCha
   const queryClient = useQueryClient()
   const user = useAuthStore.getState().user
   const [confirmTarget, setConfirmTarget] = useState<{ userId: number; username: string; role: string } | null>(null)
+  const [removeConfirmTarget, setRemoveConfirmTarget] = useState<{ userId: number; username: string } | null>(null)
+  const [removeError, setRemoveError] = useState<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: ({ userId, role }: { userId: number; role: string }) =>
@@ -40,6 +42,23 @@ function MemberList({ teamId, members, currentUserId, currentUserRole, onRoleCha
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: ['team-members', teamId] })
+    },
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: ({ userId }: { userId: number }) =>
+      removeMember(teamId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-members', teamId] })
+      queryClient.invalidateQueries({ queryKey: ['team', teamId] })
+      setRemoveConfirmTarget(null)
+      setRemoveError(null)
+      onRoleChanged()
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as { status?: number; body?: { message?: string } }
+      setRemoveError(apiErr?.body?.message ?? 'Erreur lors de la suppression.')
+      setRemoveConfirmTarget(null)
     },
   })
 
@@ -106,6 +125,13 @@ function MemberList({ teamId, members, currentUserId, currentUserRole, onRoleCha
                           ⚓ Cocapitaine
                         </button>
                       )}
+                      <button
+                        className="btn-danger btn-small"
+                        onClick={() => setRemoveConfirmTarget({ userId: m.user_id, username: m.display_name || `#${m.user_id}` })}
+                        disabled={removeMutation.isPending}
+                      >
+                        Supprimer
+                      </button>
                     </>
                   )}
                 </div>
@@ -114,6 +140,27 @@ function MemberList({ teamId, members, currentUserId, currentUserRole, onRoleCha
           </div>
         )
       })}
+
+      {removeError && <div className="error-message">{removeError}</div>}
+
+      <ConfirmDialog
+        open={removeConfirmTarget !== null}
+        title="Confirmer la suppression"
+        message={
+          removeConfirmTarget
+            ? `Confirmer la suppression de ${removeConfirmTarget.username} de l'équipe ?`
+            : ''
+        }
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        danger
+        onConfirm={() => {
+          if (removeConfirmTarget) {
+            removeMutation.mutate({ userId: removeConfirmTarget.userId })
+          }
+        }}
+        onCancel={() => setRemoveConfirmTarget(null)}
+      />
 
       <ConfirmDialog
         open={confirmTarget !== null}

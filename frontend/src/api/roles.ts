@@ -36,6 +36,14 @@ export async function updateMemberRole(
   )
 }
 
+export async function removeMember(
+  teamId: number,
+  userId: number,
+): Promise<{ message: string }> {
+  const api = getApiClient()
+  return api.del<{ message: string }>(`/api/v1/teams/${teamId}/members/${userId}`)
+}
+
 export async function transferCaptaincy(
   teamId: number,
   data: TransferCaptaincyPayload,
