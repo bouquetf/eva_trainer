@@ -42,6 +42,7 @@ var archiveMigrationFiles = []string{
 	"000032_add_divs_replay_url.up.sql",
 	"000033_add_div_notes.up.sql",
 	"000034_add_ligue_nom.up.sql",
+	"000035_add_matchs_hors_competition.up.sql",
 }
 
 func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTService, models.UserRepository, *sql.DB) {
@@ -2372,19 +2373,19 @@ func TestArchiveHandler_GetCardStats_Success(t *testing.T) {
 
 	// Match 1: cp_metal, A wins 80-60
 	matchRepo := models.NewMatchRepository(db)
-	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 80, 60, 0, nil)
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 80, 60, 0, nil, false)
 	if err != nil {
 		t.Fatalf("failed to create match: %v", err)
 	}
 
 	// Match 2: cp_metal, B wins 55-70
-	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 55, 70, 0, nil)
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 55, 70, 0, nil, false)
 	if err != nil {
 		t.Fatalf("failed to create match: %v", err)
 	}
 
 	// Match 3: mistral, A wins 90-50
-	_, err = matchRepo.Create(bo.ID, mistral.ID, 90, 50, 0, nil)
+	_, err = matchRepo.Create(bo.ID, mistral.ID, 90, 50, 0, nil, false)
 	if err != nil {
 		t.Fatalf("failed to create match: %v", err)
 	}
@@ -2599,17 +2600,17 @@ func TestArchiveHandler_GetHeadToHeadStats_Success(t *testing.T) {
 
 	matchRepo := models.NewMatchRepository(db)
 	// Match 1: cp_metal, team1 wins 80-60
-	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 80, 60, 0, nil)
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 80, 60, 0, nil, false)
 	if err != nil {
 		t.Fatalf("failed to create match: %v", err)
 	}
 	// Match 2: cp_metal, team2 wins 55-70
-	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 55, 70, 0, nil)
+	_, err = matchRepo.Create(bo.ID, cpMetal.ID, 55, 70, 0, nil, false)
 	if err != nil {
 		t.Fatalf("failed to create match: %v", err)
 	}
 	// Match 3: mistral, team1 wins 90-50
-	_, err = matchRepo.Create(bo.ID, mistral.ID, 90, 50, 0, nil)
+	_, err = matchRepo.Create(bo.ID, mistral.ID, 90, 50, 0, nil, false)
 	if err != nil {
 		t.Fatalf("failed to create match: %v", err)
 	}
@@ -3473,5 +3474,235 @@ func TestArchiveHandler_ListLigues_RetourneNomEtSplitID(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected ligue id %d to be in list", ligueID)
+	}
+}
+
+// --- UpdateMatch (hors_competition toggle) ---
+
+func TestArchiveHandler_ToggleMatchHorsCompetition(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	ligueID := createTestLigue(t, db)
+	team1ID := createTestEvaTeam(t, db, "Team A", "TA")
+	team2ID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	boRepo := models.NewBORepository(db)
+	bo, err := boRepo.Create(ligueID, team1ID, team2ID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	matchRepo := models.NewMatchRepository(db)
+	match, err := matchRepo.Create(bo.ID, mapID, 13, 7, 0, nil, false)
+	if err != nil {
+		t.Fatalf("failed to create match: %v", err)
+	}
+
+	// Toggle ON
+	body := `{"hors_competition": true}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/v1/archive/matchs/%d", match.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(match.ID)}}
+	handler.UpdateMatch(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	matchResp := resp["match"].(map[string]interface{})
+	if matchResp["hors_competition"] != true {
+		t.Errorf("expected hors_competition=true, got %v", matchResp["hors_competition"])
+	}
+
+	// Toggle OFF
+	body = `{"hors_competition": false}`
+	w = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/v1/archive/matchs/%d", match.ID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(match.ID)}}
+	handler.UpdateMatch(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	matchResp = resp["match"].(map[string]interface{})
+	if matchResp["hors_competition"] != false {
+		t.Errorf("expected hors_competition=false, got %v", matchResp["hors_competition"])
+	}
+}
+
+func TestArchiveHandler_CreateBO_PicksWithoutMatchs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	body := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3",
+		"bans": [{"equipe_id": %d, "map_id": %d, "ordre": 1}],
+		"picks": [{"equipe_id": %d, "map_id": %d, "ordre": 1}, {"equipe_id": %d, "map_id": %d, "ordre": 2}]
+	}`, ligueID, teamAID, teamBID, teamAID, mapID, teamAID, mapID, teamBID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	bo, ok := resp["bo"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'bo' object")
+	}
+
+	picks, _ := bo["picks"].([]interface{})
+	if len(picks) != 2 {
+		t.Errorf("expected 2 picks, got %d", len(picks))
+	}
+
+	matchs, _ := bo["matchs"].([]interface{})
+	if len(matchs) != 0 {
+		t.Errorf("expected 0 matchs (picks without matchs), got %d", len(matchs))
+	}
+}
+
+func TestArchiveHandler_ListBOs_WithDiv(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+
+	divRepo := models.NewDivRepository(db)
+	div, err := divRepo.Create(ligueID, "Groupe Test")
+	if err != nil {
+		t.Fatalf("failed to create div: %v", err)
+	}
+	err = divRepo.AssignTeam(div.ID, teamAID)
+	if err != nil {
+		t.Fatalf("failed to assign team A: %v", err)
+	}
+	err = divRepo.AssignTeam(div.ID, teamBID)
+	if err != nil {
+		t.Fatalf("failed to assign team B: %v", err)
+	}
+
+	boRepo := models.NewBORepository(db)
+	_, err = boRepo.Create(ligueID, teamAID, teamBID, "BO3", 0)
+	if err != nil {
+		t.Fatalf("failed to create BO: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/archive/bos?ligue_id=%d", ligueID), nil)
+
+	handler.ListBOs(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	bos, ok := resp["bos"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'bos' array")
+	}
+	if len(bos) != 1 {
+		t.Fatalf("expected 1 BO, got %d", len(bos))
+	}
+
+	first := bos[0].(map[string]interface{})
+	if first["div_id"] == nil {
+		t.Error("expected non-nil div_id in BOListItem")
+	}
+	if first["div_name"] != "Groupe Test" {
+		t.Errorf("expected div_name 'Groupe Test', got '%v'", first["div_name"])
+	}
+}
+
+func TestArchiveHandler_CreateBO_WithHorsCompetitionMatch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+	ligueID := createTestLigue(t, db)
+	teamAID := createTestEvaTeam(t, db, "Team A", "TA")
+	teamBID := createTestEvaTeam(t, db, "Team B", "TB")
+	mapID := createTestBOMap(t, db)
+
+	// 3 matchs: A wins, B wins (hors_comp), A wins → A should win 2-0
+	body := fmt.Sprintf(`{
+		"ligue_id": %d,
+		"equipe1_id": %d,
+		"equipe2_id": %d,
+		"format": "BO3",
+		"matchs": [
+			{"map_id": %d, "score_equipe1": 16, "score_equipe2": 10, "hors_competition": false},
+			{"map_id": %d, "score_equipe1": 10, "score_equipe2": 16, "hors_competition": true},
+			{"map_id": %d, "score_equipe1": 16, "score_equipe2": 12, "hors_competition": false}
+		]
+	}`, ligueID, teamAID, teamBID, mapID, mapID, mapID)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/archive/bos", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateBO(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	bo, ok := resp["bo"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'bo' object")
+	}
+
+	boFields, ok := bo["BO"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'BO' field in bo")
+	}
+
+	if boFields["vainqueur_id"] == nil {
+		t.Fatal("expected vainqueur_id to be set")
+	}
+	if boFields["vainqueur_id"].(float64) != float64(teamAID) {
+		t.Errorf("expected winner team A (%d), got %v", teamAID, boFields["vainqueur_id"])
+	}
+
+	matchs, _ := bo["matchs"].([]interface{})
+	if len(matchs) != 3 {
+		t.Fatalf("expected 3 matchs, got %d", len(matchs))
+	}
+
+	// Verify hors_competition flag on each match
+	for i, raw := range matchs {
+		m := raw.(map[string]interface{})
+		expected := i == 1
+		if m["hors_competition"] != expected {
+			t.Errorf("match %d: expected hors_competition=%v, got %v", i, expected, m["hors_competition"])
+		}
 	}
 }

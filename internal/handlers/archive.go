@@ -1052,11 +1052,16 @@ type createPickItem struct {
 }
 
 type createMatchItem struct {
-	MapID        int     `json:"map_id" binding:"required"`
-	ScoreEquipe1 int     `json:"score_equipe1"`
-	ScoreEquipe2 int     `json:"score_equipe2"`
-	Forfait      int     `json:"forfait"`
-	Commentaires *string `json:"commentaires"`
+	MapID           int     `json:"map_id" binding:"required"`
+	ScoreEquipe1    int     `json:"score_equipe1"`
+	ScoreEquipe2    int     `json:"score_equipe2"`
+	Forfait         int     `json:"forfait"`
+	Commentaires    *string `json:"commentaires"`
+	HorsCompetition bool    `json:"hors_competition"`
+}
+
+type updateMatchRequest struct {
+	HorsCompetition *bool `json:"hors_competition"`
 }
 
 type updateBORequest struct {
@@ -1213,7 +1218,7 @@ func (h *ArchiveHandler) CreateBO(c *gin.Context) {
 		}
 
 		for _, m := range req.Matchs {
-			_, err := h.matchRepo.Create(bo.ID, m.MapID, m.ScoreEquipe1, m.ScoreEquipe2, m.Forfait, m.Commentaires)
+			_, err := h.matchRepo.Create(bo.ID, m.MapID, m.ScoreEquipe1, m.ScoreEquipe2, m.Forfait, m.Commentaires, m.HorsCompetition)
 			if err != nil {
 				h.logger.Error("failed to create match", "error", err)
 				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
@@ -1418,7 +1423,7 @@ func (h *ArchiveHandler) UpdateBO(c *gin.Context) {
 		}
 
 		for _, m := range req.Matchs {
-			_, err := h.matchRepo.Create(id, m.MapID, m.ScoreEquipe1, m.ScoreEquipe2, m.Forfait, m.Commentaires)
+			_, err := h.matchRepo.Create(id, m.MapID, m.ScoreEquipe1, m.ScoreEquipe2, m.Forfait, m.Commentaires, m.HorsCompetition)
 			if err != nil {
 				h.logger.Error("failed to create match", "error", err)
 				apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
@@ -1642,4 +1647,45 @@ func (h *ArchiveHandler) DeleteMyDivNote(c *gin.Context) {
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Note supprimée"})
+}
+
+func (h *ArchiveHandler) UpdateMatch(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_match_id", "invalid match id", http.StatusBadRequest))
+		return
+	}
+
+	var req updateMatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("invalid_request_body", "invalid request body", http.StatusBadRequest))
+		return
+	}
+
+	var match *models.Match
+
+	if req.HorsCompetition != nil {
+		match, err = h.matchRepo.SetHorsCompetition(id, *req.HorsCompetition)
+		if errors.Is(err, models.ErrMatchNotFound) {
+			apierror.RespondWithError(c, apierror.NewAPIError("match_not_found", "match not found", http.StatusNotFound))
+			return
+		}
+		if err != nil {
+			h.logger.Error("failed to set hors_competition", "error", err)
+			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
+			return
+		}
+	}
+
+	if match == nil {
+		apierror.RespondWithError(c, apierror.NewAPIError("nothing_to_update", "no fields to update", http.StatusBadRequest))
+		return
+	}
+
+	_, recErr := h.boRepo.RecomputeWinner(match.BoID)
+	if recErr != nil {
+		h.logger.Error("failed to recompute BO winner after match update", "error", recErr)
+	}
+
+	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"match": match})
 }

@@ -367,6 +367,7 @@ export interface Match {
   forfait: number
   vainqueur_id: number | null
   commentaires: string | null
+  hors_competition: boolean
   created_at: string
   updated_at: string
 }
@@ -381,6 +382,8 @@ export interface BODetail {
 export interface BOListItem extends BO {
   equipe1_name: string
   equipe2_name: string
+  div_id: number | null
+  div_name: string
 }
 
 export interface BOListResponse {
@@ -405,7 +408,7 @@ export interface CreateBOPayload {
   forfait?: number
   bans?: { equipe_id: number; map_id: number; ordre: number }[]
   picks?: { equipe_id?: number | null; map_id: number; ordre: number }[]
-  matchs?: { map_id: number; score_equipe1: number; score_equipe2: number; forfait?: number; commentaires?: string | null }[]
+  matchs?: { map_id: number; score_equipe1: number; score_equipe2: number; forfait?: number; commentaires?: string | null; hors_competition?: boolean }[]
 }
 
 export interface UpdateBOPayload {
@@ -413,7 +416,7 @@ export interface UpdateBOPayload {
   forfait?: number
   bans?: { equipe_id: number; map_id: number; ordre: number }[]
   picks?: { equipe_id?: number | null; map_id: number; ordre: number }[]
-  matchs?: { map_id: number; score_equipe1: number; score_equipe2: number; forfait?: number; commentaires?: string | null }[]
+  matchs?: { map_id: number; score_equipe1: number; score_equipe2: number; forfait?: number; commentaires?: string | null; hors_competition?: boolean }[]
 }
 
 export interface LigueMapsResponse {

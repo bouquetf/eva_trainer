@@ -290,12 +290,13 @@ type BORepository interface {
 }
 
 type MatchRepository interface {
-	Create(boID, mapID, scoreEquipe1, scoreEquipe2, forfait int, commentaires *string) (*Match, error)
+	Create(boID, mapID, scoreEquipe1, scoreEquipe2, forfait int, commentaires *string, horsCompetition bool) (*Match, error)
 	FindByID(id int) (*Match, error)
 	FindByBOID(boID int) ([]*Match, error)
-	Update(id, mapID, scoreEquipe1, scoreEquipe2, forfait int, commentaires *string) (*Match, error)
+	Update(id, mapID, scoreEquipe1, scoreEquipe2, forfait int, commentaires *string, horsCompetition bool) (*Match, error)
 	Delete(id int) error
 	DeleteByBOID(boID int) error
+	SetHorsCompetition(id int, horsCompetition bool) (*Match, error)
 }
 
 type CardStatsRepository interface {

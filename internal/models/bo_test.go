@@ -101,6 +101,37 @@ func TestComputeBOWinner(t *testing.T) {
 			forfait:   2,
 			want:      ptr(1),
 		},
+		{
+			name: "hors_competition match is ignored",
+			matchs: []*Match{
+				{VainqueurID: ptr(1), HorsCompetition: false},
+				{VainqueurID: ptr(2), HorsCompetition: true},
+				{VainqueurID: ptr(1), HorsCompetition: false},
+			},
+			equipe1ID: 1,
+			equipe2ID: 2,
+			want:      ptr(1),
+		},
+		{
+			name: "all matches hors_competition => no winner",
+			matchs: []*Match{
+				{VainqueurID: ptr(1), HorsCompetition: true},
+				{VainqueurID: ptr(2), HorsCompetition: true},
+			},
+			equipe1ID: 1,
+			equipe2ID: 2,
+			want:      nil,
+		},
+		{
+			name: "forfait + hors_competition",
+			matchs: []*Match{
+				{VainqueurID: ptr(1), HorsCompetition: false},
+				{VainqueurID: ptr(2), HorsCompetition: true},
+			},
+			equipe1ID: 1,
+			equipe2ID: 2,
+			want:      ptr(1),
+		},
 	}
 
 	for _, tt := range tests {

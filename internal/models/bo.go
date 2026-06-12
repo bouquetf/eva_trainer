@@ -30,6 +30,8 @@ type BOListItem struct {
 	BO
 	Equipe1Name string `json:"equipe1_name"`
 	Equipe2Name string `json:"equipe2_name"`
+	DivID       *int   `json:"div_id"`
+	DivName     string `json:"div_name"`
 }
 
 type boRepo struct {
@@ -147,12 +149,15 @@ func (r *boRepo) FindWithDetails(id int) (*BOWithDetails, error) {
 func (r *boRepo) FindByLigueIDWithTeams(ligueID int) ([]*BOListItem, error) {
 	rows, err := r.db.Query(
 		`SELECT b.id, b.ligue_id, b.equipe1_id, b.equipe2_id, b.vainqueur_id, b.format, b.forfait, b.created_at, b.updated_at,
-		        e1.name AS equipe1_name, e2.name AS equipe2_name
+		        e1.name AS equipe1_name, e2.name AS equipe2_name,
+		        d.id AS div_id, COALESCE(d.nom, '') AS div_name
 		 FROM bos b
 		 JOIN eva_teams e1 ON e1.id = b.equipe1_id
 		 JOIN eva_teams e2 ON e2.id = b.equipe2_id
+		 LEFT JOIN equipe_eva_div eed ON eed.equipe_eva_id = b.equipe1_id AND eed.ligue_id = b.ligue_id
+		 LEFT JOIN divs d ON d.id = eed.div_id
 		 WHERE b.ligue_id = $1
-		 ORDER BY b.id ASC`,
+		 ORDER BY COALESCE(d.nom, 'ZZZZ') ASC, b.id ASC`,
 		ligueID,
 	)
 	if err != nil {
@@ -163,11 +168,18 @@ func (r *boRepo) FindByLigueIDWithTeams(ligueID int) ([]*BOListItem, error) {
 	var items []*BOListItem
 	for rows.Next() {
 		item := &BOListItem{}
+		var divID sql.NullInt64
+		var divName string
 		err := rows.Scan(&item.ID, &item.LigueID, &item.Equipe1ID, &item.Equipe2ID, &item.VainqueurID, &item.Format, &item.Forfait, &item.CreatedAt, &item.UpdatedAt,
-			&item.Equipe1Name, &item.Equipe2Name)
+			&item.Equipe1Name, &item.Equipe2Name, &divID, &divName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan BO list item: %w", err)
 		}
+		if divID.Valid {
+			id := int(divID.Int64)
+			item.DivID = &id
+		}
+		item.DivName = divName
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -237,6 +249,9 @@ func ComputeBOWinner(matchs []*Match, equipe1ID, equipe2ID int, forfait int) *in
 	}
 	wins1, wins2 := 0, 0
 	for _, m := range matchs {
+		if m.HorsCompetition {
+			continue
+		}
 		if m.VainqueurID != nil {
 			switch *m.VainqueurID {
 			case equipe1ID:

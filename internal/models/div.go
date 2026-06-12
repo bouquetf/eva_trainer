@@ -310,7 +310,7 @@ func (r *divRepo) GetStandings(divID int) ([]*StandingEntry, error) {
 		`SELECT m.bo_id, m.vainqueur_id
 		 FROM matchs m
 		 JOIN bos b ON b.id = m.bo_id
-		 WHERE b.ligue_id = $1`,
+		 WHERE b.ligue_id = $1 AND m.hors_competition = false`,
 		div.LigueID,
 	)
 	if err != nil {

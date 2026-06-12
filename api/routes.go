@@ -725,6 +725,12 @@ func setupArchiveRoutes(rg *gin.RouterGroup, cfg *config.AppConfig, logger servi
 			archiveHandler.DeleteBO,
 		)
 
+		archive.PATCH("/matchs/:id",
+			middleware.RequireAuth(logger, userRepo, jwtService),
+			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "write"),
+			archiveHandler.UpdateMatch,
+		)
+
 		archive.GET("/card-stats",
 			middleware.RequireAuth(logger, userRepo, jwtService),
 			middleware.RequireArchiveAccess(logger, globalRoleRepo, teamRoleRepo, "read"),

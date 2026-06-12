@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listLigues, listBOs, getBO, createBO, updateBO, deleteBO, listEvaTeams, getLigueMaps,
@@ -7,11 +7,11 @@ import type { BOListItem, BO, BODetail } from '../api/archives'
 
 interface BanFormItem { equipe_id: number | ''; map_id: number | '' }
 interface PickFormItem { equipe_id: number | '' | null; map_id: number | '' }
-interface MatchFormItem { map_id: number | ''; score_equipe1: number | ''; score_equipe2: number | ''; commentaires: string; forfait: 0 | 1 | 2 }
+interface MatchFormItem { map_id: number | ''; score_equipe1: number | ''; score_equipe2: number | ''; commentaires: string; forfait: 0 | 1 | 2; hors_competition: boolean }
 
 function emptyBan(): BanFormItem { return { equipe_id: '', map_id: '' } }
 function emptyPick(): PickFormItem { return { equipe_id: null, map_id: '' } }
-function emptyMatch(): MatchFormItem { return { map_id: '', score_equipe1: '', score_equipe2: '', commentaires: '', forfait: 0 } }
+function emptyMatch(): MatchFormItem { return { map_id: '', score_equipe1: '', score_equipe2: '', commentaires: '', forfait: 0, hors_competition: false } }
 
 export default function BOsSection({ canWrite }: { canWrite: boolean }) {
   const queryClient = useQueryClient()
@@ -48,6 +48,18 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
     staleTime: 30_000,
   })
   const bosItems: BOListItem[] = (bosData as { bos: BOListItem[]; total: number })?.bos ?? []
+
+  const groupedBOs = useMemo(() => {
+    const groups = new Map<number | null, { divId: number | null; divName: string; bos: BOListItem[] }>()
+    for (const bo of bosItems) {
+      const key = bo.div_id ?? null
+      if (!groups.has(key)) {
+        groups.set(key, { divId: key, divName: bo.div_name || 'Non assigné', bos: [] })
+      }
+      groups.get(key)!.bos.push(bo)
+    }
+    return Array.from(groups.values())
+  }, [bosItems])
 
   const { data: boDetailData } = useQuery({
     queryKey: ['archive-bo-detail', selectedBOId],
@@ -118,18 +130,16 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
       const d = resp.bo
       setFormBans(d.bans.map(b => ({ equipe_id: b.equipe_id, map_id: b.map_id })))
       setFormPicks(d.picks.map(p => ({ equipe_id: p.equipe_id, map_id: p.map_id })))
-      setFormMatchs(d.matchs.map(m => ({ map_id: m.map_id, score_equipe1: m.score_equipe1, score_equipe2: m.score_equipe2, commentaires: m.commentaires ?? '', forfait: m.forfait as 0 | 1 | 2 })))
+      setFormMatchs(d.matchs.map(m => ({ map_id: m.map_id, score_equipe1: m.score_equipe1, score_equipe2: m.score_equipe2, commentaires: m.commentaires ?? '', forfait: m.forfait as 0 | 1 | 2, hors_competition: m.hors_competition })))
     }).catch(() => {})
   }
 
   function addPick() {
     setFormPicks(prev => [...prev, emptyPick()])
-    setFormMatchs(prev => [...prev, emptyMatch()])
   }
 
   function removePick(idx: number) {
     setFormPicks(prev => prev.filter((_, i) => i !== idx))
-    setFormMatchs(prev => prev.filter((_, i) => i !== idx))
   }
 
   function updatePickMap(idx: number, mapId: number | '') {
@@ -138,11 +148,20 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
       np[idx] = { ...np[idx], map_id: mapId }
       return np
     })
-    setFormMatchs(prev => {
-      const nm = [...prev]
-      nm[idx] = { ...nm[idx], map_id: mapId }
-      return nm
-    })
+  }
+
+  function addMatch() {
+    const nextPickIndex = formMatchs.length
+    const nextPick = formPicks[nextPickIndex]
+    const newMatch = emptyMatch()
+    if (nextPick && nextPick.map_id !== '') {
+      newMatch.map_id = nextPick.map_id
+    }
+    setFormMatchs(prev => [...prev, newMatch])
+  }
+
+  function removeMatch(idx: number) {
+    setFormMatchs(prev => prev.filter((_, i) => i !== idx))
   }
 
   const createBOMutation = useMutation({
@@ -154,10 +173,14 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
       forfait: formForfait || undefined,
       bans: formForfait === 0 && formBans.length > 0 ? formBans.map((b, idx) => ({ equipe_id: Number(b.equipe_id), map_id: Number(b.map_id), ordre: idx + 1 })) : undefined,
       picks: formForfait === 0 && formPicks.length > 0 ? formPicks.map((p, idx) => ({ equipe_id: p.equipe_id === '' ? null : Number(p.equipe_id), map_id: Number(p.map_id), ordre: idx + 1 })) : undefined,
-      matchs: formForfait === 0 && formMatchs.length > 0 ? formMatchs.map((m, i) => {
-        const mapId = formPicks[i]?.map_id !== '' ? formPicks[i]?.map_id : (m.map_id !== '' ? m.map_id : '')
-        return { map_id: Number(mapId || 0), score_equipe1: Number(m.score_equipe1), score_equipe2: Number(m.score_equipe2), forfait: m.forfait || undefined, commentaires: m.commentaires || null }
-      }) : undefined,
+      matchs: formForfait === 0 && formMatchs.length > 0 ? formMatchs.map(m => ({
+        map_id: Number(m.map_id || 0),
+        score_equipe1: Number(m.score_equipe1),
+        score_equipe2: Number(m.score_equipe2),
+        forfait: m.forfait || undefined,
+        commentaires: m.commentaires || null,
+        hors_competition: m.hors_competition || undefined,
+      })) : undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['archive-bos'] })
@@ -180,10 +203,14 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
         forfait: formForfait || undefined,
         bans: formForfait === 0 && formBans.length > 0 ? formBans.map((b, idx) => ({ equipe_id: Number(b.equipe_id), map_id: Number(b.map_id), ordre: idx + 1 })) : undefined,
         picks: formForfait === 0 && formPicks.length > 0 ? formPicks.map((p, idx) => ({ equipe_id: p.equipe_id === '' ? null : Number(p.equipe_id), map_id: Number(p.map_id), ordre: idx + 1 })) : undefined,
-        matchs: formForfait === 0 && formMatchs.length > 0 ? formMatchs.map((m, i) => {
-          const mapId = formPicks[i]?.map_id !== '' ? formPicks[i]?.map_id : (m.map_id !== '' ? m.map_id : '')
-          return { map_id: Number(mapId || 0), score_equipe1: Number(m.score_equipe1), score_equipe2: Number(m.score_equipe2), forfait: m.forfait || undefined, commentaires: m.commentaires || null }
-        }) : undefined,
+        matchs: formForfait === 0 && formMatchs.length > 0 ? formMatchs.map(m => ({
+          map_id: Number(m.map_id || 0),
+          score_equipe1: Number(m.score_equipe1),
+          score_equipe2: Number(m.score_equipe2),
+          forfait: m.forfait || undefined,
+          commentaires: m.commentaires || null,
+          hors_competition: m.hors_competition || undefined,
+        })) : undefined,
       })
     },
     onSuccess: () => {
@@ -276,134 +303,144 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
           ) : bosItems.length === 0 ? (
             <div className="empty-state"><p>Aucun BO</p></div>
           ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Équipe 1</th>
-                  <th>Équipe 2</th>
-                  <th>Format</th>
-                  <th>Vainqueur</th>
-                  <th>Date</th>
-                  {canWrite && <th>Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {bosItems.map(bo => (
-                  <>
-                    <tr key={bo.id} onClick={() => selectBO(bo.id)} style={{ cursor: 'pointer' }}>
-                      <td><strong>{bo.equipe1_name}</strong></td>
-                      <td><strong>{bo.equipe2_name}</strong></td>
-                      <td>{bo.format}{bo.forfait !== 0 && ' (Forfait)'}</td>
-                      <td>
-                        {bo.forfait !== 0 ? (
-                          <span style={{ color: '#e74c3c' }}>
-                            Forfait {bo.forfait === 1 ? bo.equipe1_name : bo.equipe2_name}
-                          </span>
-                        ) : bo.vainqueur_id != null ? (
-                          bo.vainqueur_id === bo.equipe1_id ? bo.equipe1_name : bo.equipe2_name
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
-                      <td>{formatDate(bo.created_at)}</td>
-                      {canWrite && (
-                        <td onClick={e => e.stopPropagation()}>
-                          <button className="btn-secondary btn-small" onClick={() => openEditForm(bo)}>Modifier</button>
-                          <button className="btn-danger btn-small" style={{ marginLeft: 8 }} onClick={() => setDeletingBOId(bo.id)}>Supprimer</button>
-                        </td>
-                      )}
-                    </tr>
-                    {selectedBOId === bo.id && boDetail && (
-                      <tr key={`${bo.id}-detail`} className="row-expanded">
-                        <td colSpan={canWrite ? 6 : 5} style={{ padding: 0 }}>
-                          <div className="detail-cell">
-                            <div className="user-detail">
-                              <h4>Détails du BO</h4>
-                              <p>
-                                {boDetail.BO.forfait !== 0 ? (
-                                  <span style={{ color: '#e74c3c' }}>
-                                    Forfait {boDetail.BO.forfait === 1 ? bo.equipe1_name : bo.equipe2_name}
-                                  </span>
-                                ) : (
-                                  <>
-                                    {boDetail.BO.equipe1_id === boDetail.BO.vainqueur_id ? '🏆' : ''} {bo.equipe1_name}
-                                    {' vs '}
-                                    {bo.equipe2_name} {boDetail.BO.vainqueur_id === boDetail.BO.equipe2_id ? '🏆' : ''}
-                                    {' — '}{boDetail.BO.format}
-                                  </>
-                                )}
-                              </p>
-
-                              {boDetail.bans.length > 0 && (
-                                <>
-                                  <h5 style={{ marginTop: 12 }}>Bans</h5>
-                                  <table className="admin-table">
-                                    <thead><tr><th>#</th><th>Équipe</th><th>Map</th></tr></thead>
-                                    <tbody>
-                                      {boDetail.bans.sort((a, b) => a.id - b.id).map(b => (
-                                        <tr key={b.id}>
-                                          <td>{boDetail.bans.indexOf(b) + 1}</td>
-                                          <td>{b.equipe_id === boDetail.BO.equipe1_id ? bo.equipe1_name : bo.equipe2_name}</td>
-                                          <td>{ligueMaps.find(m => m.id === b.map_id)?.name ?? `#${b.map_id}`}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </>
-                              )}
-
-                              {boDetail.picks.length > 0 && (
-                                <>
-                                  <h5 style={{ marginTop: 12 }}>Picks</h5>
-                                  <table className="admin-table">
-                                    <thead><tr><th>#</th><th>Équipe</th><th>Map</th></tr></thead>
-                                    <tbody>
-                                      {boDetail.picks.sort((a, b) => a.id - b.id).map(p => (
-                                        <tr key={p.id}>
-                                          <td>{boDetail.picks.indexOf(p) + 1}</td>
-                                          <td>{p.equipe_id === 0 ? '—' : p.equipe_id === boDetail.BO.equipe1_id ? bo.equipe1_name : bo.equipe2_name}</td>
-                                          <td>{ligueMaps.find(m => m.id === p.map_id)?.name ?? `#${p.map_id}`}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </>
-                              )}
-
-                              {boDetail.matchs.length > 0 && (
-                                <>
-                                  <h5 style={{ marginTop: 12 }}>Matchs</h5>
-                                  <table className="admin-table">
-                                    <thead><tr><th>Map</th><th>Score E1</th><th>Score E2</th><th>Statut</th><th>Vainqueur</th><th>Commentaires</th></tr></thead>
-                                    <tbody>
-                                      {boDetail.matchs.map(m => (
-                                        <tr key={m.id}>
-                                          <td>{ligueMaps.find(mm => mm.id === m.map_id)?.name ?? `#${m.map_id}`}</td>
-                                          <td>{m.forfait ? '—' : m.score_equipe1}</td>
-                                          <td>{m.forfait ? '—' : m.score_equipe2}</td>
-                                          <td>{m.forfait ? <span style={{ color: '#e74c3c' }}>Forfait</span> : 'Joué'}</td>
-                                          <td>
-                                            {m.vainqueur_id != null
-                                              ? (m.vainqueur_id === boDetail.BO.equipe1_id ? bo.equipe1_name : bo.equipe2_name)
-                                              : <span className="text-muted">—</span>
-                                            }
-                                          </td>
-                                          <td>{m.commentaires ?? ''}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </td>
+            <div>
+              {groupedBOs.map(group => (
+                <div key={group.divId ?? '__null__'} style={{ marginTop: group === groupedBOs[0] ? 0 : 24 }}>
+                  <h4 style={{ margin: '8px 0' }}>{group.divName}</h4>
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Équipe 1</th>
+                        <th>Équipe 2</th>
+                        <th>Format</th>
+                        <th>Vainqueur</th>
+                        <th>Date</th>
+                        {canWrite && <th>Actions</th>}
                       </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                      {group.bos.map(bo => (
+                        <>
+                          <tr key={bo.id} onClick={() => selectBO(bo.id)} style={{ cursor: 'pointer' }}>
+                            <td><strong>{bo.equipe1_name}</strong></td>
+                            <td><strong>{bo.equipe2_name}</strong></td>
+                            <td>{bo.format}{bo.forfait !== 0 && ' (Forfait)'}</td>
+                            <td>
+                              {bo.forfait !== 0 ? (
+                                <span style={{ color: '#e74c3c' }}>
+                                  Forfait {bo.forfait === 1 ? bo.equipe1_name : bo.equipe2_name}
+                                </span>
+                              ) : bo.vainqueur_id != null ? (
+                                bo.vainqueur_id === bo.equipe1_id ? bo.equipe1_name : bo.equipe2_name
+                              ) : (
+                                <span className="text-muted">—</span>
+                              )}
+                            </td>
+                            <td>{formatDate(bo.created_at)}</td>
+                            {canWrite && (
+                              <td onClick={e => e.stopPropagation()}>
+                                <button className="btn-secondary btn-small" onClick={() => openEditForm(bo)}>Modifier</button>
+                                <button className="btn-danger btn-small" style={{ marginLeft: 8 }} onClick={() => setDeletingBOId(bo.id)}>Supprimer</button>
+                              </td>
+                            )}
+                          </tr>
+                          {selectedBOId === bo.id && boDetail && (
+                            <tr key={`${bo.id}-detail`} className="row-expanded">
+                              <td colSpan={canWrite ? 6 : 5} style={{ padding: 0 }}>
+                                <div className="detail-cell">
+                                  <div className="user-detail">
+                                    <h4>Détails du BO</h4>
+                                    <p>
+                                      {boDetail.BO.forfait !== 0 ? (
+                                        <span style={{ color: '#e74c3c' }}>
+                                          Forfait {boDetail.BO.forfait === 1 ? bo.equipe1_name : bo.equipe2_name}
+                                        </span>
+                                      ) : (
+                                        <>
+                                          {boDetail.BO.equipe1_id === boDetail.BO.vainqueur_id ? '🏆' : ''} {bo.equipe1_name}
+                                          {' vs '}
+                                          {bo.equipe2_name} {boDetail.BO.vainqueur_id === boDetail.BO.equipe2_id ? '🏆' : ''}
+                                          {' — '}{boDetail.BO.format}
+                                        </>
+                                      )}
+                                    </p>
+
+                                    {boDetail.bans.length > 0 && (
+                                      <>
+                                        <h5 style={{ marginTop: 12 }}>Bans</h5>
+                                        <table className="admin-table">
+                                          <thead><tr><th>#</th><th>Équipe</th><th>Map</th></tr></thead>
+                                          <tbody>
+                                            {boDetail.bans.sort((a, b) => a.id - b.id).map(b => (
+                                              <tr key={b.id}>
+                                                <td>{boDetail.bans.indexOf(b) + 1}</td>
+                                                <td>{b.equipe_id === boDetail.BO.equipe1_id ? bo.equipe1_name : bo.equipe2_name}</td>
+                                                <td>{ligueMaps.find(m => m.id === b.map_id)?.name ?? `#${b.map_id}`}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </>
+                                    )}
+
+                                    {boDetail.picks.length > 0 && (
+                                      <>
+                                        <h5 style={{ marginTop: 12 }}>Picks</h5>
+                                        <table className="admin-table">
+                                          <thead><tr><th>#</th><th>Équipe</th><th>Map</th></tr></thead>
+                                          <tbody>
+                                            {boDetail.picks.sort((a, b) => a.id - b.id).map(p => (
+                                              <tr key={p.id}>
+                                                <td>{boDetail.picks.indexOf(p) + 1}</td>
+                                                <td>{p.equipe_id === 0 ? '—' : p.equipe_id === boDetail.BO.equipe1_id ? bo.equipe1_name : bo.equipe2_name}</td>
+                                                <td>{ligueMaps.find(m => m.id === p.map_id)?.name ?? `#${p.map_id}`}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </>
+                                    )}
+
+                                    {boDetail.matchs.length > 0 && (
+                                      <>
+                                        <h5 style={{ marginTop: 12 }}>Matchs</h5>
+                                        <table className="admin-table">
+                                          <thead><tr><th>Map</th><th>Score E1</th><th>Score E2</th><th>Statut</th><th>Vainqueur</th><th>Commentaires</th></tr></thead>
+                                          <tbody>
+                                            {boDetail.matchs.map(m => (
+                                              <tr key={m.id}>
+                                                <td>
+                                                  {ligueMaps.find(mm => mm.id === m.map_id)?.name ?? `#${m.map_id}`}
+                                                  {m.hors_competition && <span className="badge badge-warning" style={{ marginLeft: 6 }}>Hors compétition</span>}
+                                                </td>
+                                                <td>{m.forfait ? '—' : m.score_equipe1}</td>
+                                                <td>{m.forfait ? '—' : m.score_equipe2}</td>
+                                                <td>{m.forfait ? <span style={{ color: '#e74c3c' }}>Forfait</span> : 'Joué'}</td>
+                                                <td>
+                                                  {m.vainqueur_id != null
+                                                    ? (m.vainqueur_id === boDetail.BO.equipe1_id ? bo.equipe1_name : bo.equipe2_name)
+                                                    : <span className="text-muted">—</span>
+                                                  }
+                                                </td>
+                                                <td>{m.commentaires ?? ''}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}
@@ -498,10 +535,11 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
                     {formMatchs.map((match, i) => (
                       <div key={i} style={{ marginTop: 8, padding: 8, border: '1px solid var(--border-color)', borderRadius: 6 }}>
                         <div className="add-membership-row" style={{ marginBottom: 6 }}>
-                          <span style={{ fontSize: 14, fontWeight: 600 }}>
-                            Map : {ligueMaps.find(m => m.id === (formPicks[i]?.map_id !== '' && formPicks[i]?.map_id !== undefined ? Number(formPicks[i].map_id) : 0))?.name ?? `#${match.map_id || '?'}`}
-                          </span>
-                          <button type="button" className="btn-danger btn-small" onClick={() => removePick(i)}>×</button>
+                          <select className="role-select" value={match.map_id} onChange={e => { const nm = [...formMatchs]; nm[i] = { ...nm[i], map_id: e.target.value === '' ? '' : Number(e.target.value) }; setFormMatchs(nm) }} required>
+                            <option value="">Map</option>
+                            {availableMaps(match.map_id).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                          <button type="button" className="btn-danger btn-small" onClick={() => removeMatch(i)}>×</button>
                         </div>
                         <div className="add-membership-row" style={{ gap: 8 }}>
                           {match.forfait === 0 ? (
@@ -530,11 +568,16 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
                             Forfait {equipe2Name || 'E2'}
                           </button>
                         </div>
-                        <div className="add-membership-row" style={{ marginTop: 4 }}>
+                        <div className="add-membership-row" style={{ marginTop: 4, gap: 8 }}>
                           <input type="text" className="role-select" value={match.commentaires} onChange={e => { const nm = [...formMatchs]; nm[i] = { ...nm[i], commentaires: e.target.value }; setFormMatchs(nm) }} placeholder="Commentaire" style={{ flex: 1 }} />
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, whiteSpace: 'nowrap' }}>
+                            <input type="checkbox" checked={match.hors_competition} onChange={e => { const nm = [...formMatchs]; nm[i] = { ...nm[i], hors_competition: e.target.checked }; setFormMatchs(nm) }} />
+                            Hors compétition
+                          </label>
                         </div>
                       </div>
                     ))}
+                    <button type="button" className="btn-secondary btn-small" style={{ marginTop: 4 }} onClick={addMatch}>+ Ajouter un match</button>
                   </div>
                 </>
               )}
