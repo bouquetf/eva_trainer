@@ -41,6 +41,7 @@ var archiveMigrationFiles = []string{
 	"000031_add_archive_divs_and_bos.up.sql",
 	"000032_add_divs_replay_url.up.sql",
 	"000033_add_div_notes.up.sql",
+	"000034_add_ligue_nom.up.sql",
 }
 
 func setupArchiveHandlerTest(t *testing.T) (*ArchiveHandler, *services.JWTService, models.UserRepository, *sql.DB) {
@@ -83,7 +84,7 @@ func createTestLigue(t *testing.T, db *sql.DB) int {
 	}
 	ligueRepo := models.NewLigueRepository(db)
 	now := time.Now().Truncate(24 * time.Hour)
-	ligue, err := ligueRepo.Create(now, now.Add(30*24*time.Hour), split.ID)
+	ligue, err := ligueRepo.Create(now, now.Add(30*24*time.Hour), split.ID, "Test Ligue")
 	if err != nil {
 		t.Fatalf("failed to create ligue: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestArchiveHandler_GetLigueLocale_WithLigue(t *testing.T) {
 	}
 
 	now := time.Now().Truncate(24 * time.Hour)
-	ligue, err := ligueRepo.Create(now, now.Add(30*24*time.Hour), split.ID)
+	ligue, err := ligueRepo.Create(now, now.Add(30*24*time.Hour), split.ID, "Test Ligue")
 	if err != nil {
 		t.Fatalf("failed to create ligue: %v", err)
 	}
@@ -327,8 +328,14 @@ func TestArchiveHandler_GetLigueLocale_WithLigue(t *testing.T) {
 		t.Fatalf("expected 1 ligue, got %d", len(liguesResp))
 	}
 	firstLigue := liguesResp[0].(map[string]interface{})
+	if firstLigue["nom"] != "Test Ligue" {
+		t.Errorf("expected nom 'Test Ligue', got '%v'", firstLigue["nom"])
+	}
 	if firstLigue["split_name"] != "Split 1" {
 		t.Errorf("expected split_name 'Split 1', got '%v'", firstLigue["split_name"])
+	}
+	if firstLigue["split_id"].(float64) != float64(split.ID) {
+		t.Errorf("expected split_id %d, got %v", split.ID, firstLigue["split_id"])
 	}
 }
 
@@ -3230,5 +3237,241 @@ func TestArchiveHandler_DivNote_TwoUsersIndependent(t *testing.T) {
 	noteB := respB["note"].(map[string]interface{})
 	if noteB["content_md"] != "note de B" {
 		t.Errorf("userB expected 'note de B', got %v", noteB["content_md"])
+	}
+}
+
+// --- Ligue CRUD ---
+
+func TestArchiveHandler_CreateLigue_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	splitRepo := models.NewSplitRepository(db)
+	split, err := splitRepo.Create("Split A", []string{"cp", "mistral"})
+	if err != nil {
+		t.Fatalf("failed to create split: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"date_debut":"2026-01-01","date_fin":"2026-06-30","split_id":%d,"nom":"Saison 2026"}`, split.ID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/ligues", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateLigue(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	ligue, ok := resp["ligue"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'ligue' key")
+	}
+	if ligue["nom"] != "Saison 2026" {
+		t.Errorf("expected nom 'Saison 2026', got '%v'", ligue["nom"])
+	}
+	if ligue["split_id"].(float64) != float64(split.ID) {
+		t.Errorf("expected split_id %d, got %v", split.ID, ligue["split_id"])
+	}
+}
+
+func TestArchiveHandler_CreateLigue_NomVide(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	splitRepo := models.NewSplitRepository(db)
+	split, err := splitRepo.Create("Split A", []string{"cp", "mistral"})
+	if err != nil {
+		t.Fatalf("failed to create split: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"date_debut":"2026-01-01","date_fin":"2026-06-30","split_id":%d,"nom":""}`, split.ID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/ligues", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateLigue(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "invalid_request_body" {
+		t.Errorf("expected error 'invalid_request_body', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_CreateLigue_SansSplitID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	body := `{"date_debut":"2026-01-01","date_fin":"2026-06-30","nom":"Saison 2026"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/ligues", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateLigue(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["error"] != "invalid_request_body" {
+		t.Errorf("expected error 'invalid_request_body', got '%v'", resp["error"])
+	}
+}
+
+func TestArchiveHandler_CreateLigue_SplitIDInvalide(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, _ := setupArchiveHandlerTest(t)
+
+	body := `{"date_debut":"2026-01-01","date_fin":"2026-06-30","split_id":99999,"nom":"Saison 2026"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/archive/ligues", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.CreateLigue(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpdateLigue_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	splitRepo := models.NewSplitRepository(db)
+	splitB, err := splitRepo.Create("Split B", []string{"cp_sunshine", "cp_metal"})
+	if err != nil {
+		t.Fatalf("failed to create split B: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+
+	body := fmt.Sprintf(`{"date_debut":"2026-07-01","date_fin":"2026-12-31","split_id":%d,"nom":"Saison 2027"}`, splitB.ID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/archive/ligues/%d", ligueID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", ligueID)}}
+
+	handler.UpdateLigue(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	ligue, ok := resp["ligue"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'ligue' key")
+	}
+	if ligue["nom"] != "Saison 2027" {
+		t.Errorf("expected nom 'Saison 2027', got '%v'", ligue["nom"])
+	}
+	if ligue["split_id"].(float64) != float64(splitB.ID) {
+		t.Errorf("expected split_id %d, got %v", splitB.ID, ligue["split_id"])
+	}
+}
+
+func TestArchiveHandler_UpdateLigue_SansSplitID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	ligueID := createTestLigue(t, db)
+
+	body := `{"date_debut":"2026-07-01","date_fin":"2026-12-31","nom":"Saison 2027"}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/archive/ligues/%d", ligueID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", ligueID)}}
+
+	handler.UpdateLigue(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_UpdateLigue_NomVide(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	splitRepo := models.NewSplitRepository(db)
+	split, err := splitRepo.Create("Split A", []string{"cp", "mistral"})
+	if err != nil {
+		t.Fatalf("failed to create split: %v", err)
+	}
+
+	ligueID := createTestLigue(t, db)
+
+	body := fmt.Sprintf(`{"date_debut":"2026-07-01","date_fin":"2026-12-31","split_id":%d,"nom":""}`, split.ID)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/archive/ligues/%d", ligueID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", ligueID)}}
+
+	handler.UpdateLigue(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestArchiveHandler_ListLigues_RetourneNomEtSplitID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, _, _, db := setupArchiveHandlerTest(t)
+
+	ligueID := createTestLigue(t, db)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/archive/ligues", nil)
+
+	handler.ListLigues(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	items, ok := resp["items"].([]interface{})
+	if !ok {
+		t.Fatal("expected 'items' array")
+	}
+	found := false
+	for _, item := range items {
+		i := item.(map[string]interface{})
+		if int(i["id"].(float64)) == ligueID {
+			if i["nom"] != "Test Ligue" {
+				t.Errorf("expected nom 'Test Ligue', got '%v'", i["nom"])
+			}
+			if _, exists := i["split_id"]; !exists {
+				t.Error("expected split_id field to exist")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected ligue id %d to be in list", ligueID)
 	}
 }

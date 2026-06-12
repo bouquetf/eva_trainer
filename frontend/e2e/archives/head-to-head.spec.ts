@@ -33,7 +33,7 @@ test.describe('Feature: Head-to-Head Stats', () => {
     const map1 = await seedMap('e2e-cp-metal-' + suffix);
     const map2 = await seedMap('e2e-mistral-' + suffix);
     const split = await seedSplit('e2e-split-h2h-' + suffix, [map1.name, map2.name]);
-    const ligue = await seedLigue('2026-01-01', '2026-06-30', split.id);
+    const ligue = await seedLigue('E2E H2H Ligue ' + suffix, '2026-01-01', '2026-06-30', split.id);
     const teamA = await seedEvaTeam('E2E Team Alpha ' + suffix, 'TA');
     const teamB = await seedEvaTeam('E2E Team Beta ' + suffix, 'TB');
 

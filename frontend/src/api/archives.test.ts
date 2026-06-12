@@ -137,7 +137,7 @@ describe('archives API', () => {
   it('getLigueLocale calls GET /api/v1/archive/leagues-locales/:id', async () => {
     const expected = {
       ligue_locale: { id: 3, nom: 'Detail', emplacement: 'Grenoble', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
-      ligues: [{ id: 1, date_debut: '2026-01-01', date_fin: '2026-02-01', split_name: 'Split 1' }],
+      ligues: [{ id: 1, nom: 'Saison 2026', date_debut: '2026-01-01', date_fin: '2026-02-01', split_id: 1, split_name: 'Split 1' }],
     }
     mockFetch.mockResolvedValue(okResponse(expected))
 

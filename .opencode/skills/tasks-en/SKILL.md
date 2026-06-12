@@ -18,6 +18,7 @@ Use this skill after creating your user stories with the `stories` skill, when y
 - Read the file `docs/stories/story-XXX.md`
 - Extract the description, acceptance criteria, tests, and expected documentation
 - Read the specification and other stories for full context
+- **Note the line number of each acceptance criterion** (needed for progress tracking)
 
 ### Step 2 - Decomposition & generation with detailed prompts
 - Analyze the story to identify atomic work units
@@ -31,6 +32,7 @@ Use this skill after creating your user stories with the `stories` skill, when y
   - **Tests to implement**: concrete unit, integration, and E2E scenarios
   - **Documentation**: what to document and where
   - **Usage examples**: code snippets, HTTP API requests
+  - **Acceptance criteria covered**: list the `[ ]` items from the story that this task implements (e.g. `[ ] item 1 (line 18)`)
 - Create a directory `docs/tasks/story-XXX/`
 - Generate files `docs/tasks/story-XXX/task-YYY.md`
 
@@ -64,6 +66,14 @@ Use this skill after creating your user stories with the `stories` skill, when y
 - Update the tasks based on the answers
 - Return to Step 3
 
+### Story update during task execution
+- When a task is completed (implemented and tested), the agent must **update the story**:
+  - Check off the corresponding acceptance criteria (`[ ]` → `[x]`) in `docs/stories/story-XXX.md`
+  - Check off the corresponding automated tests (`[ ]` → `[x]`)
+  - Check off the corresponding documentation items (`[ ]` → `[x]`)
+- Reference: each task lists its covered acceptance criteria in the `## Acceptance criteria covered` section
+- This update is done **immediately** after the task is validated, before moving to the next task
+
 ### Step 6 - Workflow completion
 - When nothing remains to clarify
 - Delete the `questions.md` file
@@ -84,6 +94,10 @@ Use this skill after creating your user stories with the `stories` skill, when y
 - Story #XXX : [Link to story]
 - Depends on : Task #ZZZ (if applicable)
 - Required for : Task #WWW (if applicable)
+
+## Acceptance criteria covered
+- `[ ]` [Story item 1] (line XX)
+- `[ ]` [Story item 2] (line YY)
 
 ## Prompt
 

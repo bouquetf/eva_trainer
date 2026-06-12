@@ -36,12 +36,14 @@ type createLigueRequest struct {
 	DateDebut string `json:"date_debut" binding:"required"`
 	DateFin   string `json:"date_fin" binding:"required"`
 	SplitID   int    `json:"split_id" binding:"required"`
+	Nom       string `json:"nom" binding:"required"`
 }
 
 type updateLigueRequest struct {
 	DateDebut string `json:"date_debut" binding:"required"`
 	DateFin   string `json:"date_fin" binding:"required"`
 	SplitID   int    `json:"split_id" binding:"required"`
+	Nom       string `json:"nom" binding:"required"`
 }
 
 func parseLigueDate(dateStr string) (time.Time, error) {
@@ -67,9 +69,11 @@ func (h *AdminLigueHandler) CreateLigue(c *gin.Context) {
 		return
 	}
 
-	ligue, err := h.ligueRepo.Create(dateDebut, dateFin, req.SplitID)
+	ligue, err := h.ligueRepo.Create(dateDebut, dateFin, req.SplitID, req.Nom)
 	if err != nil {
 		switch {
+		case errors.Is(err, models.ErrLigueNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("ligue_name_required", "ligue name is required", http.StatusBadRequest))
 		case errors.Is(err, models.ErrLigueInvalidDates):
 			apierror.RespondWithError(c, apierror.NewAPIError("invalid_dates", "ligue start date must be before end date", http.StatusBadRequest))
 		case strings.Contains(err.Error(), "foreign key constraint"):
@@ -160,9 +164,11 @@ func (h *AdminLigueHandler) UpdateLigue(c *gin.Context) {
 		return
 	}
 
-	ligue, err := h.ligueRepo.Update(id, dateDebut, dateFin, req.SplitID)
+	ligue, err := h.ligueRepo.Update(id, dateDebut, dateFin, req.SplitID, req.Nom)
 	if err != nil {
 		switch {
+		case errors.Is(err, models.ErrLigueNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("ligue_name_required", "ligue name is required", http.StatusBadRequest))
 		case errors.Is(err, models.ErrLigueInvalidDates):
 			apierror.RespondWithError(c, apierror.NewAPIError("invalid_dates", "ligue start date must be before end date", http.StatusBadRequest))
 		case errors.Is(err, models.ErrLigueNotFound):

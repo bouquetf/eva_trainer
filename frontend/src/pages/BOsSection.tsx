@@ -255,7 +255,7 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
           <option value="">Sélectionner une période</option>
           {ligues.map(l => (
             <option key={l.id} value={l.id}>
-              {l.split_name} ({l.date_debut} → {l.date_fin})
+              {l.nom} ({l.split_name}, {l.date_debut} → {l.date_fin})
             </option>
           ))}
         </select>
@@ -412,7 +412,7 @@ export default function BOsSection({ canWrite }: { canWrite: boolean }) {
         <div className="modal-overlay" onClick={() => { setShowBOForm(false); setEditingBO(null) }}>
           <div className="modal-content modal-wide" onClick={e => e.stopPropagation()}>
             <h3>{editingBO ? 'Modifier le BO' : 'Nouveau BO'}</h3>
-            {selectedLigue && <p className="text-muted">Période : {selectedLigue.split_name}</p>}
+            {selectedLigue && <p className="text-muted">Ligue : {selectedLigue.nom} ({selectedLigue.split_name})</p>}
             <form onSubmit={handleFormSubmit}>
               <div className="form-group">
                 <label htmlFor="bo-equipe1">Équipe 1</label>

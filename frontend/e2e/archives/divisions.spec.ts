@@ -26,7 +26,7 @@ test.describe('Feature: Divisions et classement', () => {
 
   async function seedLigueWithSplit(dateDebut = '2026-01-01', dateFin = '2026-06-30'): Promise<number> {
     const split = await seedSplit('E2E Split ' + Date.now());
-    const ligue = await seedLigue(dateDebut, dateFin, split.id);
+    const ligue = await seedLigue('E2E Div Ligue ' + Date.now(), dateDebut, dateFin, split.id);
     return ligue.id;
   }
 

@@ -112,11 +112,11 @@ type LigueLocaleRepository interface {
 }
 
 type LigueRepository interface {
-	Create(dateDebut, dateFin time.Time, splitID int) (*Ligue, error)
+	Create(dateDebut, dateFin time.Time, splitID int, nom string) (*Ligue, error)
 	FindByID(id int) (*Ligue, error)
 	FindAll() ([]*Ligue, error)
 	FindAllPaginated(page, perPage int) ([]*Ligue, int, error)
-	Update(id int, dateDebut, dateFin time.Time, splitID int) (*Ligue, error)
+	Update(id int, dateDebut, dateFin time.Time, splitID int, nom string) (*Ligue, error)
 	Delete(id int) error
 	AssociateAllLocales(ligueID int) (int64, error)
 }

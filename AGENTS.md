@@ -35,6 +35,8 @@ Les skills se trouvent dans le répertoire `ia/skills/`.
 
 - Les tâches sont nommées `docs/tasks/story-XXX/task-YYY.md`
 - Les questions de clarification sont dans `docs/tasks/story-XXX/questions.md`
+- Chaque tâche liste les critères d'acceptation de la story qu'elle couvre dans une section `## Critères d'acceptation concernés`
+- **Lorsqu'une tâche est implémentée** : l'agent coche `[x]` les critères, tests et doc correspondants dans la story (`docs/stories/story-XXX.md`), avant de passer à la tâche suivante
 
 ## Convention
 

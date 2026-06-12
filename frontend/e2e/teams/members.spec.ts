@@ -30,6 +30,11 @@ test.describe('Feature: Suppression de membre', () => {
     );
     expect(Number(memberCount[0].count)).toBe(0);
 
+    await page.goto('/login');
+    await loginAsUser(page, memberUser);
+    await page.goto('/teams');
+    await expect(page.locator('.team-card h3').filter({ hasText: testTeam.name })).not.toBeVisible({ timeout: 10000 });
+
     await queryDB('DELETE FROM users WHERE discord_id = $1', [memberUser.discordId]);
   });
 

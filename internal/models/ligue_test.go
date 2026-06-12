@@ -26,7 +26,7 @@ func TestLigueRepository_Create_Success(t *testing.T) {
 	dateDebut := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	dateFin := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	ligue, err := repo.Create(dateDebut, dateFin, split.ID)
+	ligue, err := repo.Create(dateDebut, dateFin, split.ID, "Saison 2026")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -42,6 +42,9 @@ func TestLigueRepository_Create_Success(t *testing.T) {
 	if ligue.SplitID != split.ID {
 		t.Errorf("expected split_id %d, got %d", split.ID, ligue.SplitID)
 	}
+	if ligue.Nom != "Saison 2026" {
+		t.Errorf("expected nom %q, got %q", "Saison 2026", ligue.Nom)
+	}
 }
 
 func TestLigueRepository_Create_DatesInvalides(t *testing.T) {
@@ -50,9 +53,23 @@ func TestLigueRepository_Create_DatesInvalides(t *testing.T) {
 
 	repo := NewLigueRepository(db)
 
-	_, err := repo.Create(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 1)
+	_, err := repo.Create(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 1, "")
 	if err != ErrLigueInvalidDates {
 		t.Errorf("expected ErrLigueInvalidDates, got %v", err)
+	}
+}
+
+func TestLigueRepository_Create_NomVide(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	splitRepo := NewSplitRepository(db)
+	split := createTestSplit2(t, db, splitRepo)
+	repo := NewLigueRepository(db)
+
+	_, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "")
+	if err != ErrLigueNameRequired {
+		t.Errorf("expected ErrLigueNameRequired, got %v", err)
 	}
 }
 
@@ -64,7 +81,7 @@ func TestLigueRepository_FindByID_Success(t *testing.T) {
 	split := createTestSplit2(t, db, splitRepo)
 	repo := NewLigueRepository(db)
 
-	created, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID)
+	created, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Test Ligue")
 	if err != nil {
 		t.Fatalf("failed to create ligue: %v", err)
 	}
@@ -75,6 +92,9 @@ func TestLigueRepository_FindByID_Success(t *testing.T) {
 	}
 	if found.ID != created.ID {
 		t.Errorf("expected id %d, got %d", created.ID, found.ID)
+	}
+	if found.Nom != "Test Ligue" {
+		t.Errorf("expected nom %q, got %q", "Test Ligue", found.Nom)
 	}
 }
 
@@ -98,8 +118,8 @@ func TestLigueRepository_FindAll(t *testing.T) {
 	split := createTestSplit2(t, db, splitRepo)
 	repo := NewLigueRepository(db)
 
-	repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID)
-	repo.Create(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC), split.ID)
+	repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Ligue 1")
+	repo.Create(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Ligue 2")
 
 	ligues, err := repo.FindAll()
 	if err != nil {
@@ -118,13 +138,13 @@ func TestLigueRepository_Update_Success(t *testing.T) {
 	split := createTestSplit2(t, db, splitRepo)
 	repo := NewLigueRepository(db)
 
-	created, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID)
+	created, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Saison 2026")
 	if err != nil {
 		t.Fatalf("failed to create ligue: %v", err)
 	}
 
 	newDate := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	updated, err := repo.Update(created.ID, newDate, newDate.AddDate(0, 6, 0), split.ID)
+	updated, err := repo.Update(created.ID, newDate, newDate.AddDate(0, 6, 0), split.ID, "Saison 2027")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -133,6 +153,28 @@ func TestLigueRepository_Update_Success(t *testing.T) {
 	}
 	if !updated.DateDebut.Equal(newDate) {
 		t.Errorf("expected date_debut %v, got %v", newDate, updated.DateDebut)
+	}
+	if updated.Nom != "Saison 2027" {
+		t.Errorf("expected nom %q, got %q", "Saison 2027", updated.Nom)
+	}
+}
+
+func TestLigueRepository_Update_NomVide(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	splitRepo := NewSplitRepository(db)
+	split := createTestSplit2(t, db, splitRepo)
+	repo := NewLigueRepository(db)
+
+	created, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Saison 2026")
+	if err != nil {
+		t.Fatalf("failed to create ligue: %v", err)
+	}
+
+	_, err = repo.Update(created.ID, time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "")
+	if err != ErrLigueNameRequired {
+		t.Errorf("expected ErrLigueNameRequired, got %v", err)
 	}
 }
 
@@ -144,7 +186,7 @@ func TestLigueRepository_Update_NotFound(t *testing.T) {
 	split := createTestSplit2(t, db, splitRepo)
 	repo := NewLigueRepository(db)
 
-	_, err := repo.Update(9999, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID)
+	_, err := repo.Update(9999, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Saison 2026")
 	if err != ErrLigueNotFound {
 		t.Errorf("expected ErrLigueNotFound, got %v", err)
 	}
@@ -158,7 +200,7 @@ func TestLigueRepository_Delete_Success(t *testing.T) {
 	split := createTestSplit2(t, db, splitRepo)
 	repo := NewLigueRepository(db)
 
-	created, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID)
+	created, err := repo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Saison 2026")
 	if err != nil {
 		t.Fatalf("failed to create ligue: %v", err)
 	}
@@ -195,7 +237,7 @@ func TestLigueRepository_AssociateAllLocales(t *testing.T) {
 	ligueRepo := NewLigueRepository(db)
 	localeRepo := NewLigueLocaleRepository(db)
 
-	ligue, err := ligueRepo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID)
+	ligue, err := ligueRepo.Create(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), split.ID, "Saison 2026")
 	if err != nil {
 		t.Fatalf("failed to create ligue: %v", err)
 	}

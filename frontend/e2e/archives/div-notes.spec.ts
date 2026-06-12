@@ -18,7 +18,7 @@ test.describe('Feature: Notes personnelles sur les divisions', () => {
 
   async function seedLigueWithSplitAndDiv(): Promise<{ ligueId: number; divId: number; divName: string }> {
     const split = await seedSplit('E2E Notes Split ' + Date.now());
-    const ligue = await seedLigue('2026-01-01', '2026-06-30', split.id);
+    const ligue = await seedLigue('E2E Notes Ligue ' + Date.now(), '2026-01-01', '2026-06-30', split.id);
     const div = await seedDiv(ligue.id, 'E2E Notes Div ' + Date.now());
     return { ligueId: ligue.id, divId: div.id, divName: div.nom };
   }

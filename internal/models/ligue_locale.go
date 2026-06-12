@@ -220,7 +220,7 @@ func (r *ligueLocaleRepo) Delete(id int) error {
 
 func (r *ligueLocaleRepo) FindLiguesByLocaleID(localeID int) ([]*Ligue, error) {
 	rows, err := r.db.Query(
-		`SELECT l.id, l.date_debut, l.date_fin, l.split_id, l.created_at, l.updated_at
+		`SELECT l.id, l.nom, l.date_debut, l.date_fin, l.split_id, l.created_at, l.updated_at
 		 FROM ligue l
 		 INNER JOIN ligue_locale_association lla ON lla.ligue_id = l.id
 		 WHERE lla.ligue_locale_id = $1

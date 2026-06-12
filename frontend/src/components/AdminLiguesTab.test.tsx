@@ -4,10 +4,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AdminLiguesTab from './AdminLiguesTab'
 
 const mockListLigues = vi.fn()
+const mockListSplits = vi.fn()
 vi.mock('../api/archives', () => ({
   listLigues: (...args: unknown[]) => mockListLigues(...args),
   createLigue: vi.fn(),
+  updateLigue: vi.fn(),
+  deleteLigue: vi.fn(),
   refreshLigue: vi.fn(),
+}))
+vi.mock('../api/splits', () => ({
+  listSplits: (...args: unknown[]) => mockListSplits(...args),
 }))
 
 function renderWithQuery(ui: React.ReactElement) {
@@ -18,6 +24,7 @@ function renderWithQuery(ui: React.ReactElement) {
 describe('AdminLiguesTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockListSplits.mockResolvedValue({ splits: [] })
   })
 
   it('renders the create button', () => {

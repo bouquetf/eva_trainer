@@ -3,11 +3,13 @@ package models
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
 type Ligue struct {
 	ID        int       `json:"id"`
+	Nom       string    `json:"nom"`
 	DateDebut time.Time `json:"date_debut"`
 	DateFin   time.Time `json:"date_fin"`
 	SplitID   int       `json:"split_id"`
@@ -27,7 +29,7 @@ func scanLigue(scanner interface {
 	Scan(dest ...interface{}) error
 }) (*Ligue, error) {
 	l := &Ligue{}
-	err := scanner.Scan(&l.ID, &l.DateDebut, &l.DateFin, &l.SplitID, &l.CreatedAt, &l.UpdatedAt)
+	err := scanner.Scan(&l.ID, &l.Nom, &l.DateDebut, &l.DateFin, &l.SplitID, &l.CreatedAt, &l.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -52,16 +54,19 @@ func scanLigues(rows *sql.Rows) ([]*Ligue, error) {
 	return ligues, nil
 }
 
-func (r *ligueRepo) Create(dateDebut, dateFin time.Time, splitID int) (*Ligue, error) {
+func (r *ligueRepo) Create(dateDebut, dateFin time.Time, splitID int, nom string) (*Ligue, error) {
 	if dateDebut.After(dateFin) {
 		return nil, ErrLigueInvalidDates
 	}
+	if strings.TrimSpace(nom) == "" {
+		return nil, ErrLigueNameRequired
+	}
 
 	l, err := scanLigue(r.db.QueryRow(
-		`INSERT INTO ligue (date_debut, date_fin, split_id)
-		 VALUES ($1, $2, $3)
-		 RETURNING id, date_debut, date_fin, split_id, created_at, updated_at`,
-		dateDebut, dateFin, splitID,
+		`INSERT INTO ligue (date_debut, date_fin, split_id, nom)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING id, nom, date_debut, date_fin, split_id, created_at, updated_at`,
+		dateDebut, dateFin, splitID, nom,
 	))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ligue: %w", err)
@@ -71,7 +76,7 @@ func (r *ligueRepo) Create(dateDebut, dateFin time.Time, splitID int) (*Ligue, e
 
 func (r *ligueRepo) FindByID(id int) (*Ligue, error) {
 	l, err := scanLigue(r.db.QueryRow(
-		`SELECT id, date_debut, date_fin, split_id, created_at, updated_at
+		`SELECT id, nom, date_debut, date_fin, split_id, created_at, updated_at
 		 FROM ligue WHERE id = $1`,
 		id,
 	))
@@ -86,7 +91,7 @@ func (r *ligueRepo) FindByID(id int) (*Ligue, error) {
 
 func (r *ligueRepo) FindAll() ([]*Ligue, error) {
 	rows, err := r.db.Query(
-		`SELECT id, date_debut, date_fin, split_id, created_at, updated_at
+		`SELECT id, nom, date_debut, date_fin, split_id, created_at, updated_at
 		 FROM ligue ORDER BY date_debut DESC`,
 	)
 	if err != nil {
@@ -112,7 +117,7 @@ func (r *ligueRepo) FindAllPaginated(page, perPage int) ([]*Ligue, int, error) {
 
 	offset := (page - 1) * perPage
 	rows, err := r.db.Query(
-		`SELECT id, date_debut, date_fin, split_id, created_at, updated_at
+		`SELECT id, nom, date_debut, date_fin, split_id, created_at, updated_at
 		 FROM ligue ORDER BY date_debut DESC LIMIT $1 OFFSET $2`,
 		perPage, offset,
 	)
@@ -128,16 +133,19 @@ func (r *ligueRepo) FindAllPaginated(page, perPage int) ([]*Ligue, int, error) {
 	return ligues, total, nil
 }
 
-func (r *ligueRepo) Update(id int, dateDebut, dateFin time.Time, splitID int) (*Ligue, error) {
+func (r *ligueRepo) Update(id int, dateDebut, dateFin time.Time, splitID int, nom string) (*Ligue, error) {
 	if dateDebut.After(dateFin) {
 		return nil, ErrLigueInvalidDates
 	}
+	if strings.TrimSpace(nom) == "" {
+		return nil, ErrLigueNameRequired
+	}
 
 	l, err := scanLigue(r.db.QueryRow(
-		`UPDATE ligue SET date_debut = $1, date_fin = $2, split_id = $3, updated_at = NOW()
-		 WHERE id = $4
-		 RETURNING id, date_debut, date_fin, split_id, created_at, updated_at`,
-		dateDebut, dateFin, splitID, id,
+		`UPDATE ligue SET date_debut = $1, date_fin = $2, split_id = $3, nom = $4, updated_at = NOW()
+		 WHERE id = $5
+		 RETURNING id, nom, date_debut, date_fin, split_id, created_at, updated_at`,
+		dateDebut, dateFin, splitID, nom, id,
 	))
 	if err == sql.ErrNoRows {
 		return nil, ErrLigueNotFound

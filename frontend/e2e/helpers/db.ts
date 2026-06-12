@@ -216,22 +216,24 @@ export async function seedLigueLocale(
 
 export interface TestLigue {
   id: number;
+  nom: string;
   date_debut: string;
   date_fin: string;
   split_id: number;
 }
 
 export async function seedLigue(
+  nom: string,
   date_debut: string,
   date_fin: string,
   split_id: number,
 ): Promise<TestLigue> {
   const rows = await queryDB<{ id: number }[]>(
-    `INSERT INTO ligue (date_debut, date_fin, split_id)
-     VALUES ($1, $2, $3) RETURNING id`,
-    [date_debut, date_fin, split_id],
+    `INSERT INTO ligue (nom, date_debut, date_fin, split_id)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [nom, date_debut, date_fin, split_id],
   );
-  return { id: rows[0].id, date_debut, date_fin, split_id };
+  return { id: rows[0].id, nom, date_debut, date_fin, split_id };
 }
 
 // --- Eva Team helpers ---

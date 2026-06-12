@@ -14,7 +14,7 @@ function LigueSelectField({ ligues, onImport }: { ligues: LigueListItem[]; onImp
         <option value="">Choisir une ligue...</option>
         {ligues.map(l => (
           <option key={l.id} value={l.id}>
-            #{l.id} — {l.date_debut} → {l.date_fin} ({l.split_name})
+            #{l.id} — {l.nom} ({l.split_name}, {l.date_debut} → {l.date_fin})
           </option>
         ))}
       </select>
@@ -227,6 +227,7 @@ export default function LiguesLocalesSection({ canWrite }: { canWrite: boolean }
                 <table className="admin-table">
                   <thead>
                     <tr>
+                      <th>Nom</th>
                       <th>Split</th>
                       <th>Date début</th>
                       <th>Date fin</th>
@@ -235,6 +236,7 @@ export default function LiguesLocalesSection({ canWrite }: { canWrite: boolean }
                   <tbody>
                     {associatedLigues.map(l => (
                       <tr key={l.id}>
+                        <td>{l.nom}</td>
                         <td>{l.split_name}</td>
                         <td>{l.date_debut}</td>
                         <td>{l.date_fin}</td>

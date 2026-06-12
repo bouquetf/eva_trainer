@@ -15,22 +15,22 @@ Ajout d'un champ `nom` sur l'entité `Ligue` (période de compétition) :
 Le nom est saisi lors de la création de la ligue et apparaît dans tous les écrans listant les ligues (Administration → Ligues, vue détaillée, association avec ligue locale, etc.).
 
 ## Critères d'acceptation
-- [ ] L'archiviste peut saisir un nom (texte libre, obligatoire) lors de la création d'une ligue
-- [ ] L'archiviste peut modifier le nom d'une ligue existante
-- [ ] L'archiviste peut sélectionner/modifier le split associé à la ligue
-- [ ] Le nom et le split sont affichés dans la liste et le détail des ligues
-- [ ] Le nom s'affiche sur tous les écrans listant les ligues (y compris après refresh et après ajout de ligue locale)
-- [ ] L'API expose les champs `nom` et `split_id` sur les endpoints ligue
+- [x] L'archiviste peut saisir un nom (texte libre, obligatoire) lors de la création d'une ligue
+- [x] L'archiviste peut modifier le nom d'une ligue existante
+- [x] L'archiviste peut sélectionner/modifier le split associé à la ligue
+- [x] Le nom et le split sont affichés dans la liste et le détail des ligues
+- [x] Le nom s'affiche sur tous les écrans listant les ligues (y compris après refresh et après ajout de ligue locale)
+- [x] L'API expose les champs `nom` et `split_id` sur les endpoints ligue
 
 ## Tests automatisés
-- Test d'intégration : création d'une ligue avec nom + split → vérification en base
-- Test d'intégration : modification du nom et du split d'une ligue existante
-- Test d'intégration : migration d'ajout du champ `nom` (NOT NULL, valeur par défaut pour les lignes existantes)
-- Test E2E : archiviste crée une ligue avec nom + split → vérification dans l'UI
-- Test E2E : le nom est visible dans la liste des ligues et dans le détail
+- [x] Test d'intégration : création d'une ligue avec nom + split → vérification en base
+- [x] Test d'intégration : modification du nom et du split d'une ligue existante
+- [x] Test d'intégration : migration d'ajout du champ `nom` (NOT NULL, valeur par défaut pour les lignes existantes)
+- [x] Test E2E : archiviste crée une ligue avec nom + split → vérification dans l'UI
+- [x] Test E2E : le nom est visible dans la liste des ligues et dans le détail
 
 ## Documentation
-- docs/archives-leagues.md (mise à jour)
+- [x] docs/archives-leagues.md
 
 ## Valeur utilisateur
 Permet d'identifier et de filtrer les périodes de compétition par nom et split, améliorant la navigation dans les archives.

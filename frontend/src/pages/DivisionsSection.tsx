@@ -317,7 +317,7 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
           <option value="">Sélectionner une période</option>
           {ligues.map(l => (
             <option key={l.id} value={l.id}>
-              {l.split_name} ({l.date_debut} → {l.date_fin})
+              {l.nom} ({l.split_name}, {l.date_debut} → {l.date_fin})
             </option>
           ))}
         </select>
@@ -603,7 +603,7 @@ export default function DivisionsSection({ canWrite }: { canWrite: boolean }) {
         <div className="modal-overlay" onClick={() => { setShowDivForm(false); setEditingDiv(null) }}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h3>{editingDiv ? 'Modifier la division' : 'Nouvelle division'}</h3>
-            {selectedLigue && <p className="text-muted">Ligue : {selectedLigue.split_name}</p>}
+            {selectedLigue && <p className="text-muted">Ligue : {selectedLigue.nom} ({selectedLigue.split_name})</p>}
             <form onSubmit={handleDivSubmit}>
               <div className="form-group">
                 <label htmlFor="div-name">Nom</label>

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listLigues, createLigue, refreshLigue, updateLigue, deleteLigue } from '../api/archives'
+import { listSplits } from '../api/splits'
+import type { Split } from '../api/splits'
 import type { LigueListItem } from '../api/archives'
 
 type AdminLiguesTabProps = {
@@ -12,12 +14,16 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
   const queryClient = useQueryClient()
   const [liguesPage, setLiguesPage] = useState(1)
   const [showCreateLigueForm, setShowCreateLigueForm] = useState(false)
+  const [createLigueNom, setCreateLigueNom] = useState('')
   const [createLigueDebut, setCreateLigueDebut] = useState('')
   const [createLigueFin, setCreateLigueFin] = useState('')
+  const [createLigueSplitId, setCreateLigueSplitId] = useState<number | ''>('')
 
   const [editingLigue, setEditingLigue] = useState<LigueListItem | null>(null)
+  const [editNom, setEditNom] = useState('')
   const [editDebut, setEditDebut] = useState('')
   const [editFin, setEditFin] = useState('')
+  const [editSplitId, setEditSplitId] = useState<number | ''>('')
 
   const [deletingLigueId, setDeletingLigueId] = useState<number | null>(null)
 
@@ -27,14 +33,23 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
     staleTime: 10_000,
   })
 
+  const { data: splitsData } = useQuery({
+    queryKey: ['admin-splits'],
+    queryFn: () => listSplits(),
+    staleTime: 60_000,
+  })
+  const splits: Split[] = splitsData?.splits ?? []
+
   const createLigueMutation = useMutation({
-    mutationFn: (data: { date_debut: string; date_fin: string }) => createLigue(data),
+    mutationFn: (data: { nom: string; date_debut: string; date_fin: string; split_id: number }) => createLigue(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-ligues'] })
       queryClient.invalidateQueries({ queryKey: ['archive-ligues-import'] })
       setShowCreateLigueForm(false)
+      setCreateLigueNom('')
       setCreateLigueDebut('')
       setCreateLigueFin('')
+      setCreateLigueSplitId('')
       onSuccess('Ligue créée')
     },
     onError: (err: unknown) => {
@@ -44,7 +59,7 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
   })
 
   const updateLigueMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { date_debut: string; date_fin: string } }) => updateLigue(id, data),
+    mutationFn: ({ id, data }: { id: number; data: { nom: string; date_debut: string; date_fin: string; split_id: number } }) => updateLigue(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-ligues'] })
       queryClient.invalidateQueries({ queryKey: ['archive-ligues-import'] })
@@ -89,19 +104,35 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
 
   function handleCreateLigue(e: React.FormEvent) {
     e.preventDefault()
-    createLigueMutation.mutate({ date_debut: createLigueDebut, date_fin: createLigueFin })
+    if (createLigueSplitId === '') return
+    createLigueMutation.mutate({
+      nom: createLigueNom,
+      date_debut: createLigueDebut,
+      date_fin: createLigueFin,
+      split_id: createLigueSplitId,
+    })
   }
 
   function handleEditLigue(e: React.FormEvent) {
     e.preventDefault()
-    if (!editingLigue) return
-    updateLigueMutation.mutate({ id: editingLigue.id, data: { date_debut: editDebut, date_fin: editFin } })
+    if (!editingLigue || editSplitId === '') return
+    updateLigueMutation.mutate({
+      id: editingLigue.id,
+      data: {
+        nom: editNom,
+        date_debut: editDebut,
+        date_fin: editFin,
+        split_id: editSplitId,
+      },
+    })
   }
 
   function openEditForm(l: LigueListItem) {
     setEditingLigue(l)
+    setEditNom(l.nom)
     setEditDebut(l.date_debut)
     setEditFin(l.date_fin)
+    setEditSplitId(l.split_id)
   }
 
   return (
@@ -120,6 +151,7 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
             <thead>
               <tr>
                 <th>ID</th>
+                <th>Nom</th>
                 <th>Date début</th>
                 <th>Date fin</th>
                 <th>Split</th>
@@ -131,6 +163,7 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
               {liguesData.items.map(l => (
                 <tr key={l.id}>
                   <td>{l.id}</td>
+                  <td>{l.nom}</td>
                   <td>{l.date_debut}</td>
                   <td>{l.date_fin}</td>
                   <td>{l.split_name}</td>
@@ -169,6 +202,19 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
             <h3>Nouvelle ligue</h3>
             <form onSubmit={handleCreateLigue}>
               <div className="form-group">
+                <label htmlFor="ligue-nom">Nom</label>
+                <input id="ligue-nom" type="text" value={createLigueNom} onChange={e => setCreateLigueNom(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="ligue-split">Split</label>
+                <select id="ligue-split" className="role-select" value={createLigueSplitId} onChange={e => setCreateLigueSplitId(e.target.value === '' ? '' : Number(e.target.value))} required>
+                  <option value="">Sélectionner un split</option>
+                  {splits.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
                 <label htmlFor="ligue-debut">Date début</label>
                 <input id="ligue-debut" type="date" value={createLigueDebut} onChange={e => setCreateLigueDebut(e.target.value)} required />
               </div>
@@ -192,6 +238,19 @@ function AdminLiguesTab({ onSuccess, onError }: AdminLiguesTabProps) {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h3>Modifier la ligue #{editingLigue.id}</h3>
             <form onSubmit={handleEditLigue}>
+              <div className="form-group">
+                <label htmlFor="ligue-edit-nom">Nom</label>
+                <input id="ligue-edit-nom" type="text" value={editNom} onChange={e => setEditNom(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="ligue-edit-split">Split</label>
+                <select id="ligue-edit-split" className="role-select" value={editSplitId} onChange={e => setEditSplitId(e.target.value === '' ? '' : Number(e.target.value))} required>
+                  <option value="">Sélectionner un split</option>
+                  {splits.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="form-group">
                 <label htmlFor="ligue-edit-debut">Date début</label>
                 <input id="ligue-edit-debut" type="date" value={editDebut} onChange={e => setEditDebut(e.target.value)} required />

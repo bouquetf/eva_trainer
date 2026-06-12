@@ -95,9 +95,11 @@ func (h *ArchiveHandler) ListLiguesLocales(c *gin.Context) {
 
 type ligueDetail struct {
 	ID        int    `json:"id"`
+	Nom       string `json:"nom"`
 	DateDebut string `json:"date_debut"`
 	DateFin   string `json:"date_fin"`
 	SplitName string `json:"split_name"`
+	SplitID   int    `json:"split_id"`
 }
 
 func (h *ArchiveHandler) GetLigueLocale(c *gin.Context) {
@@ -143,9 +145,11 @@ func (h *ArchiveHandler) GetLigueLocale(c *gin.Context) {
 		}
 		ligueDetails = append(ligueDetails, ligueDetail{
 			ID:        l.ID,
+			Nom:       l.Nom,
 			DateDebut: l.DateDebut.Format("2006-01-02"),
 			DateFin:   l.DateFin.Format("2006-01-02"),
 			SplitName: splitName,
+			SplitID:   l.SplitID,
 		})
 	}
 
@@ -234,9 +238,11 @@ func (h *ArchiveHandler) DeleteLigueLocale(c *gin.Context) {
 
 type ligueListItem struct {
 	ID        int    `json:"id"`
+	Nom       string `json:"nom"`
 	DateDebut string `json:"date_debut"`
 	DateFin   string `json:"date_fin"`
 	SplitName string `json:"split_name"`
+	SplitID   int    `json:"split_id"`
 	NbLocales int    `json:"nb_locales"`
 }
 
@@ -269,9 +275,11 @@ func (h *ArchiveHandler) ListLigues(c *gin.Context) {
 
 		items = append(items, ligueListItem{
 			ID:        l.ID,
+			Nom:       l.Nom,
 			DateDebut: l.DateDebut.Format("2006-01-02"),
 			DateFin:   l.DateFin.Format("2006-01-02"),
 			SplitName: splitName,
+			SplitID:   l.SplitID,
 			NbLocales: nbLocales,
 		})
 	}
@@ -287,6 +295,8 @@ func (h *ArchiveHandler) ListLigues(c *gin.Context) {
 type createArchiveLigueRequest struct {
 	DateDebut string `json:"date_debut" binding:"required"`
 	DateFin   string `json:"date_fin" binding:"required"`
+	SplitID   int    `json:"split_id" binding:"required"`
+	Nom       string `json:"nom" binding:"required"`
 }
 
 func (h *ArchiveHandler) CreateLigue(c *gin.Context) {
@@ -307,17 +317,15 @@ func (h *ArchiveHandler) CreateLigue(c *gin.Context) {
 		return
 	}
 
-	splitID, err := h.firstSplitID()
-	if err != nil {
-		apierror.RespondWithError(c, apierror.NewAPIError("no_split", "no split available, create one first", http.StatusBadRequest))
-		return
-	}
-
-	ligue, err := h.ligueRepo.Create(dateDebut, dateFin, splitID)
+	ligue, err := h.ligueRepo.Create(dateDebut, dateFin, req.SplitID, req.Nom)
 	if err != nil {
 		switch {
+		case errors.Is(err, models.ErrLigueNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("ligue_name_required", "ligue name is required", http.StatusBadRequest))
 		case errors.Is(err, models.ErrLigueInvalidDates):
 			apierror.RespondWithError(c, apierror.NewAPIError("invalid_dates", "start date must be before end date", http.StatusBadRequest))
+		case strings.Contains(err.Error(), "foreign key constraint"):
+			apierror.RespondWithError(c, apierror.NewAPIError("split_not_found", "split not found", http.StatusBadRequest))
 		default:
 			h.logger.Error("failed to create ligue", "error", err)
 			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
@@ -367,23 +375,14 @@ func (h *ArchiveHandler) RefreshLigue(c *gin.Context) {
 type updateArchiveLigueRequest struct {
 	DateDebut string `json:"date_debut" binding:"required"`
 	DateFin   string `json:"date_fin" binding:"required"`
+	SplitID   int    `json:"split_id" binding:"required"`
+	Nom       string `json:"nom" binding:"required"`
 }
 
 func (h *ArchiveHandler) UpdateLigue(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		apierror.RespondWithError(c, apierror.NewAPIError("invalid_ligue_id", "invalid ligue id", http.StatusBadRequest))
-		return
-	}
-
-	existing, err := h.ligueRepo.FindByID(id)
-	if errors.Is(err, models.ErrLigueNotFound) {
-		apierror.RespondWithError(c, apierror.NewAPIError("ligue_not_found", "ligue not found", http.StatusNotFound))
-		return
-	}
-	if err != nil {
-		h.logger.Error("failed to find ligue", "error", err)
-		apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
 		return
 	}
 
@@ -405,13 +404,17 @@ func (h *ArchiveHandler) UpdateLigue(c *gin.Context) {
 		return
 	}
 
-	ligue, err := h.ligueRepo.Update(id, dateDebut, dateFin, existing.SplitID)
+	ligue, err := h.ligueRepo.Update(id, dateDebut, dateFin, req.SplitID, req.Nom)
 	if err != nil {
 		switch {
+		case errors.Is(err, models.ErrLigueNameRequired):
+			apierror.RespondWithError(c, apierror.NewAPIError("ligue_name_required", "ligue name is required", http.StatusBadRequest))
 		case errors.Is(err, models.ErrLigueInvalidDates):
 			apierror.RespondWithError(c, apierror.NewAPIError("invalid_dates", "start date must be before end date", http.StatusBadRequest))
 		case errors.Is(err, models.ErrLigueNotFound):
 			apierror.RespondWithError(c, apierror.NewAPIError("ligue_not_found", "ligue not found", http.StatusNotFound))
+		case strings.Contains(err.Error(), "foreign key constraint"):
+			apierror.RespondWithError(c, apierror.NewAPIError("split_not_found", "split not found", http.StatusBadRequest))
 		default:
 			h.logger.Error("failed to update ligue", "error", err)
 			apierror.RespondWithError(c, apierror.NewAPIError(apierror.ErrCodeInternal, "internal server error", http.StatusInternalServerError))
@@ -489,17 +492,6 @@ func (h *ArchiveHandler) ImportLigue(c *gin.Context) {
 	}
 
 	apierror.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "ligue imported"})
-}
-
-func (h *ArchiveHandler) firstSplitID() (int, error) {
-	splits, err := h.splitRepo.FindAll()
-	if err != nil {
-		return 0, err
-	}
-	if len(splits) == 0 {
-		return 0, errors.New("no splits found")
-	}
-	return splits[0].ID, nil
 }
 
 type createEvaTeamRequest struct {

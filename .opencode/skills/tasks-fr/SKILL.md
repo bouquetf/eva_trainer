@@ -22,6 +22,7 @@ Utilisez cette skill après avoir créé vos user stories avec la skill `stories
 - Lire le fichier `docs/stories/story-XXX.md`
 - Extraire la description, les critères d'acceptation, les tests et la documentation attendue
 - Lire la spécification et les autres stories pour comprendre le contexte global
+- **Noter le numéro de ligne de chaque critère d'acceptation** (nécessaire pour le suivi d'avancement)
 
 ### Étape 2 - Découpage et génération des tâches avec prompts détaillés
 - Analyser la story pour identifier les unités de travail atomiques
@@ -35,6 +36,7 @@ Utilisez cette skill après avoir créé vos user stories avec la skill `stories
   - **Tests à implémenter** : scénarios unitaires, intégration, E2E avec cas de test concrets
   - **Documentation** : quoi documenter et où
   - **Exemples d'utilisation** : extraits de code, requêtes API HTTP
+  - **Critères d'acceptation concernés** : lister les items `[ ]` de la story que cette tâche couvre (ex: `[ ] item 1 (ligne 18)`)
 - Créer un répertoire `docs/tasks/story-XXX/`
 - Générer les fichiers `docs/tasks/story-XXX/task-YYY.md`
 
@@ -68,6 +70,14 @@ Utilisez cette skill après avoir créé vos user stories avec la skill `stories
 - Mettre à jour les tâches en fonction des réponses
 - Retourner à l'Étape 3
 
+### Mise à jour de la story lors de l'exécution des tâches
+- Lorsqu'une tâche est terminée (implémentée et testée), l'agent doit **mettre à jour la story** :
+  - Cocher les critères d'acceptation correspondants (`[ ]` → `[x]`) dans `docs/stories/story-XXX.md`
+  - Cocher les tests automatisés correspondants (`[ ]` → `[x]`)
+  - Cocher les éléments de documentation correspondants (`[ ]` → `[x]`)
+- Référence : chaque tâche liste ses critères d'acceptation concernés dans la section `## Critères d'acceptation concernés`
+- Cette mise à jour est faite **immédiatement** après la validation de la tâche, avant de passer à la tâche suivante
+
 ### Étape 6 - Fin du workflow
 - Quand il n'y a plus rien à clarifier
 - Supprimer le fichier `questions.md`
@@ -88,6 +98,10 @@ Utilisez cette skill après avoir créé vos user stories avec la skill `stories
 - Story #XXX : [Lien vers la story]
 - Dépend de : Tâche #ZZZ (si applicable)
 - Nécessaire pour : Tâche #WWW (si applicable)
+
+## Critères d'acceptation concernés
+- `[ ]` [Item 1 de la story] (ligne XX)
+- `[ ]` [Item 2 de la story] (ligne YY)
 
 ## Prompt
 
@@ -210,6 +224,7 @@ Tâches générées : [liste des tâches]
 | Étape 4 → 5 | Répondre dans `questions.md` puis taper `J'ai répondu, mets à jour les tâches` | Met à jour les tâches selon les réponses |
 | Étape 5 → 3 | Automatique | Re-vérifie la cohérence (itération) |
 | Étape 5 → 6 | Automatique (plus de questions) | Supprime `questions.md`, présente le plan final |
+| Exécution tâche → Story | Marquer la tâche comme faite | Coche `[x]` les critères concernés dans la story, coche tests et doc |
 
 **Important :** L'agent ne surveille pas les modifications de fichiers en temps réel. L'utilisateur doit donner une instruction explicite pour passer à l'étape suivante.
 

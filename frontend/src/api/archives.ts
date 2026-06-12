@@ -14,8 +14,10 @@ export interface LigueLocaleListResponse {
 
 export interface LigueDetail {
   id: number
+  nom: string
   date_debut: string
   date_fin: string
+  split_id: number
   split_name: string
 }
 
@@ -61,8 +63,10 @@ export async function deleteLigueLocale(id: number): Promise<{ message: string }
 
 export interface LigueListItem {
   id: number
+  nom: string
   date_debut: string
   date_fin: string
+  split_id: number
   split_name: string
   nb_locales: number
 }
@@ -75,8 +79,10 @@ export interface LigueListResponse {
 }
 
 export interface CreateLiguePayload {
+  nom: string
   date_debut: string
   date_fin: string
+  split_id: number
 }
 
 const LIGUES_BASE = '/api/v1/archive/ligues'
@@ -102,8 +108,10 @@ export async function importLigue(localeId: number, ligueId: number): Promise<{ 
 }
 
 export interface UpdateLiguePayload {
+  nom: string
   date_debut: string
   date_fin: string
+  split_id: number
 }
 
 export async function updateLigue(id: number, data: UpdateLiguePayload): Promise<{ ligue: LigueListItem }> {

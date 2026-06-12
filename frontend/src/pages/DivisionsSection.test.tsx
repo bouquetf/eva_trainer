@@ -26,12 +26,12 @@ vi.mock('../api/archives', () => ({
 import {
   listLigues, listDivs, getDiv, createDiv, updateDiv, deleteDiv,
   getDivStandings, listEvaTeams, generateRoundRobin,
-  setDivReplayURL, deleteDivReplayURL, getDivNote, upsertDivNote,
+  setDivReplayURL, deleteDivReplayURL,
 } from '../api/archives'
 
 const mockLigues = [
-  { id: 1, date_debut: '2026-01-01', date_fin: '2026-06-30', split_name: 'Split 1 2026', nb_locales: 2 },
-  { id: 2, date_debut: '2026-07-01', date_fin: '2026-12-31', split_name: 'Split 2 2026', nb_locales: 1 },
+  { id: 1, nom: 'Saison 2026 S1', date_debut: '2026-01-01', date_fin: '2026-06-30', split_id: 1, split_name: 'Split 1 2026', nb_locales: 2 },
+  { id: 2, nom: 'Saison 2026 S2', date_debut: '2026-07-01', date_fin: '2026-12-31', split_id: 2, split_name: 'Split 2 2026', nb_locales: 1 },
 ]
 
 const mockTeams = [

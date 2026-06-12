@@ -31,7 +31,7 @@ test.describe('Feature: BO (Best-of) Management', () => {
     const map1 = await seedMap('E2E Map Alpha ' + Date.now());
     const map2 = await seedMap('E2E Map Beta ' + Date.now());
     const split = await seedSplit('E2E Split ' + Date.now(), [map1.name, map2.name]);
-    const ligue = await seedLigue('2026-01-01', '2026-06-30', split.id);
+    const ligue = await seedLigue('E2E BO Ligue ' + Date.now(), '2026-01-01', '2026-06-30', split.id);
     const team1 = await seedEvaTeam('E2E Team One', 'T1');
     const team2 = await seedEvaTeam('E2E Team Two', 'T2');
     return { ligueId: ligue.id, map1Id: map1.id, map2Id: map2.id, team1Id: team1.id, team2Id: team2.id, team1Name: team1.name, team2Name: team2.name };
